@@ -11,7 +11,19 @@ export type TripContextChangedSection =
   /** Spatial / Active Plan 变更（客户端应重拉 spatial-route） */
   | 'plan'
   | 'worldFacts'
-  | 'readiness';
+  | 'readiness'
+  /** 今日自驾状态 / 确认（客户端应重拉 daily-drive-status） */
+  | 'daily_drive'
+  /** 行中执行首页 / Runbook / Verified Proposal（客户端应重拉 in-trip-home） */
+  | 'in_trip_home'
+  /** 执行总览 Dashboard 投影（客户端应按 section 重拉 overview-dashboard） */
+  | 'overview_dashboard'
+  /** 成员状态报告 / 快速操作（客户端应重拉 open reports / team 关注条） */
+  | 'member_status'
+  /** 待调整队列有新项（仅硬窗受影响时） */
+  | 'adjustment_queue'
+  /** 团队任务板变更（客户端应重拉 team-tasks） */
+  | 'teamTasks';
 
 export interface TripContextChangedEvent {
   type: 'trip_context_changed';

@@ -270,6 +270,64 @@ describe('ExecutionGatewayService', () => {
     await mod.close();
   });
 
+  it('returns null when request memory snapshot ≠ cached execution_trace_v1.snapshot_id', async () => {
+    process.env.CONFIDENCE_DEDUP_GATE_DISABLED = '1';
+    const cached = {
+      request_id: 'old',
+      route: { route: 'SYSTEM1_RAG' },
+      result: { status: 'OK', answer_text: '', payload: {} },
+      explain: { decision_log: [] },
+      observability: {
+        latency_ms: 1,
+        router_ms: 0,
+        system_mode: 'SYSTEM1',
+        tool_calls: 0,
+        browser_steps: 0,
+        tokens_est: 0,
+        cost_est_usd: 0,
+        fallback_used: false,
+        replay_cache_provenance: { generatedAt: Date.now() },
+        trace: {
+          execution_trace_v1: {
+            schemaId: 'agent.orchestration.execution_trace@v1',
+            version: 1,
+            snapshot_id: 'snap-cached',
+          },
+          execution_semantic_fingerprint_v1: 'b'.repeat(40),
+        },
+      },
+    };
+    const mod = await Test.createTestingModule({
+      providers: [
+        ExecutionGatewayService,
+        { provide: AgentService, useValue: agentStub },
+        {
+          provide: RequestDeduplicationService,
+          useValue: { checkDuplicate: jest.fn().mockReturnValue(cached) },
+        },
+      ],
+    }).compile();
+    const gw = mod.get(ExecutionGatewayService);
+    const req = {
+      request_id: 'new',
+      user_id: 'u',
+      trip_id: 't',
+      message: 'm',
+      options: { trace_compatibility_mode: 'legacy' as const },
+      __memoryExecutionBinding: { snapshot_id: 'snap-fresh', snapshot_version: 1 },
+    } as RouteAndRunRequestDto;
+    expect(
+      gw.tryAdmitDedupReplay({
+        request: req,
+        requestHash: 'h',
+        startTime: Date.now(),
+        deadline: { totalMs: 1000, remainingMs: () => 500 },
+      }),
+    ).toBeNull();
+    delete process.env.CONFIDENCE_DEDUP_GATE_DISABLED;
+    await mod.close();
+  });
+
   it('returns null under cid-aware when cached OK trace lacks execution_semantic_fingerprint_v1', async () => {
     process.env.CONFIDENCE_DEDUP_GATE_DISABLED = '1';
     const cached = {

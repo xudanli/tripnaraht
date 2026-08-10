@@ -3,6 +3,7 @@
  *
  * - 仅做 **NFC + NFD 去重音** 的规范化，便于 Norðurland、Landmannalaugar 等上下文与英文车型混写时稳定匹配。
  * - 命中顺序：**先 4WD 标杆，再 2WD 禁区**（避免 Duster 等歧义被经济车规则吃掉）。
+ * - 短拉丁车名必须 **整词** 匹配（避免 `fit` 误伤 `FITNESS_PROFILE` / `outfit` / `benefit`）。
  *
  * 证据权重为产品语义文档位（供 BBR / 面板）；仲裁 severity 仍由 arbitrator 决定。
  */
@@ -65,45 +66,19 @@ const SUBSTR_4WD: readonly string[] = [
   '全驱',
 ];
 
-/** 2WD / 经济车禁区：子串匹配（已 normalize） */
+/**
+ * 2WD / 经济车：可安全子串匹配的短语（中文 / 多词 / 足够长，不易误伤英文系统注入）。
+ * 短拉丁车名见 {@link REGEX_2WD_EXTRA}。
+ */
 const SUBSTR_2WD: readonly string[] = [
-  'yaris',
-  'vitz',
-  'aygo',
   'vw up',
-  'polo',
-  'fabia',
-  'micra',
-  'march',
-  'versa',
-  'fit',
-  'jazz',
-  'swift',
-  'i10',
-  'i20',
-  'rio',
-  'picanto',
-  'morning',
-  'spark',
-  'mirage',
-  'mazda2',
-  'demio',
-  'fiesta',
   'fiat 500',
-  'clio',
-  'zoe',
-  'leaf',
-  'bolt',
   'e-golf',
-  'accent',
-  'elantra',
-  'sentra',
-  'jetta',
-  'passat',
   'mini cooper',
   'bmw 1',
   'tesla model 3',
   'model 3',
+  'mazda2',
   '雅力士',
   '威驰',
   '致炫',
@@ -127,13 +102,45 @@ const REGEX_4WD_EXTRA: readonly RegExp[] = [
   /\bduster\b/i,
 ];
 
-/** 在 2WD 桶中需整词匹配的拉丁 token */
+/**
+ * 2WD 桶整词拉丁 token。
+ * 含 Honda Fit 等短名：禁止 `includes('fit')`，否则会命中 FITNESS_PROFILE / outfit / benefit。
+ */
 const REGEX_2WD_EXTRA: readonly RegExp[] = [
   /\b2wd\b/i,
   /\bfwd\b/i,
   /\bmini\b/i,
   /\bcorolla\b(?!\s*cross)/i,
   /\bcivic\b(?!\s*type)/i,
+  /\byaris\b/i,
+  /\bvitz\b/i,
+  /\baygo\b/i,
+  /\bpolo\b/i,
+  /\bfabia\b/i,
+  /\bmicra\b/i,
+  /\bmarch\b/i,
+  /\bversa\b/i,
+  /\bfit\b/i,
+  /\bjazz\b/i,
+  /\bswift\b/i,
+  /\bi10\b/i,
+  /\bi20\b/i,
+  /\brio\b/i,
+  /\bpicanto\b/i,
+  /\bmorning\b/i,
+  /\bspark\b/i,
+  /\bmirage\b/i,
+  /\bdemio\b/i,
+  /\bfiesta\b/i,
+  /\bclio\b/i,
+  /\bzoe\b/i,
+  /\bleaf\b/i,
+  /\bbolt\b/i,
+  /\baccent\b/i,
+  /\belantra\b/i,
+  /\bsentra\b/i,
+  /\bjetta\b/i,
+  /\bpassat\b/i,
 ];
 
 export function lexiconMatchFourWheelIntent(normalized: string): boolean {

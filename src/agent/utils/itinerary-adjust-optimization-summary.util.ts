@@ -347,7 +347,14 @@ export function buildItineraryAdjustUserFacingBullets(
   bullets.push(...scheduleChanges);
 
   if (scheduleChanges.length === 0 && metadata.adaptive_replan_requested === true) {
-    bullets.push('已减少景点密度并留出更宽松的时段。');
+    const hasDraft =
+      Array.isArray(opts?.scheduleItems) &&
+      opts!.scheduleItems!.some((s) => String(s.name ?? '').trim().length > 0);
+    bullets.push(
+      hasDraft
+        ? '已按更宽松节奏整理当日草案，请查看下方时间安排确认。'
+        : '本次未能生成可对比的改排明细；请刷新行程后重试，或说明想删减/延后的具体景点。',
+    );
   }
 
   const applied =

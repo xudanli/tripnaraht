@@ -875,9 +875,87 @@ describe('RouteAndRunResponseAssemblerService — ui_display.evidence_cards_ui',
 
     const payload = resp.result?.payload as Record<string, unknown>;
     expect(payload?.accommodations).toHaveLength(1);
+    expect(payload?.accommodation_cards).toHaveLength(1);
+    expect((payload?.accommodation_cards as any[])[0]).toEqual(
+      expect.objectContaining({ id: 'h1', name: 'Hotel A', cta_zh: '加入行程' }),
+    );
     expect(payload?.accommodation_night_groups).toHaveLength(1);
     expect(payload?.hotel_search_meta).toEqual(
       expect.objectContaining({ strategy: 'per_night_full_trip_replan' }),
+    );
+  });
+
+  it('assembleClaudeDynamicResponse surfaces activity_booking_cards from live sensor', async () => {
+    const assembler = await createAssembler();
+
+    const orchestrationResult: OrchestrationResult = {
+      success: true,
+      answerText: '冰川徒步建议提前在运营商官网预订。',
+      stepsExecuted: [
+        { stepId: 'lightweight_llm_answer', skillName: 'direct_llm', success: true, duration: 1 },
+      ],
+      totalDuration: 1,
+      totalCost: 0,
+      result: {
+        lightweightKnowledgeQa: true,
+        routingTaskType: 'DATA_LOOKUP',
+        activities: [
+          {
+            id: 'glacier_hike',
+            nameZh: '冰川徒步（南岸）',
+            nameEn: 'Glacier Hike',
+            category: 'SPECIAL_EXPERIENCE',
+            url: 'https://www.icelandicmountainguides.is/',
+            cta_zh: '去预订',
+            source: 'catalog_fallback',
+            urgencyZh: 'HIGH',
+            reasonZh: '名额紧张，建议尽早预订',
+          },
+        ],
+        activity_booking_cards: [
+          {
+            id: 'glacier_hike',
+            nameZh: '冰川徒步（南岸）',
+            url: 'https://www.icelandicmountainguides.is/',
+            cta_zh: '去预订',
+          },
+        ],
+        activity_search_meta: {
+          mode: 'catalog_only',
+          ui_layout_hint_zh: '上方策略正文，下方活动预订跳转卡',
+        },
+        live_sensor_audit: [
+          { tool_id: 'live_tool.mcp.activity', ok: true, latency_ms: 100 },
+        ],
+      } as OrchestrationResult['result'],
+    };
+
+    const resp = await assembler.assembleClaudeDynamicResponse({
+      request: {
+        request_id: 'activity-dyn-1',
+        message: '那就先预定冰川徒步活动把',
+        trip_id: 'trip-1',
+        options: { entry_point: 'itinerary_day_editor' },
+      } as RouteAndRunRequestDto,
+      startTime: Date.now(),
+      orchestrationResult,
+      routingTaskType: 'DATA_LOOKUP',
+    });
+
+    const payload = resp.result?.payload as Record<string, unknown>;
+    expect(payload?.activity_booking_cards).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'glacier_hike',
+          nameZh: expect.stringMatching(/冰川/),
+          url: expect.stringMatching(/^https:\/\//),
+          cta_zh: '去预订',
+        }),
+      ]),
+    );
+    expect(payload?.activities).toHaveLength(1);
+    expect(payload?.activity_search_meta).toEqual(
+      expect.objectContaining({ mode: 'catalog_only' }),
     );
   });
 

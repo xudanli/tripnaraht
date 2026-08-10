@@ -40,10 +40,17 @@ export function appendVerifyTemporalOpeningAuditProof(
         const hit = poiClosed.find((x) => String(x?.entityRef?.id ?? '') === String(it?.id ?? ''));
         if (!hit) continue;
         const oh = openingHoursMap.get(poiId);
-        const openWindow =
+        const openWindowRaw =
           oh?.opening_hours ??
-          (oh?.open_time && oh?.close_time ? `${oh.open_time}-${oh.close_time}` : undefined) ??
-          'UNKNOWN';
+          (oh?.open_time && oh?.close_time ? `${oh.open_time}-${oh.close_time}` : undefined);
+        const openWindow =
+          openWindowRaw != null && String(openWindowRaw).trim() !== ''
+            ? String(openWindowRaw).trim()
+            : 'UNKNOWN';
+        /** 缺营业时间仅 ADVISORY，勿写成 is_violated HARD 证据（否则 VERIFY→REPAIR 死循环） */
+        if (openWindow === 'UNKNOWN') {
+          continue;
+        }
         state.decision_log.push({
           request_id: state.request_id,
           step: 'VERIFY',

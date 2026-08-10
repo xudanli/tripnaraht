@@ -1,6 +1,6 @@
 #!/usr/bin/env npx ts-node
 /**
- * Validate P0 country road-constraint RAG seeds (AU / JP / NZ + optional IS).
+ * Validate P0 country road-constraint RAG seeds (AU / JP / NZ / CN-G318).
  *
  *   npm run validate:country-road-constraint-seeds
  */
@@ -37,6 +37,15 @@ const SEEDS: Array<{
       requiredRoadIds: ['SH94'],
       tripDates: ['2026-03-12'],
       minClosedRoadChunks: 1,
+    },
+  },
+  {
+    label: 'CN G318 altitude/rainy advisory',
+    file: '../data/rag/cn-g318-road-constraint-chunks.p0.json',
+    options: {
+      requiredRoadIds: ['CN-G318-WEST-SICHUAN', 'CN-G318'],
+      tripDates: ['2026-07-15'],
+      minClosedRoadChunks: 0,
     },
   },
 ];

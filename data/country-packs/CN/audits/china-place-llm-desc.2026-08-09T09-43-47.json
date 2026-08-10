@@ -1,0 +1,294 @@
+{
+  "metadata": {
+    "mode": "needs-llm",
+    "dryRun": false,
+    "model": "deepseek-chat",
+    "candidates": 40,
+    "ok": 40,
+    "fail": 0,
+    "skipped": 0,
+    "sampledAt": "2026-08-09T09:43:47.040Z"
+  },
+  "results": [
+    {
+      "id": 1422,
+      "nameCN": "苏州市沙家浜·虞山尚湖旅游区",
+      "ok": true,
+      "chars": 147,
+      "nameEN": "Shajiabang · Yushan Shanghu Tourist Area"
+    },
+    {
+      "id": 1423,
+      "nameCN": "南通市濠河景区",
+      "ok": true,
+      "chars": 116,
+      "nameEN": "Haohe Scenic Area"
+    },
+    {
+      "id": 1424,
+      "nameCN": "连云港市花果山景区",
+      "ok": true,
+      "chars": 145,
+      "nameEN": "Huaguo Mountain Scenic Area"
+    },
+    {
+      "id": 1425,
+      "nameCN": "连云港市连岛景区",
+      "ok": true,
+      "chars": 147,
+      "nameEN": "Liandao Scenic Area"
+    },
+    {
+      "id": 1426,
+      "nameCN": "淮安市周恩来故里旅游景区",
+      "ok": true,
+      "chars": 130,
+      "nameEN": "Zhou Enlai's Hometown Scenic Area"
+    },
+    {
+      "id": 1427,
+      "nameCN": "盐城市大丰中华麋鹿园景区",
+      "ok": true,
+      "chars": 161,
+      "nameEN": "Dafeng Chinese Milu Deer Park"
+    },
+    {
+      "id": 1428,
+      "nameCN": "扬州市瘦西湖风景区",
+      "ok": true,
+      "chars": 128,
+      "nameEN": "Slender West Lake Scenic Area"
+    },
+    {
+      "id": 1429,
+      "nameCN": "镇江市金山焦山北固山景区",
+      "ok": true,
+      "chars": 129,
+      "nameEN": "Zhenjiang Jinshan, Jiaoshan & Beigushan Scenic Area"
+    },
+    {
+      "id": 1430,
+      "nameCN": "镇江市句容茅山景区",
+      "ok": true,
+      "chars": 123,
+      "nameEN": "Maoshan Scenic Area"
+    },
+    {
+      "id": 1431,
+      "nameCN": "泰州姜堰区溱湖旅游景区",
+      "ok": true,
+      "chars": 135,
+      "nameEN": "Qinhu Lake National Wetland Park"
+    },
+    {
+      "id": 1432,
+      "nameCN": "宿迁洪泽湖湿地景区",
+      "ok": true,
+      "chars": 124,
+      "nameEN": "Sihong Hongze Lake Wetland Scenic Area"
+    },
+    {
+      "id": 2190,
+      "nameCN": "肥西三河古镇",
+      "ok": true,
+      "chars": 182,
+      "nameEN": "Sanhe Ancient Town"
+    },
+    {
+      "id": 2191,
+      "nameCN": "颍上县八里河旅游区",
+      "ok": true,
+      "chars": 140,
+      "nameEN": "Balihu Tourist Area, Yingshang County"
+    },
+    {
+      "id": 2192,
+      "nameCN": "琅琊山景区",
+      "ok": true,
+      "chars": 119,
+      "nameEN": "Langya Mountain Scenic Area"
+    },
+    {
+      "id": 2193,
+      "nameCN": "天堂寨景区",
+      "ok": true,
+      "chars": 151,
+      "nameEN": "Tiantangzhai Scenic Area"
+    },
+    {
+      "id": 2194,
+      "nameCN": "万佛湖景区",
+      "ok": true,
+      "chars": 132,
+      "nameEN": "Wanfo Lake Scenic Area"
+    },
+    {
+      "id": 2195,
+      "nameCN": "采石风景区",
+      "ok": true,
+      "chars": 127,
+      "nameEN": "Caishi Scenic Area"
+    },
+    {
+      "id": 2196,
+      "nameCN": "安徽省芜湖市鸠江区芜湖方特旅游区",
+      "ok": true,
+      "chars": 140,
+      "nameEN": "Wuhu Fantawild Tourism Zone"
+    },
+    {
+      "id": 2197,
+      "nameCN": "九华山风景区",
+      "ok": true,
+      "chars": 150,
+      "nameEN": "Mount Jiuhua Scenic Area"
+    },
+    {
+      "id": 2198,
+      "nameCN": "绩溪县龙川景区",
+      "ok": true,
+      "chars": 117,
+      "nameEN": "Longchuan Scenic Area"
+    },
+    {
+      "id": 2199,
+      "nameCN": "天柱山景区",
+      "ok": true,
+      "chars": 127,
+      "nameEN": "Tianzhu Mountain Scenic Area"
+    },
+    {
+      "id": 2200,
+      "nameCN": "黄山风景区",
+      "ok": true,
+      "chars": 116,
+      "nameEN": "Huangshan Scenic Area"
+    },
+    {
+      "id": 2201,
+      "nameCN": "皖南古村落（西递）",
+      "ok": true,
+      "chars": 129,
+      "nameEN": "Xidi Ancient Village"
+    },
+    {
+      "id": 2202,
+      "nameCN": "古徽州文化旅游区（唐模）古徽州文化旅游区（呈坎）古徽州文化旅游区（潜口民宅）古徽州文化旅游区（牌坊群.鲍家花园）古徽州文化旅游区（徽州古城）",
+      "ok": true,
+      "chars": 150,
+      "nameEN": "Ancient Huizhou Cultural Tourism Zone (Qiankou Folk Residence Museum)"
+    },
+    {
+      "id": 2203,
+      "nameCN": "皖南古村落（西递）皖南古村落（宏村）",
+      "ok": true,
+      "chars": 122,
+      "nameEN": "Hongcun & Xidi Ancient Villages"
+    },
+    {
+      "id": 2825,
+      "nameCN": "江西省九江市庐山风景名胜区",
+      "ok": true,
+      "chars": 169,
+      "nameEN": "Lushan Scenic Area"
+    },
+    {
+      "id": 2826,
+      "nameCN": "江西省吉安市井冈山风景旅游区",
+      "ok": true,
+      "chars": 154,
+      "nameEN": "Jinggangshan Scenic Area"
+    },
+    {
+      "id": 2827,
+      "nameCN": "江西省上饶市三清山风景名胜区",
+      "ok": true,
+      "chars": 154,
+      "nameEN": "Sanqing Mountain Scenic Area"
+    },
+    {
+      "id": 2828,
+      "nameCN": "江西省鹰潭市龙虎山景区",
+      "ok": true,
+      "chars": 134,
+      "nameEN": "Longhu Mountain Scenic Area"
+    },
+    {
+      "id": 2829,
+      "nameCN": "江西省上饶市江湾景区",
+      "ok": true,
+      "chars": 157,
+      "nameEN": "Jiangwan Scenic Area"
+    },
+    {
+      "id": 2830,
+      "nameCN": "江西省景德镇市古窑民俗博览区",
+      "ok": true,
+      "chars": 166,
+      "nameEN": "Jingdezhen Ancient Kiln Folk Customs Expo Area"
+    },
+    {
+      "id": 2831,
+      "nameCN": "江西省瑞金市“共和国”摇篮旅游区",
+      "ok": true,
+      "chars": 115,
+      "nameEN": "Cradle of the Republic Tourism Area"
+    },
+    {
+      "id": 2832,
+      "nameCN": "江西省宜春市明月山旅游区",
+      "ok": true,
+      "chars": 120,
+      "nameEN": "Mingyue Mountain Scenic Area"
+    },
+    {
+      "id": 2833,
+      "nameCN": "江西省上饶市龟峰景区",
+      "ok": true,
+      "chars": 105,
+      "nameEN": "Guifeng Scenic Area"
+    },
+    {
+      "id": 2834,
+      "nameCN": "江西省抚州市资溪大觉山景区",
+      "ok": true,
+      "chars": 129,
+      "nameEN": "Dajue Mountain Scenic Area"
+    },
+    {
+      "id": 2835,
+      "nameCN": "江西省南昌市滕王阁旅游区",
+      "ok": true,
+      "chars": 118,
+      "nameEN": "Tengwang Pavilion Scenic Area"
+    },
+    {
+      "id": 2836,
+      "nameCN": "江西省萍乡市武功山景区",
+      "ok": true,
+      "chars": 136,
+      "nameEN": "Wugong Mountain Scenic Area"
+    },
+    {
+      "id": 3046,
+      "nameCN": "天下第一泉",
+      "ok": true,
+      "chars": 147,
+      "nameEN": "No.1 Spring Scenic Area"
+    },
+    {
+      "id": 4343,
+      "nameCN": "佛山市西樵山景区",
+      "ok": true,
+      "chars": 143,
+      "nameEN": "Xiqiao Mountain Scenic Area"
+    },
+    {
+      "id": 4344,
+      "nameCN": "佛山市长鹿旅游休博园",
+      "ok": true,
+      "chars": 125,
+      "nameEN": "Changlu Tourism & Leisure Park"
+    }
+  ]
+}

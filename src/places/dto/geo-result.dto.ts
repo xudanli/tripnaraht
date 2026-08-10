@@ -11,6 +11,7 @@ export interface RawPlaceResult {
   category: PlaceCategory; // 统一使用 PlaceCategory 枚举
   address?: string;
   rating?: number;
+  description?: string | null;
 }
 
 // 2. 定义我们在 Service 中想用的最终结构 (更友好的格式)
@@ -25,6 +26,8 @@ export interface PlaceWithDistance {
   tags: string[];   // 从 metadata 解析出的快捷字段
   address?: string;
   rating?: number;
+  description?: string | null;
+  metadata?: any;
   status?: {
     isOpen: boolean;
     text: string;

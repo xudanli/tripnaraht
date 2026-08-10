@@ -11,9 +11,9 @@ import type { IntentMatchContext, IntentProfile, MatchedIntentProfile } from './
 function diningMatch(msg: string): boolean {
   const lower = msg.toLowerCase();
   const diningLookupZh =
-    /推荐.*餐厅|推荐.*吃|餐厅推荐|找餐厅|搜餐厅|附近.*餐厅|美食推荐|美食|好吃|吃的地方|去哪吃|吃饭推荐|有没有好吃的|宵夜|早餐店|想吃|吃啥|吃什么|特色小吃/i;
+    /推荐.*餐厅|推荐.*吃|餐厅推荐|找餐厅|搜餐厅|附近.*餐厅|附近.*午餐|附近.*午饭|附近.*晚餐|找.*午餐|找.*午饭|找.*晚餐|午餐|午饭|晚餐|正餐|用餐|美食推荐|美食|好吃|吃的地方|去哪吃|吃饭推荐|有没有好吃的|宵夜|早餐店|想吃|吃啥|吃什么|特色小吃|特色(?:的)?餐厅|有没有.{0,12}餐厅|餐厅.{0,24}(?:提前|预订|预定|预约)|(?:提前|预订|预定).{0,16}餐厅|哪家餐厅|饭店推荐|特色饭店/i;
   const diningLookupEn =
-    /\b(restaurants?|cafes?|dining|food\s+near|where\s+to\s+eat|places?\s+to\s+eat|eat\s+near)\b/i;
+    /\b(restaurants?|cafes?|dining|food\s+near|where\s+to\s+eat|places?\s+to\s+eat|eat\s+near|reservation|book(?:ing)?\s+(?:a\s+)?table)\b/i;
   return diningLookupZh.test(msg) || diningLookupEn.test(lower);
 }
 
@@ -42,18 +42,38 @@ function supplyNearbyMatch(msg: string): boolean {
 function accommodationMatch(msg: string): boolean {
   const lower = msg.toLowerCase();
   const zh =
-    /推荐酒店|酒店推荐|找酒店|搜酒店|搜索酒店|查酒店|住宿推荐|有空房|哪家酒店|酒店价格|民宿推荐/i;
+    /推荐酒店|酒店推荐|找酒店|搜酒店|搜索酒店|查酒店|住宿推荐|有空房|哪家酒店|酒店价格|民宿推荐|推荐.{0,24}酒店|酒店.{0,12}推荐/i;
+  /** 「可以给我推荐吗？8月19号的酒店」：日历日 + 住宿词 */
+  const calendarLodging =
+    /(\d{1,2}\s*月\s*\d{1,2}\s*[日号]?|\d{1,2}\s*[.．/]\s*\d{1,2}\s*[日号]?|\d{4}-\d{2}-\d{2}).{0,16}(酒店|住宿|旅馆|民宿|过夜)/i.test(
+      msg,
+    ) ||
+    /(酒店|住宿|旅馆|民宿).{0,16}(\d{1,2}\s*月\s*\d{1,2}\s*[日号]?|\d{1,2}\s*[.．/]\s*\d{1,2}\s*[日号]?|\d{4}-\d{2}-\d{2})/i.test(
+      msg,
+    );
   const en =
     /\b(find|search|recommend)\s+(?:me\s+)?(?:some\s+)?(?:a\s+)?(?:hotels?|lodging|accommodation|bnb)\b/i;
-  return zh.test(msg) || en.test(lower);
+  return zh.test(msg) || calendarLodging || en.test(lower);
 }
 
 function transportMatch(msg: string): boolean {
   const lower = msg.toLowerCase();
-  const zh = /租车|自驾|包车|提车|还车|租车行|路况|交规|碎石路|F\s*路|F\d+|环岛|驾照|冰岛开车/i;
+  const zh =
+    /租车|租一辆|租辆|租越野|自驾|包车|提车|还车|租车行|路况|交规|碎石路|F\s*路|F\d+|环岛|驾照|冰岛开车/i;
   const en =
     /\b(car\s+rental|rent(?:ing)?\s+a\s+car|self[- ]drive|driving\s+in|road\s+rules|rental\s+car)\b/i;
   return zh.test(msg) || en.test(lower);
+}
+
+/** 门票/活动预订检索（含飞猪活动卡；勿吞住宿/租车域） */
+function activityTicketMatch(msg: string): boolean {
+  if (/(?:酒店|住宿|民宿|旅馆|租车|提车|还车)/i.test(msg)) return false;
+  return (
+    /(?:门票|入场券).{0,24}(?:多少|价格|预订|预定|预约|信息|链接|费用|票价)/i.test(msg) ||
+    /(?:搜|搜索|查|查一下|订|买|购).{0,16}(?:门票|入场券)/i.test(msg) ||
+    /(?:门票|入场券).{0,12}(?:预订|预定|预约)/i.test(msg) ||
+    /景区.{0,16}门票/i.test(msg)
+  );
 }
 
 function scopedFeasibilityMatch(msg: string): boolean {
@@ -126,6 +146,13 @@ export const INTENT_PROFILES: readonly IntentProfile[] = [
     label: '住宿检索',
     route: 'DATA_LOOKUP',
     match: (msg) => accommodationMatch(msg),
+  },
+  {
+    id: 'consult.activity_ticket',
+    label: '门票/活动预订检索',
+    route: 'DATA_LOOKUP',
+    ragChunkCategories: ['POI', 'DECISION_SUPPORT'],
+    match: (msg) => activityTicketMatch(msg),
   },
   {
     id: 'consult.transport',

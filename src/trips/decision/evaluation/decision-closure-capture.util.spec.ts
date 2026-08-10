@@ -50,6 +50,18 @@ describe('decision-closure-capture.util', () => {
     expect(events.some((e) => e.kind === 'ROAD' && (e as { roadId: string }).roadId === 'B100')).toBe(true);
   });
 
+  it('loadCountryRagSeedChunks loads CN G318 seed', () => {
+    const chunks = loadCountryRagSeedChunks('CN');
+    expect(chunks.length).toBeGreaterThanOrEqual(7);
+    const events = worldEventsFromRagChunks(chunks, { tripDates: ['2026-07-15'] });
+    expect(
+      events.some(
+        (e) => e.kind === 'ROAD' && (e as { roadId: string }).roadId === 'CN-G318-WEST-SICHUAN',
+      ),
+    ).toBe(true);
+    expect(events.some((e) => e.kind === 'WEATHER')).toBe(true);
+  });
+
   it('buildDsoFromE2ECase uses country destination for AU fixture', () => {
     const dso = buildDsoFromE2ECase(auDecisionClosureGreatOceanFireCase);
     expect(dso.userIntent?.destination).toBe('Australia');

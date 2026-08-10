@@ -1,79 +1,71 @@
 # UWC-01 — Unified Writeback Contract v1
 
-**Status:** STARTED (first batch)  
-**Parent train:** Post–V3.1 Agent Interface Hardening (GO signed; this is a **new** scoped track)  
+**Status:** UWC-1e protocol **FROZEN**; cutover D1–D3 **APPROVED**  
+**Ops phase:** Canaries + cutover complete — see `PROCESS_STATUS.md`  
+**Parent train:** Post–V3.1 Agent Interface Hardening (GO signed)  
 **Not:** global TravelContext SSOT · Proposal 大一统 · microservice/CQRS/GraphQL · OR-Tools Apply · Iceland/Mobile expansion  
 
 ## Goal
 
 Unify the **minimum safety contract** for authoritative writes — not a global write bus or single persistence store (`MIXED_WRITE_UNIFICATION_FORBIDDEN`).
 
-## First batch (landed in code)
+## Formal status (now)
+
+| Corridor | Status |
+|----------|--------|
+| ACTIONS_COMMIT | **AUTHORITATIVE** (D1) + UWC-1e slice |
+| ITINERARY_ADJUST | **AUTHORITATIVE** (D2, same-day) + UWC-1e slice |
+| UNIFIED_EXECUTE | **AUTHORITATIVE** (D3, PlanVersion-only) + UWC-1e slice |
+
+| Lock / exclusion | Status |
+|------------------|--------|
+| Global AUTHORITATIVE (`UWC_1C_OCC_UNLOCKED`) | **UNLOCKED** — `UWC-OCC-UNLOCK-01` |
+| Compensation Execution | **UNLOCKED** — `UWC-COMP-UNLOCK-01` |
+| UNIFIED mixedTargets | **EXCLUDED** |
+| Iceland / Mobile writeback | **EXCLUDED** |
+| UWC-1e | **FROZEN** (Preview→Confirm→Apply; `autoUndo=false`) |
+
+## Landed (frozen) code roots
 
 | Item | Path |
 |------|------|
-| Types / errors / results | `src/decision-runtime/execution/authoritative-write/authoritative-write.types.ts` |
-| WriteTarget profiles | `write-target.registry.ts` (mirrors audit matrix mixedTargets) |
-| Gateway | `authoritative-write-gateway.service.ts` |
-| **UWC-1b** modes / handlers / shadow probe | `corridor-write-mode.config.ts`, `handlers/*`, `corridor-handler.registry.ts`, `authoritative-write-shadow-probe.service.ts` |
-| Contract tests | `authoritative-write-gateway.contract.spec.ts`, `uwc-1b-shadow.contract.spec.ts` |
+| Types / gateway / handlers / OCC / recovery | `src/decision-runtime/execution/authoritative-write/` |
+| CANARY-01/02/03 | `*-canary.*`, `uwc-canary-0*.contract.spec.ts` |
+| Cutover helpers | `corridor-cutover.gate.ts` |
 
-### Corridors (v1 batch only)
-
-1. **ACTIONS_COMMIT** → handler bound; Legacy `ActionExecutionService.commit` writes; UWC shadow probe only  
-2. **ITINERARY_ADJUST** → handler bound; Legacy `executeItineraryAdjustDraftApply` writes; standalone shadow probe  
-3. **UNIFIED_EXECUTE** → handler bound; Legacy `Rfc001PlanVersionApplyExecutor.execute` writes; shadow after execute  
-
-### Modes (per corridor, env override)
+## Modes (per corridor)
 
 | Mode | Behavior |
 |------|----------|
 | `DISABLED` | No UWC probe |
-| `SHADOW_VALIDATE` (**default this round**) | Gates + WriteTarget resolve + reconcile audit; **zero writes** |
-| `AUTHORITATIVE` | **Hard-blocked** until `UWC_1C_OCC_UNLOCKED` (coerced to DISABLED) |
+| `SHADOW_VALIDATE` (**default**) | Gates + reconcile; **zero UWC business writes** on non-canary path |
+| `AUTHORITATIVE_CANARY` | Per-corridor canary only (env + cutover gated) |
+| `AUTHORITATIVE` | Allowed when dual-gate unlocked **or** per-corridor cutover auth |
 
-Env keys: `UWC_CORRIDOR_MODE_ACTIONS_COMMIT` / `_ITINERARY_ADJUST` / `_UNIFIED_EXECUTE`.
-
-Handlers are bound in registry. Existing HTTP paths remain the sole writers under SHADOW_VALIDATE.
-
-## Shared stages
-
-Authority → Verification Proof → Freshness shape → Idempotency key → WriteTarget profile → Audit → (handler) Transaction/Audit persistence
-
-### Unified outcomes (client protocol)
-
-`APPLIED` | `CONFLICT` | `VERIFICATION_REQUIRED` | `REJECTED` | `IDEMPOTENT_REPLAY`
-
-### Compensation model (v1)
-
-- **pre_commit_abort** — fail before effective  
-- **post_effective_compensating_plan_version** — Unified rollback path  
-- **revision_chain_rollback** — itinerary adjust  
-- **stub_no_side_effects** — Actions (unchanged product stance)  
-
-**Out of scope:** hotel / activity / car rental external commercial compensation.
-
-## Next tickets (ordered)
+## Ticket board
 
 | ID | Work | Notes |
 |----|------|-------|
-| UWC-1a | ✅ Types + gateway + registry + contract | done |
-| UWC-1b | ✅ Explicit handlers + SHADOW_VALIDATE + AUTHORITATIVE hard-block | done |
-| UWC-1c | ✅ ExpectedWriteVersion OCC + dual gates + concurrency proofs | code complete; switch auth false |
-| UWC-1d | ✅ Two-layer recovery + profiles + cutover gate | compensation exec gate closed |
-| UWC-CANARY-01 | 🟡 ACTIONS_COMMIT AUTHORITATIVE_CANARY | env-authorized; no global AUTHORITATIVE unlock |
-| UWC-1e | Web/iOS protocol: Preview → Confirm → Apply mapping | after ACTIONS canary review |
+| UWC-1a…1d | ✅ Contract / shadow / OCC / recovery | complete |
+| UWC-CANARY-01 | ✅ **FROZEN** — ops PASSED | |
+| UWC-CANARY-02 | ✅ **FROZEN** — ops PASSED | |
+| UWC-CANARY-03 | ✅ **FROZEN** — ops PASSED | PlanVersion-only |
+| **Ops canaries** | ✅ ACTIONS → ITINERARY → UNIFIED | complete |
+| **UWC-CUTOVER-01** | ✅ D1+D2+D3 **APPROVED** | |
+| **UWC-OCC-UNLOCK-01** | ✅ Global OCC dual-gate **UNLOCKED** | |
+| **UWC-COMP-UNLOCK-01** | ✅ Compensation exec **UNLOCKED** | client autoUndo still false |
+| **UWC-1e** | ✅ **CLIENT INTEGRATION** — Web/iOS pageApi + commitGate + E2E | no page Apply |
+
+
+
 
 ## Hard prohibitions
 
-- global TravelContext SSOT  
-- Proposal 大一统  
-- microservice / CQRS / GraphQL redesign  
-- OR-Tools authoritative Apply  
-- Iceland / Mobile writeback expansion  
-- mixed-write single-store unification  
+- global TravelContext SSOT · Proposal 大一统 · microservice/CQRS/GraphQL  
+- OR-Tools authoritative Apply · Iceland / Mobile writeback expansion  
+- mixed-write single-store unification · client auto-undo / external refund expansion without explicit decision  
 
-## Relation to V3.1 release
+## Relation to V3.1
 
-V3.1 **GO** remains on tag `v31-agent-interface-hardening-rc1` → `b5127ae9…`.  
-UWC v1 is a **follow-on engineering track**; do not move evidence tag `claim-evidence-matrix-v2.0`.
+V3.1 **GO** on tag `v31-agent-interface-hardening-rc1` → `b5127ae9…`.  
+Do not move evidence tag `claim-evidence-matrix-v2.0`.

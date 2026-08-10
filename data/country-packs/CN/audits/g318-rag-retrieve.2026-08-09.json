@@ -1,0 +1,40 @@
+{
+  "metadata": {
+    "sampledAt": "2026-08-09T06:47:26.637Z",
+    "query": "川藏线雨季塌方 高原适应 木格措门票预约"
+  },
+  "dbCount": 7,
+  "topHits": [
+    {
+      "chunk_id": "cn-g318-rainy-season-weather-risk-2026-07",
+      "score": 0.6154601207101285,
+      "content": "G318 川西高原雨季 WEATHER RISK：heavy RAIN may trigger landslides and short closures. 非实时气象，出行前核对当地预报与交警通告。"
+    },
+    {
+      "chunk_id": "cn-g318-mugecuo-advance-booking",
+      "score": 0.6072000861167908,
+      "content": "康定木格措门票常与往返观光车捆绑；建议实名提前预订（旺季/节假日至少提前 1–3 天）。门市票+车约 165–195 元量级，OTA 实时价以飞猪为准；游船/温泉另计。"
+    },
+    {
+      "chunk_id": "cn-g318-acclimatization-rule",
+      "score": 0.5682989954948425,
+      "content": "川藏南线高原适应规则：成都（约 500m）→康定（约 2560m）过渡，再进理塘（约 4014m）等高点。连续两日净升过大时下调高强度行程；出现严重高反应立即下降海拔并就医。"
+    },
+    {
+      "chunk_id": "cn-g318-west-sichuan-rainy-landslide-advisory",
+      "score": 0.5482976705850569,
+      "content": "G318 川西段（康定—新都桥—理塘一带）雨季（约 6–9 月）塌方、落石与短时封路风险升高。ADVISORY：出发前查当地交警/路况通告，预留绕行或过夜缓冲，勿按极限日里程硬排。"
+    },
+    {
+      "chunk_id": "cn-g318-east-tibet-checkpoint-advisory",
+      "score": 0.5085504055023193,
+      "content": "G318 藏东段（芒康—波密—林芝—拉萨）检查站与证件查验较常见。ADVISORY：随身携带身份证件，关注临时交通管制；非实时交警数据，以现场通告为准。"
+    }
+  ],
+  "expectedHit": [
+    "cn-g318-west-sichuan-rainy-landslide-advisory",
+    "cn-g318-acclimatization-rule",
+    "cn-g318-mugecuo-advance-booking"
+  ],
+  "ok": true
+}

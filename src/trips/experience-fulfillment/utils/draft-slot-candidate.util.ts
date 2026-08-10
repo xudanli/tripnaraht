@@ -1,5 +1,8 @@
 /**
  * Trip Draft LLM slots → ExperienceCandidate 校验（Round 3）
+ *
+ * LLM 偶发会选出真实存在但不在本次候选池的 placeId（幻觉或跨池记忆）。
+ * 硬失败会拖垮 HYBRID bootstrap；先就地修复再校验。
  */
 
 import type { CreateTripDraftDto } from '../../dto/trip-draft.dto';
@@ -14,6 +17,18 @@ export type DraftSlotValidationResult = {
   valid: boolean;
   errors: string[];
   candidates: ExperienceCandidate[];
+  /** 池外 placeId 被替换 / deferred 的说明 */
+  repairs: string[];
+};
+
+type SlotObj = {
+  deferred?: boolean;
+  placeId?: number;
+  reason?: string;
+  alternatives?: number[];
+  confidence?: string;
+  validationRequired?: boolean;
+  riskTags?: string[];
 };
 
 function inferAtomsFromPlace(place: CandidatePlace): ExperienceCandidate['proposedExperienceAtoms'] {
@@ -38,12 +53,96 @@ function inferAtomsFromPlace(place: CandidatePlace): ExperienceCandidate['propos
   }));
 }
 
+/**
+ * 将池外 placeId 替换为 alternatives 中第一个在池内的 id；
+ * 若无可替换则标记 deferred，避免硬失败。
+ */
+export function repairDraftLlmSlotsToCandidatePool(
+  parsed: { days?: unknown[] },
+  candidatePlaces: CandidatePlace[],
+): { days: unknown[]; repairs: string[] } {
+  const byId = new Map(candidatePlaces.map((c) => [c.id, c]));
+  const repairs: string[] = [];
+  const days = Array.isArray(parsed.days) ? parsed.days : [];
+
+  const repairedDays = days.map((dayRow) => {
+    if (!dayRow || typeof dayRow !== 'object') return dayRow;
+    const dayNum = Number((dayRow as { day?: number }).day);
+    const slotsIn = (dayRow as { slots?: Record<string, unknown> }).slots ?? {};
+    const slotsOut: Record<string, unknown> = { ...slotsIn };
+
+    for (const slotKey of SLOT_KEYS) {
+      const raw = slotsOut[slotKey];
+      if (!raw || typeof raw !== 'object') continue;
+      const slot = { ...(raw as SlotObj) };
+      if (slot.deferred) {
+        slotsOut[slotKey] = slot;
+        continue;
+      }
+
+      const placeId = Number(slot.placeId);
+      if (!Number.isFinite(placeId)) {
+        slotsOut[slotKey] = slot;
+        continue;
+      }
+      if (byId.has(placeId)) {
+        slotsOut[slotKey] = slot;
+        continue;
+      }
+
+      const alts = Array.isArray(slot.alternatives)
+        ? slot.alternatives.map(Number).filter((id) => Number.isFinite(id) && byId.has(id))
+        : [];
+      if (alts.length > 0) {
+        const replacement = alts[0];
+        repairs.push(
+          `day ${dayNum} ${slotKey}: placeId ${placeId} ∉ pool → replaced with alternative ${replacement}`,
+        );
+        slot.placeId = replacement;
+        slot.alternatives = alts.filter((id) => id !== replacement);
+        slot.reason = `${slot.reason ?? ''}（已将池外景点 ${placeId} 替换为候选 ${replacement}）`.trim();
+        slot.validationRequired = true;
+        slotsOut[slotKey] = slot;
+        continue;
+      }
+
+      repairs.push(
+        `day ${dayNum} ${slotKey}: placeId ${placeId} ∉ pool → deferred (no in-pool alternative)`,
+      );
+      slot.deferred = true;
+      delete slot.placeId;
+      slot.reason = `${slot.reason ?? ''}（原选 ${placeId} 不在候选池，已留白待补全）`.trim();
+      slot.confidence = slot.confidence ?? 'low';
+      slot.validationRequired = true;
+      slotsOut[slotKey] = slot;
+    }
+
+    return { ...(dayRow as object), slots: slotsOut };
+  });
+
+  return { days: repairedDays, repairs };
+}
+
 export function validateDraftLlmSlotsAsCandidates(
   parsed: { days?: unknown[] },
   candidatePlaces: CandidatePlace[],
   dto: CreateTripDraftDto,
   dayDates: Array<{ day: number; date: string }>,
+  options?: { repairOutOfPool?: boolean },
 ): DraftSlotValidationResult {
+  const repairOutOfPool = options?.repairOutOfPool !== false;
+  let working = parsed;
+  let repairs: string[] = [];
+  if (repairOutOfPool) {
+    const repaired = repairDraftLlmSlotsToCandidatePool(parsed, candidatePlaces);
+    working = { days: repaired.days };
+    repairs = repaired.repairs;
+    // 写回调用方可变对象，便于后续编排使用修复后的 days
+    if (Array.isArray(parsed.days)) {
+      parsed.days.splice(0, parsed.days.length, ...repaired.days);
+    }
+  }
+
   const errors: string[] = [];
   const candidates: ExperienceCandidate[] = [];
   const byId = new Map(candidatePlaces.map((c) => [c.id, c]));
@@ -51,7 +150,7 @@ export function validateDraftLlmSlotsAsCandidates(
     message: [dto.style, dto.intensity, dto.destination].filter(Boolean).join(' '),
   });
 
-  const days = Array.isArray(parsed.days) ? parsed.days : [];
+  const days = Array.isArray(working.days) ? working.days : [];
   for (const dayRow of days) {
     if (!dayRow || typeof dayRow !== 'object') continue;
     const dayNum = Number((dayRow as { day?: number }).day);
@@ -105,5 +204,6 @@ export function validateDraftLlmSlotsAsCandidates(
     valid: errors.length === 0,
     errors,
     candidates,
+    repairs,
   };
 }

@@ -1,0 +1,93 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "updatedAt": "2026-08-09",
+    "disclaimer": "季节窗为规划示意，非实时交警/气象通告；出行前须核验当地路况与开园信息。",
+    "note": "供 GET /countries/CN/driving-context 与行程 metadata.drivingContext 使用。"
+  },
+  "windows": [
+    {
+      "routeId": "cn.route.g318",
+      "id": "g318_rainy_season",
+      "kind": "risk_window",
+      "severity": "high",
+      "months": [6, 7, 8, 9],
+      "summaryCN": "雨季（约 6–9 月）康定—理塘—芒康段滑坡塌方高发，须预留缓冲日。",
+      "summaryEN": "Monsoon ~Jun–Sep: landslide risk on Kangding–Litang–Mangkang; keep buffer days.",
+      "tags": ["landslide", "monsoon"]
+    },
+    {
+      "routeId": "cn.route.g318",
+      "id": "g318_winter_pass",
+      "kind": "risk_window",
+      "severity": "high",
+      "months": [11, 12, 1, 2, 3],
+      "summaryCN": "冬春季垭口结冰/封路风险升高，核验交警通告并备防滑与保暖。",
+      "summaryEN": "Nov–Mar: pass ice/closure risk rises — verify police notices.",
+      "tags": ["winter", "pass_ice"]
+    },
+    {
+      "routeId": "cn.route.g317",
+      "id": "g317_rainy_season",
+      "kind": "risk_window",
+      "severity": "high",
+      "months": [6, 7, 8, 9],
+      "summaryCN": "北线雨季塌方与绕行风险同级或更高，须预留缓冲。",
+      "summaryEN": "Northern corridor monsoon landslide risk — keep buffers.",
+      "tags": ["landslide", "monsoon"]
+    },
+    {
+      "routeId": "cn.route.g219",
+      "id": "g219_weather_window",
+      "kind": "risk_window",
+      "severity": "high",
+      "months": [10, 11, 12, 1, 2, 3, 4],
+      "summaryCN": "新藏线非盛夏窗口天气更苛刻；非经验车队勿作默认行程。",
+      "summaryEN": "Outside peak summer, G219 weather windows are harsh — not a novice default.",
+      "tags": ["altitude", "sparse_supply"]
+    },
+    {
+      "routeId": "cn.route.duku",
+      "id": "duku_open_season",
+      "kind": "open_window",
+      "severity": "high",
+      "months": [6, 7, 8, 9],
+      "summaryCN": "独库公路通常仅夏季开放；须核验当年开园通告。",
+      "summaryEN": "Duku typically opens in summer only — verify annual opening notice.",
+      "outsideWindowSeverity": "high",
+      "outsideWindowSummaryCN": "开园前/封路后勿排入默认可行日程。",
+      "outsideWindowSummaryEN": "Do not treat as feasible before opening or after seasonal closure.",
+      "tags": ["seasonal_highway"]
+    },
+    {
+      "routeId": "cn.route.qinggan_loop",
+      "id": "qinggan_winter_desert",
+      "kind": "risk_window",
+      "severity": "medium",
+      "months": [11, 12, 1, 2],
+      "summaryCN": "冬春戈壁段低温、大风与部分景区淡季缩短开放，注意油料与保暖。",
+      "summaryEN": "Winter desert legs: cold/wind; some sites shorten hours — fuel and warmth.",
+      "tags": ["desert", "winter"]
+    },
+    {
+      "routeId": "cn.route.dianzang",
+      "id": "dianzang_monsoon",
+      "kind": "risk_window",
+      "severity": "high",
+      "months": [6, 7, 8, 9],
+      "summaryCN": "滇西北雨季滑坡高发；进藏段叠加高原与检查站时间。",
+      "summaryEN": "NW Yunnan monsoon landslides; Tibet approach adds altitude/checkpoints.",
+      "tags": ["landslide", "monsoon"]
+    },
+    {
+      "routeId": "cn.route.g211",
+      "id": "g211_mountain_rain",
+      "kind": "risk_window",
+      "severity": "medium",
+      "months": [6, 7, 8, 9],
+      "summaryCN": "秦岭/巴山段雨季落石与夜间山路风险升高。",
+      "summaryEN": "Qinling/Bashan: monsoon rockfall and night mountain driving risk.",
+      "tags": ["mountain", "monsoon"]
+    }
+  ]
+}

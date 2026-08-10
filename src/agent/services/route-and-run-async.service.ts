@@ -1,4 +1,5 @@
 import { forwardRef, Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import type { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
 import type { RouteAndRunTaskInitResponseDto } from '../dto/route-and-run-task.dto';
 import { AgentService } from './agent.service';
@@ -16,6 +17,7 @@ import {
   isAsyncMutationWriteGuardEnforce,
   validateAsyncAuthority,
 } from '../../decision-runtime/execution/async-resume-authority.util';
+import { AgentChatService } from '../chat/agent-chat.service';
 
 /**
  * Durable Task Pattern：`POST /agent/route_and_run/async` 秒回 task_id，后台跑完整编排链。
@@ -28,6 +30,7 @@ export class RouteAndRunAsyncService {
     @Inject(forwardRef(() => AgentService))
     private readonly agentService: AgentService,
     private readonly taskStore: RouteAndRunAsyncTaskStore,
+    private readonly moduleRef: ModuleRef,
     @Optional() private readonly progressReporter?: RouteAndRunTaskProgressReporter,
     @Optional() private readonly tripRunManager?: TripRunManagerService,
   ) {}
@@ -123,6 +126,18 @@ export class RouteAndRunAsyncService {
     });
   }
 
+  private forWorkerExecution(request: RouteAndRunRequestDto): RouteAndRunRequestDto {
+    return {
+      ...request,
+      options: {
+        ...(request.options ?? {}),
+        // Prevent async worker from re-hitting AUTO/FORCE delegation (infinite task spawn).
+        async_mode: 'OFF',
+        skip_async_delegation: true,
+      },
+    };
+  }
+
   private async executeInBackground(
     taskId: string,
     request: RouteAndRunRequestDto,
@@ -132,17 +147,26 @@ export class RouteAndRunAsyncService {
       authoritySnapshot?: import('../../decision-runtime/execution/durable-authority-snapshot-v1.types').DurableAuthoritySnapshotV1 | null;
     },
   ): Promise<void> {
+    const workerRequest = this.forWorkerExecution(request);
     const run = async (): Promise<void> => {
       try {
-        let response = await this.agentService.routeAndRun(request);
+        let response = await this.agentService.routeAndRun(workerRequest);
         const obs = response.observability as { durable_trip_run_id?: string } | undefined;
         if (obs?.durable_trip_run_id) {
           await this.taskStore.patchDurableTripRunId(taskId, obs.durable_trip_run_id);
         }
 
-        const currentTripVersion = await this.resolveCurrentTripVersion(request);
+        // Nested ACCIDENTAL re-delegation would mark SUCCESS with PROCESSING forever — fail loudly.
+        if (response.async_task?.is_async_delegated === true) {
+          const nestedId = response.async_task?.task_id ?? 'unknown';
+          throw new Error(
+            `Async worker re-delegated instead of executing (nested_task=${nestedId}); skip_async_delegation missing?`,
+          );
+        }
+
+        const currentTripVersion = await this.resolveCurrentTripVersion(workerRequest);
         response = applyAsyncMutationCommitGuard({
-          request,
+          request: workerRequest,
           response,
           authoritySnapshot: opts?.authoritySnapshot,
           currentTripVersion,
@@ -154,6 +178,10 @@ export class RouteAndRunAsyncService {
           await this.progressReporter?.reportOrchestrationStep('FAILED', 'authority_commit_blocked');
           await this.taskStore.markSuccess(taskId, response);
           await this.taskStore.clearResuming(taskId);
+          await this.finalizeChatPlaceholder(taskId, {
+            status: 'SUCCESS',
+            data: response,
+          });
           this.logger.warn(
             `[route_and_run/async] commit blocked by authority task=${taskId} request_id=${request.request_id}`,
           );
@@ -163,6 +191,10 @@ export class RouteAndRunAsyncService {
         await this.progressReporter?.reportOrchestrationStep('DONE');
         await this.taskStore.markSuccess(taskId, response);
         await this.taskStore.clearResuming(taskId);
+        await this.finalizeChatPlaceholder(taskId, {
+          status: 'SUCCESS',
+          data: response,
+        });
         this.logger.log(
           `[route_and_run/async] 完成 task=${taskId} request_id=${request.request_id} status=${response.result?.status} resume=${opts?.isResume === true}`,
         );
@@ -171,6 +203,7 @@ export class RouteAndRunAsyncService {
         await this.progressReporter?.reportOrchestrationStep('FAILED', msg);
         await this.taskStore.markFailed(taskId, msg);
         await this.taskStore.clearResuming(taskId);
+        await this.finalizeChatPlaceholder(taskId, { status: 'FAILED', error: msg });
         this.logger.warn(`[route_and_run/async] 失败 task=${taskId}: ${msg}`);
       }
     };
@@ -199,5 +232,24 @@ export class RouteAndRunAsyncService {
     const dest = (request as { destination?: string }).destination;
     if (typeof dest === 'string' && dest.trim()) return dest.trim();
     return undefined;
+  }
+
+  /** agent-chat FORCE 异步：任务终态后写回「正在规划中…」占位并推 SSE。 */
+  private async finalizeChatPlaceholder(
+    taskId: string,
+    outcome:
+      | { status: 'SUCCESS'; data: RouteAndRunResponseDto }
+      | { status: 'FAILED'; error: string },
+  ): Promise<void> {
+    try {
+      // 避免 AgentModule ↔ AgentChatModule 循环依赖：运行时按需解析
+      const agentChat = this.moduleRef.get(AgentChatService, { strict: false });
+      await agentChat.finalizeAsyncTaskFromWorker(taskId, outcome);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `[route_and_run/async] chat finalize failed task=${taskId}: ${msg}`,
+      );
+    }
   }
 }

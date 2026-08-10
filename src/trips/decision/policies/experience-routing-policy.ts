@@ -8,7 +8,7 @@ import type { ExperienceFlowModel, ExperienceFlowTempo } from '../models/experie
 import type { DraftContractMode } from '../../draft-synthesis/contract/trip-draft-contract.types';
 
 export interface EdgeRoutingInput {
-  /** 物理时间（分钟）或归一化后的时间代价 */
+  /** 物理时间强度（分钟）：计划级消费时应为活跃日均驾驶分钟，避免全程合计顶满惩罚 */
   physicalTimeMin: number;
   /** 0–1 转场摩擦（高 = 差） */
   frictionScore: number;

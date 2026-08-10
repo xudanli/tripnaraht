@@ -1,0 +1,148 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "updatedAt": "2026-08-08",
+    "disclaimer": "静态骨架，非实时路况；封路/施工/天气以当地交警与气象通告为准。",
+    "note": "覆盖经典国道自驾与小众长线；命中后叠加区域 ReadinessPack / 限行与高原提示。"
+  },
+  "routes": [
+    {
+      "id": "cn.route.g318",
+      "aliases": ["318", "G318", "国道318", "川藏线", "川藏南线", "318川藏"],
+      "nameCN": "G318 川藏南线",
+      "nameEN": "G318 Sichuan–Tibet Southern Route",
+      "tier": "classic",
+      "regions": ["sichuan", "xizang"],
+      "typicalDays": [12, 20],
+      "distanceKmHint": 2100,
+      "severity": "high",
+      "summaryCN": "成都→拉萨经典长线：高反、垭口、补给稀疏、检查站与雨季塌方风险并存；须预留适应日与缓冲日。",
+      "summaryEN": "Classic Chengdu→Lhasa long haul: altitude, passes, sparse fuel, checkpoints; plan acclimatization and buffer days.",
+      "mustHintsCN": [
+        "前段川西急升勿一日冲高原；拉萨段再叠加高反适应",
+        "雨季关注滑坡塌方；冬季关注垭口结冰封路",
+        "油料/氧气/离线地图按无人区段备齐"
+      ],
+      "anchorPlaces": ["成都", "康定", "理塘", "芒康", "林芝", "拉萨"],
+      "taxonomySubScopeId": "g318_chuan_zang"
+    },
+    {
+      "id": "cn.route.g211",
+      "aliases": ["211", "G211", "国道211", "211国道", "银榕线", "银西线"],
+      "nameCN": "G211 银榕线",
+      "nameEN": "G211 Yinchuan–Rongjiang Corridor",
+      "tier": "niche",
+      "regions": ["northwest", "southwest"],
+      "typicalDays": [10, 18],
+      "distanceKmHint": 2000,
+      "severity": "medium",
+      "summaryCN": "银川→黔东南小众纵贯线：黄土高原、秦岭秋色、巴山与喀斯特交替；山路弯道与长途疲劳是主要风险。",
+      "summaryEN": "Niche N–S corridor Yinchuan→SE Guizhou: loess, Qinling, karst; watch mountain curves and fatigue.",
+      "mustHintsCN": [
+        "秦岭/巴山段夜间山路谨慎；雨季注意落石",
+        "跨省长途建议双驾轮换，单段按 COUNTRY_PACKS.CN 阈值控程",
+        "黔东南段可串联传统村落，预留村寨停车与错峰"
+      ],
+      "anchorPlaces": ["银川", "庆阳", "西安", "安康", "万州", "思南", "榕江"],
+      "taxonomySubScopeId": "g211_yinrong"
+    },
+    {
+      "id": "cn.route.qinggan_loop",
+      "aliases": ["青甘大环线", "青甘环线", "青甘线", "西北大环线", "青海甘肃环线"],
+      "nameCN": "青甘大环线",
+      "nameEN": "Qinghai–Gansu Grand Loop",
+      "tier": "classic",
+      "regions": ["qinghai", "gansu", "northwest"],
+      "typicalDays": [7, 12],
+      "distanceKmHint": 3000,
+      "severity": "high",
+      "summaryCN": "西宁起终点经典环线（青海湖/茶卡/大柴旦/敦煌/张掖/祁连）：长距戈壁、区间测速、中度高反与莫高窟预约。",
+      "summaryEN": "Classic Xining loop via Qinghai Lake, Chaka, Dunhuang, Zhangye, Qilian: long desert legs, speed cameras, mild altitude, Mogao booking.",
+      "mustHintsCN": [
+        "大柴旦↔敦煌、敦煌↔张掖为超长驾驶日，须早出发并双驾",
+        "莫高窟官网提前预约；茶卡/丹霞错峰",
+        "戈壁段油箱过半即加油；下载离线地图",
+        "海拔 1100–3600m 起伏，备红景天/氧气与防风防晒"
+      ],
+      "anchorPlaces": ["西宁", "青海湖", "茶卡", "大柴旦", "敦煌", "嘉峪关", "张掖", "祁连", "门源"],
+      "taxonomySubScopeId": "qinggan_great_loop"
+    },
+    {
+      "id": "cn.route.g219",
+      "aliases": ["219", "G219", "国道219", "新藏线", "219新藏"],
+      "nameCN": "G219 新藏线",
+      "nameEN": "G219 Xinjiang–Tibet Route",
+      "tier": "niche",
+      "regions": ["xizang", "xinjiang"],
+      "typicalDays": [15, 30],
+      "distanceKmHint": 2800,
+      "severity": "high",
+      "summaryCN": "小众硬核高原线：超高海拔、补给极疏、天气窗口窄；非经验车队勿作默认行程。",
+      "summaryEN": "Hardcore high-altitude corridor: extreme elevation, sparse supplies; not a default for novice teams.",
+      "mustHintsCN": [
+        "强制高反适应与医疗预案；套用 pack.cn.xizang",
+        "核查边境/军事管理区通行与证件要求",
+        "备双备胎、卫星通讯与额外油料"
+      ],
+      "anchorPlaces": ["叶城", "狮泉河", "阿里", "日喀则", "拉萨"],
+      "taxonomySubScopeId": "g219_xin_zang"
+    },
+    {
+      "id": "cn.route.g317",
+      "aliases": ["317", "G317", "国道317", "川藏北线", "317川藏"],
+      "nameCN": "G317 川藏北线",
+      "nameEN": "G317 Sichuan–Tibet Northern Route",
+      "tier": "niche",
+      "regions": ["sichuan", "xizang"],
+      "typicalDays": [12, 22],
+      "distanceKmHint": 2000,
+      "severity": "high",
+      "summaryCN": "相对南线更疏、路况更硬的北线廊道；高反与塌方风险同级，车队经验要求更高。",
+      "summaryEN": "Harder/sparser northern sister of G318; same altitude & landslide risks, higher experience bar.",
+      "mustHintsCN": [
+        "叠加 pack.cn.sichuan + pack.cn.xizang",
+        "雨季塌方绕行预案；垭口天气窗口出发"
+      ],
+      "anchorPlaces": ["成都", "马尔康", "昌都", "那曲", "拉萨"],
+      "taxonomySubScopeId": "g317_chuan_zang_north"
+    },
+    {
+      "id": "cn.route.duku",
+      "aliases": ["独库公路", "独库", "Duku Highway", "G217独库"],
+      "nameCN": "独库公路",
+      "nameEN": "Duku Highway (Xinjiang)",
+      "tier": "seasonal_classic",
+      "regions": ["xinjiang"],
+      "typicalDays": [3, 7],
+      "distanceKmHint": 560,
+      "severity": "high",
+      "summaryCN": "季节性高山公路（通常夏季开放）：临崖弯道、落石、天气突变；开园前勿排入默认日程。",
+      "summaryEN": "Seasonal alpine highway (typically summer): cliffs, rockfall, sudden weather; do not default before opening.",
+      "mustHintsCN": [
+        "出发前核验当年开放通告与实时路况",
+        "避免夜间通行；备防寒与应急食品"
+      ],
+      "anchorPlaces": ["独山子", "库车", "乔尔玛", "巴音布鲁克"],
+      "taxonomySubScopeId": "duku_highway"
+    },
+    {
+      "id": "cn.route.dianzang",
+      "aliases": ["滇藏线", "滇藏公路", "云南进藏", "G214滇藏"],
+      "nameCN": "滇藏线",
+      "nameEN": "Yunnan–Tibet Route",
+      "tier": "niche",
+      "regions": ["yunnan", "xizang", "sichuan"],
+      "typicalDays": [10, 18],
+      "distanceKmHint": 1800,
+      "severity": "high",
+      "summaryCN": "昆明/大理方向进藏：雨季滑坡、渐进升高仍需适应；可与川西节点组合。",
+      "summaryEN": "Yunnan approach into Tibet: monsoon landslides; gradual ascent still needs acclimatization.",
+      "mustHintsCN": [
+        "雨季关注滇西北塌方；进藏段叠加西藏规则",
+        "证件与检查站预留时间"
+      ],
+      "anchorPlaces": ["大理", "丽江", "香格里拉", "德钦", "芒康", "林芝"],
+      "taxonomySubScopeId": "dianzang_route"
+    }
+  ]
+}

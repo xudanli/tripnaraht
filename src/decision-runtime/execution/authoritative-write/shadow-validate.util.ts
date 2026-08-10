@@ -8,6 +8,7 @@ import {
 import { validateAuthoritativeWriteCommand } from './authoritative-write-validate.util';
 import {
   UWC_AUTHORITATIVE_HARD_BLOCK_REASON,
+  isAuthoritativeAllowedForCorridor,
   type CorridorWriteMode,
 } from './corridor-write-mode.config';
 import type {
@@ -104,8 +105,17 @@ export function hardBlockAuthoritativeApply(
   command: AuthoritativeWriteCommand,
 ): never {
   throw new Error(
-    `${UWC_AUTHORITATIVE_HARD_BLOCK_REASON}: corridor=${command.corridor} authoritativeApply forbidden until dual gates (code+switch)`,
+    `${UWC_AUTHORITATIVE_HARD_BLOCK_REASON}: corridor=${command.corridor} authoritativeApply forbidden until dual gates (code+switch) or corridor cutover auth`,
   );
+}
+
+/** Throw unless corridor is allowed for AUTHORITATIVE (global or cutover). */
+export function assertAuthoritativeApplyAllowed(
+  command: AuthoritativeWriteCommand,
+): void {
+  if (!isAuthoritativeAllowedForCorridor(command.corridor)) {
+    hardBlockAuthoritativeApply(command);
+  }
 }
 
 export function blockedAuthoritativeResult(

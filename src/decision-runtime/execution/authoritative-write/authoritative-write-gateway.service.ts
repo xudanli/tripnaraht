@@ -49,7 +49,7 @@ export class AuthoritativeWriteGatewayService {
     }
 
     const mode = resolveCorridorWriteMode(command.corridor);
-    if (mode.authoritativeHardBlocked || mode.requested === 'AUTHORITATIVE') {
+    if (mode.authoritativeHardBlocked) {
       return this.reject(command, AUTHORITATIVE_WRITE_ERROR_CODES.FORBIDDEN_CAPABILITY, [
         UWC_AUTHORITATIVE_HARD_BLOCK_REASON,
         `requested=${mode.requested}`,
@@ -91,7 +91,7 @@ export class AuthoritativeWriteGatewayService {
       };
     }
 
-    // AUTHORITATIVE effective only if unlock — still call handler which hard-throws
+    // AUTHORITATIVE — global unlock or per-corridor cutover (D1+)
     return handler.authoritativeApply(command);
   }
 

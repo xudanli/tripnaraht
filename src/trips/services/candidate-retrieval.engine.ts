@@ -13,7 +13,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
-import { PlaceMetadata } from '../../places/interfaces/place-metadata.interface';
+import { PlaceMetadata, normalizePlaceRawTags } from '../../places/interfaces/place-metadata.interface';
 import type { ExperienceVector } from '../../places/interfaces/experience-vector.interface';
 import { CreateTripDraftDto } from '../dto/trip-draft.dto';
 import { TravelStyle } from '../dto/trip-draft.dto';
@@ -317,7 +317,7 @@ export class CandidateRetrievalEngine {
           metadata: {
             experienceVector: metadata.experienceVector,
             canonicalType: metadata.canonicalType,
-            rawTags: metadata.rawTags,
+            rawTags: normalizePlaceRawTags(metadata.rawTags),
           },
         });
         const lat = p.lat;
@@ -332,7 +332,7 @@ export class CandidateRetrievalEngine {
           lng,
           openingHours: metadata.openingHours,
           avgVisitDuration: (pm.estimated_duration_min as number) || 60,
-          tags: metadata.rawTags || [],
+          tags: normalizePlaceRawTags(metadata.rawTags),
           popularity: (p.rating ?? 0) * 2,
           rating: p.rating ?? undefined,
           canonicalType: metadata.canonicalType,
@@ -569,7 +569,7 @@ export class CandidateRetrievalEngine {
         const pm = (p.physicalMetadata as Record<string, unknown> | null) ?? {};
         const ev = this.experienceVectorService?.getOrCompute({
           category: p.category,
-          metadata: { experienceVector: metadata.experienceVector, canonicalType: metadata.canonicalType, rawTags: metadata.rawTags },
+          metadata: { experienceVector: metadata.experienceVector, canonicalType: metadata.canonicalType, rawTags: normalizePlaceRawTags(metadata.rawTags) },
         });
         result.push({
           id: p.id,
@@ -581,7 +581,7 @@ export class CandidateRetrievalEngine {
           lng: p.lng,
           openingHours: metadata.openingHours,
           avgVisitDuration: (pm.estimated_duration_min as number) || 60,
-          tags: metadata.rawTags || [],
+          tags: normalizePlaceRawTags(metadata.rawTags),
           popularity: (p.rating ?? 0) * 2,
           rating: p.rating ?? undefined,
           canonicalType: metadata.canonicalType,
@@ -682,7 +682,7 @@ export class CandidateRetrievalEngine {
           metadata: {
             experienceVector: metadata?.experienceVector,
             canonicalType: metadata?.canonicalType,
-            rawTags: metadata?.rawTags,
+            rawTags: normalizePlaceRawTags(metadata?.rawTags),
           },
         });
         const bestVisitTime = (physicalMetadata?.bestVisitTime as 'morning' | 'afternoon' | 'evening' | 'any') ?? undefined;
@@ -697,7 +697,7 @@ export class CandidateRetrievalEngine {
           lng: place.lng,
           openingHours: metadata?.openingHours,
           avgVisitDuration: (physicalMetadata?.estimated_duration_min as number) || 60,
-          tags: metadata?.rawTags || [],
+          tags: normalizePlaceRawTags(metadata?.rawTags),
           popularity: popularity,
           rating: place.rating ?? undefined,
           canonicalType: metadata?.canonicalType || undefined,
@@ -845,7 +845,7 @@ export class CandidateRetrievalEngine {
   private computeCulturalScore(metadata: PlaceMetadata | null): number {
     if (!metadata) return 0.5;
 
-    const tags = metadata.rawTags || [];
+    const tags = normalizePlaceRawTags(metadata.rawTags);
     const canonicalType = metadata.canonicalType || '';
     const tagText = tags.join(' ').toLowerCase();
     const typeText = canonicalType.toLowerCase();

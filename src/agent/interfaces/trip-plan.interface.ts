@@ -543,6 +543,8 @@ export interface ItineraryItem {
     slot_source?: 'research_schedule' | 'heuristic' | string;
     /** 同上：时间窗来自 POI 字段、开放时间证据或默认启发式 */
     time_source?: 'poi_evidence' | 'opening_hours_evidence' | 'heuristic' | string;
+    /** 访问时长来源：POI 字段 / 时间窗差 / 类目默认 / 兜底 */
+    duration_source?: 'poi_field' | 'window' | 'category' | 'default' | string;
     /** 分段规划：REST「待安排」占位原因（审计 / 工作台） */
     placeholder_reason?: string;
     /** 工作台二次 `poi.search` 建议检索串（只读提示） */

@@ -9,6 +9,7 @@ export const MOBILE_PUSH_EVENT_TYPES = [
   'team_notification',
   'decision',
   'trip_context_changed',
+  'team_tasks_remind',
 ] as const;
 
 export type MobilePushEventType = (typeof MOBILE_PUSH_EVENT_TYPES)[number];

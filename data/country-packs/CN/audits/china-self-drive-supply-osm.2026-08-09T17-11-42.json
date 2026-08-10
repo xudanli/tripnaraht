@@ -1,0 +1,368 @@
+{
+  "at": "2026-08-09T17:11:42.390Z",
+  "dryRun": false,
+  "source": "osm-overpass",
+  "routeArg": "g317",
+  "routes": [
+    "cn.route.g317"
+  ],
+  "radiusM": 20000,
+  "limitPerAnchor": 15,
+  "queries": [
+    "fuel",
+    "charging",
+    "parking",
+    "highway_services",
+    "supermarket",
+    "convenience",
+    "toilets",
+    "car_repair",
+    "camping",
+    "hospital",
+    "toll",
+    "sanitary_dump"
+  ],
+  "candidateCount": 307,
+  "byCanonicalType": {
+    "TOLL_BOOTH": 18,
+    "FUEL_STATION": 53,
+    "CONVENIENCE_STORE": 16,
+    "SUPERMARKET": 27,
+    "HOSPITAL": 41,
+    "TOILETS": 32,
+    "PARKING": 63,
+    "EV_CHARGING": 17,
+    "CAR_REPAIR": 19,
+    "REST_STOP": 6,
+    "HIGHWAY_SERVICES": 3,
+    "CAMPING": 10,
+    "CAMPING_EQUIPPED": 1,
+    "SANITARY_DUMP": 1
+  },
+  "created": 87,
+  "updated": 220,
+  "skipped": 0,
+  "errors": [],
+  "sample": [
+    {
+      "osmKey": "node/1900833906",
+      "nameCN": "天府",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "way/843996756",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/672395987",
+      "nameCN": "天府",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/4766965903",
+      "nameCN": "锦城湖收费站",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/2515865052",
+      "nameCN": "锦城湖收费站",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/5505597800",
+      "nameCN": "锦城湖",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/3449048771",
+      "nameCN": "锦城湖",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/3449049328",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/4546940563",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/7890757438",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/314613979",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/7858441333",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "way/1464357964",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/9253403896",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "way/1245193099",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "way/1138328526",
+      "nameCN": "中国石油",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/5787211751",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "way/1373232450",
+      "nameCN": "中国石油",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "way/778944127",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "way/958215031",
+      "nameCN": "交投能源",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "way/1351235726",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/2419416503",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "way/1340958727",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "way/974123377",
+      "nameCN": "中国石化",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "way/1362563428",
+      "nameCN": "Shell",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "way/398483917",
+      "nameCN": "中国石油",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "way/1052610118",
+      "nameCN": "中国石化",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "way/778611271",
+      "nameCN": "延长壳牌加油站(锦华路站)",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "way/1242241125",
+      "nameCN": "中和CNG加气站",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "way/964461725",
+      "nameCN": "中国石化",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/9788672800",
+      "nameCN": "小卖部",
+      "canonicalType": "CONVENIENCE_STORE",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/9788672799",
+      "nameCN": "小卖部",
+      "canonicalType": "CONVENIENCE_STORE",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/11813646189",
+      "nameCN": "CONVENIENCE_STORE",
+      "canonicalType": "CONVENIENCE_STORE",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/11813646190",
+      "nameCN": "CONVENIENCE_STORE",
+      "canonicalType": "CONVENIENCE_STORE",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/11813646191",
+      "nameCN": "CONVENIENCE_STORE",
+      "canonicalType": "CONVENIENCE_STORE",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/3200831533",
+      "nameCN": "7-Eleven",
+      "canonicalType": "CONVENIENCE_STORE",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/12504375407",
+      "nameCN": "舞东风",
+      "canonicalType": "CONVENIENCE_STORE",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/13363709923",
+      "nameCN": "红旗连锁",
+      "canonicalType": "CONVENIENCE_STORE",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/12504375405",
+      "nameCN": "红旗连锁",
+      "canonicalType": "CONVENIENCE_STORE",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    },
+    {
+      "osmKey": "node/13512360342",
+      "nameCN": "红旗连锁",
+      "canonicalType": "CONVENIENCE_STORE",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g317"
+    }
+  ]
+}

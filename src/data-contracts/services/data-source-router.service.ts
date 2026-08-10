@@ -79,7 +79,9 @@ export class DataSourceRouterService implements OnModuleInit {
    * 根据经纬度自动选择适配器
    */
   async getRoadStatus(query: RoadStatusQuery): Promise<RoadStatus> {
-    const countryCode = await this.getCountryCode(query.lat, query.lng);
+    const countryCode =
+      (query.countryCode && query.countryCode.trim().toUpperCase()) ||
+      (await this.getCountryCode(query.lat, query.lng));
     const adapter = this.selectRoadStatusAdapter(countryCode);
     return adapter.getRoadStatus(query);
   }
@@ -102,7 +104,9 @@ export class DataSourceRouterService implements OnModuleInit {
    * 批量获取路况状态
    */
   async getRoadStatuses(query: RoadStatusQuery): Promise<RoadStatus[]> {
-    const countryCode = await this.getCountryCode(query.lat, query.lng);
+    const countryCode =
+      (query.countryCode && query.countryCode.trim().toUpperCase()) ||
+      (await this.getCountryCode(query.lat, query.lng));
     const adapter = this.selectRoadStatusAdapter(countryCode);
     return adapter.getRoadStatuses(query);
   }

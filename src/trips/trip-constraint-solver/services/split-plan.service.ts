@@ -28,6 +28,7 @@ import {
   getConstraintsVersion,
 } from '../utils/constraints-metadata.util';
 import { toInputJsonValue } from '../../budget-os/utils/prisma-json.util';
+import { assertDirectEffectivePlanWriteBlocked } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import type { PlanningDaySplitDto } from '../types/planning-conflicts.types';
 import type { FeasibilityIssueDto, TripFeasibilityReportDto } from '../types/trip-constraint-solver.types';
 import type { ConstraintsSummaryResponse } from '../types/constraints-summary.types';
@@ -285,6 +286,9 @@ export class SplitPlanService {
     appliedAt: string,
     userId: string,
   ): Promise<SplitPlanApplyManifest | undefined> {
+    // Agent Harness P1：既有行程 note 结构写须走写链
+    assertDirectEffectivePlanWriteBlocked('split-plan.persistApplyManifest');
+
     const { schedule } = await this.loadScheduleContext(tripId);
     if (!schedule) return undefined;
 

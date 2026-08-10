@@ -25,6 +25,8 @@ export interface IcelandSelfDriveCausalInput {
   shiftMinutes?: number;
   region?: string;
   vehicleClass?: '2WD' | '4WD' | 'AWD' | 'unknown';
+  /** High-body / campervan — stronger crosswind speed penalty (PPT strong-wind case). */
+  highRoof?: boolean;
   drivingExperience?: 'none' | 'some' | 'experienced';
 }
 

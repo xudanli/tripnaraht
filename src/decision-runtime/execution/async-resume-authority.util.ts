@@ -192,5 +192,20 @@ export function detectAsyncMutationIntent(
   if (!tripId) return false;
   const payload = response.result?.payload as Record<string, unknown> | undefined;
   const timeline = payload?.timeline;
-  return Array.isArray(timeline) && timeline.length > 0;
+  if (!Array.isArray(timeline) || timeline.length === 0) return false;
+
+  /**
+   * Chat / ITINERARY_ADJUST 常以 ADVICE_ONLY 草案附带 timeline，并不提交写库。
+   * 此时不应走 async mutation commit 闸门，否则缺 DSO version 会把
+   * 「缺少完整权威快照」拼进用户可见 answer_text。
+   */
+  const adjust = payload?.itinerary_adjust_result as
+    | { execution_mode?: string; applied?: boolean }
+    | undefined;
+  const mode = String(adjust?.execution_mode ?? '').toUpperCase();
+  if (adjust && (mode === 'ADVICE_ONLY' || mode === '') && adjust.applied !== true) {
+    return false;
+  }
+
+  return true;
 }

@@ -30,6 +30,11 @@ import { FitnessAssessmentService } from '../trips/decision/services/fitness-ass
 import { findPlaceByTemplatePoiNames } from './utils/template-poi-place-match.util';
 import { TravelTimeEstimatorService } from '../transport/services/travel-time-estimator.service';
 import { ProjectMembershipService } from '../identity-governance/services/project-membership.service';
+import { EffectivePlanWriteGuardService } from '../decision-runtime/execution/effective-plan-write-guard.service';
+import { runBootstrapPlanSeedWithAuthority } from '../decision-runtime/execution/bootstrap-plan-seed-authority.util';
+import { enrichCnClassicSelfDriveTripMetadata } from '../trips/readiness/utils/cn-classic-self-drive-trip-metadata.util';
+import { mergeSeededTripConstraints } from '../trips/trip-constraint-solver/utils/segment-distance-threshold.util';
+import { timezoneForDestination } from '../common/utils/destination-timezone.util';
 
 function normalizeBooleanQuery(value: unknown): boolean | undefined {
   if (value === undefined || value === null || value === '') return undefined;
@@ -40,31 +45,6 @@ function normalizeBooleanQuery(value: unknown): boolean | undefined {
     if (normalized === 'false') return false;
   }
   return undefined;
-}
-
-function timezoneForDestination(countryCode: string | undefined | null): string {
-  const code = (countryCode || '').toUpperCase().trim();
-  const map: Record<string, string> = {
-    IS: 'Atlantic/Reykjavik',
-    GL: 'America/Godthab',
-    SJ: 'Arctic/Longyearbyen',
-    NO: 'Europe/Oslo',
-    FI: 'Europe/Helsinki',
-    SE: 'Europe/Stockholm',
-    DK: 'Europe/Copenhagen',
-    JP: 'Asia/Tokyo',
-    CN: 'Asia/Shanghai',
-    GB: 'Europe/London',
-    FR: 'Europe/Paris',
-    DE: 'Europe/Berlin',
-    IT: 'Europe/Rome',
-    ES: 'Europe/Madrid',
-    US: 'America/New_York',
-    CA: 'America/Toronto',
-    AU: 'Australia/Sydney',
-    NZ: 'Pacific/Auckland',
-  };
-  return map[code] || 'UTC';
 }
 
 @Injectable()
@@ -79,6 +59,7 @@ export class RouteDirectionsService {
     private readonly fitnessAssessment?: FitnessAssessmentService,
     private travelTimeEstimator: TravelTimeEstimatorService,
     @Optional() private readonly projectMembership?: ProjectMembershipService,
+    @Optional() private readonly effectivePlanWriteGuard?: EffectivePlanWriteGuardService,
   ) {}
 
   /**
@@ -1579,7 +1560,11 @@ export class RouteDirectionsService {
       startDate: dto.startDate,
     });
 
-    return await this.prisma.$transaction(async (tx) => {
+    return await runBootstrapPlanSeedWithAuthority(
+      this.effectivePlanWriteGuard,
+      'route-directions.createTripFromTemplate',
+      async () =>
+        this.prisma.$transaction(async (tx) => {
       // 5.1 创建 Trip
       const trip = await tx.trip.create({
         data: {
@@ -1597,12 +1582,40 @@ export class RouteDirectionsService {
             pacePreference: dto.pacePreference || template.defaultPacePreference || 'BALANCED',
             intensity: dto.intensity || 'balanced',
             transport: dto.transport || 'car',
+            ...((dto.transport || 'car').toLowerCase() === 'car' ||
+            (dto.transport || '').toLowerCase() === 'self_drive'
+              ? { travelMode: 'self_drive' }
+              : {}),
           } as any,
-          metadata: {
-            createdFromTemplate: templateId,
-            templateName: template.nameCN || template.name,
-            timezone: timezoneForDestination(countryCode),
-          } as any,
+          metadata: (() => {
+            const classicRouteId =
+              ((template.metadata as any)?.classicRouteId as string | undefined) ||
+              ((routeDirection.metadata as any)?.classicRouteId as string | undefined) ||
+              undefined;
+            const metadata: Record<string, unknown> = {
+              createdFromTemplate: templateId,
+              templateName: template.nameCN || template.name,
+              templateUuid: template.uuid,
+              classicRouteId,
+              ...(dto.bootstrapSource
+                ? { bootstrapSource: dto.bootstrapSource }
+                : {}),
+              timezone: timezoneForDestination(countryCode),
+            };
+            if (countryCode === 'CN') {
+              enrichCnClassicSelfDriveTripMetadata({
+                destination: countryCode,
+                metadata,
+                classicRouteId,
+                transport: dto.transport || 'car',
+                startDate: dto.startDate,
+                endDate: dto.endDate,
+              });
+            } else {
+              mergeSeededTripConstraints(countryCode, metadata);
+            }
+            return metadata;
+          })() as any,
           updatedAt: new Date(),
         } as any,
       });
@@ -1949,7 +1962,8 @@ export class RouteDirectionsService {
           ? [`${placesMissing} required places could not be matched`]
           : undefined,
       };
-    });
+    }),
+    );
   }
 
   /**

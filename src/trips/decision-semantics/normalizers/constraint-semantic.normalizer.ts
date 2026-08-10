@@ -81,7 +81,8 @@ export function inferEnforcement(
     return 'REQUIRE_CONFIRMATION';
   }
   if (priority === 'suggest_adjust') {
-    return 'REQUIRE_ADJUSTMENT';
+    // Soft schedule tips (缓冲偏紧) → WARN; do not clog 待决策 as REQUIRE_ADJUSTMENT.
+    return 'WARN';
   }
   return 'WARN';
 }

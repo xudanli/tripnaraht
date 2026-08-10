@@ -37,7 +37,16 @@ export function defaultBalancedExperienceFlow(): ExperienceFlowModel {
 }
 
 /**
+ * 计划级体验路由参考成本：约等于「单日 3 小时驾车强度」对应满额惩罚刻度。
+ * 旧值 90 会把任何全程＞90 分钟的多日自驾顶满 maxPenalty。
+ */
+export const EXPERIENCE_ROUTING_REFERENCE_COST_PER_DAY = 180;
+
+/**
  * 从候选计划 segment 链聚合物理时间 / 摩擦 / 信息增益测度。
+ *
+ * `physicalTimeMin` 使用**活跃日均**驾驶分钟（非全程合计），以便多日行程
+ * 与单日强度可比，避免长途自驾系统性顶满 utilityPenalty。
  */
 export function derivePlanEdgeMetrics(
   candidate: CGUSCandidate,
@@ -45,13 +54,18 @@ export function derivePlanEdgeMetrics(
   planFeatures?: PlanFeatures,
 ): EdgeRoutingInput {
   const segments = candidate.plan?.segments ?? [];
-  let physicalTimeMin = 0;
+  let totalPhysicalTimeMin = 0;
   let frictionAccum = 0;
   let edgeCount = 0;
+  const activeDays = new Set<number>();
 
   for (const seg of segments) {
     const dist = Number(seg.distanceKm) || 0;
-    physicalTimeMin += dist > 0 ? (dist / 55) * 60 : 25;
+    totalPhysicalTimeMin += dist > 0 ? (dist / 55) * 60 : 25;
+    const dayIdx = Number(seg.dayIndex);
+    if (Number.isFinite(dayIdx) && dayIdx > 0) {
+      activeDays.add(dayIdx);
+    }
     const slope = Number(seg.slopePct) || 0;
     const ascent = Number(seg.ascentM) || 0;
     const meta = (seg.metadata ?? {}) as Record<string, unknown>;
@@ -97,18 +111,21 @@ export function derivePlanEdgeMetrics(
   const softCount =
     candidate.constraintViolations?.filter((v) => v.severity === 'SOFT').length ?? 0;
 
+  const dayCount = Math.max(1, activeDays.size);
+  const meanPhysicalTimePerDay = totalPhysicalTimeMin / dayCount;
+
   return {
-    physicalTimeMin: Math.max(1, physicalTimeMin),
+    physicalTimeMin: Math.max(1, meanPhysicalTimePerDay),
     frictionScore: CLAMP01(avgFriction + softCount * 0.04),
     informationGain: CLAMP01(flow.surpriseBuffer * 0.55 + flow.heterogeneityIndex * 0.35),
   };
 }
 
-/** 广义成本 → [0, maxPenalty] 效用惩罚（成本越高惩罚越大） */
+/** 广义成本 → [0, maxPenalty] 效用惩罚（成本越高惩罚越大；成本应为日均强度） */
 export function experienceCostToUtilityPenalty(
   generalizedCost: number,
   maxPenalty = 0.42,
-  referenceCost = 90,
+  referenceCost = EXPERIENCE_ROUTING_REFERENCE_COST_PER_DAY,
 ): number {
   if (!Number.isFinite(generalizedCost) || generalizedCost <= 0) {
     return 0;

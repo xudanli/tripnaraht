@@ -485,13 +485,17 @@ export function deriveFactsFromMetadata(params: {
   if (evType === 'opening_hours') {
     const isViolated = Boolean((evidence as any)?.is_violated) === true;
     if (isViolated) {
+      const openWindow = String((evidence as any)?.open_window ?? '').trim();
+      /** 无已知开放窗口时仅 SOFT，避免缺数据冒充 HARD 阻断 */
+      const hoursUnknown =
+        !openWindow || openWindow.toUpperCase() === 'UNKNOWN' || openWindow === '-';
       facts.push({
         rule_id: String((meta as any)?.rule_id ?? rule_id ?? 'temporal_opening_v1'),
         actual_value: String((evidence as any)?.planned_start ?? ''),
-        threshold: String((evidence as any)?.open_window ?? ''),
+        threshold: openWindow || 'UNKNOWN',
         unit: 'ISO_8601',
         is_violated: true,
-        severity: 'HARD',
+        severity: hoursUnknown ? 'SOFT' : 'HARD',
         evidence: evidence as any,
         ...(params.timestampIso ? { at: params.timestampIso } : {}),
       });

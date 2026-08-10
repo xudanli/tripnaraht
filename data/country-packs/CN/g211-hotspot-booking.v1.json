@@ -1,0 +1,55 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "updatedAt": "2026-08-09",
+    "corridor": "cn.route.g211",
+    "disclaimer": "G211 以城镇枢纽与古镇轻游为主；票价示意，以景区通告与飞猪实时为准。",
+    "sources": ["public OTA/travel guides for Zhenyuan"]
+  },
+  "hotspots": [
+    {
+      "id": "cn.poi.zhenyuan",
+      "nameCN": "镇远古镇",
+      "nameEN": "Zhenyuan Ancient Town",
+      "aliases": ["镇远", "镇远古城"],
+      "hubCityCN": "镇远",
+      "category": "scenic",
+      "openSeason": {
+        "peak": {
+          "start": "--04-01",
+          "end": "--10-31",
+          "hoursHint": "古镇全天；夜景档更挤（示意）"
+        },
+        "bestVisitMonthsHint": [4, 5, 9, 10]
+      },
+      "booking": {
+        "realNameRequired": false,
+        "advanceBookingDaysHint": { "min": 0, "recommended": 0, "peakHoliday": 1 },
+        "channelsHintCN": ["古镇多免票漫游；青龙洞等景点另购"],
+        "sameDayValid": true,
+        "mustHintsCN": [
+          "古镇本体常可漫游，青龙洞等联票另计",
+          "银榕线末段宜慢行，勿夜赶山路"
+        ]
+      },
+      "priceBandsCNY": {
+        "notes": "古镇漫游为主；青龙洞等另计约数十至百元级"
+      },
+      "consultBlurbCN": "镇远古镇以漫游为主，重点景点另购票；适合 G211 黔东南段慢行过夜。"
+    }
+  ],
+  "lodgingNotes": [
+    {
+      "hubCityCN": "西安",
+      "role": "mid_buffer",
+      "mustHintsCN": ["进城关注限行与尾号", "作为黄土→秦巴转换缓冲"],
+      "priceBandCNYHint": { "mid": [200, 500], "note": "OTA 示意，非承诺" }
+    },
+    {
+      "hubCityCN": "榕江",
+      "role": "terminus",
+      "mustHintsCN": ["银榕线终点还车/高铁衔接", "末段山路预留白天抵达"],
+      "priceBandCNYHint": { "mid": [120, 320], "note": "OTA 示意，非承诺" }
+    }
+  ]
+}

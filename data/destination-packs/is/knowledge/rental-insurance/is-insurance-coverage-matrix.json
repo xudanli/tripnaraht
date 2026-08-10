@@ -1,0 +1,67 @@
+{
+  "schemaId": "tripnara.iceland.insurance_coverage_matrix@v1",
+  "version": "1.0.0",
+  "status": "ACTIVE",
+  "tiers": {
+    "BASIC": {
+      "COLLISION": "COVERED",
+      "GRAVEL_CHIP": "NOT_COVERED",
+      "SAND_ASH": "NOT_COVERED",
+      "WINDSHIELD": "UNCONFIRMED",
+      "TIRE": "NOT_COVERED",
+      "UNDERCARRIAGE": "NOT_COVERED",
+      "WATER_FORDING": "EXCLUDED",
+      "TOWING": "UNCONFIRMED",
+      "DEDUCTIBLE": "UNCONFIRMED"
+    },
+    "STANDARD": {
+      "COLLISION": "COVERED",
+      "GRAVEL_CHIP": "COVERED",
+      "SAND_ASH": "UNCONFIRMED",
+      "WINDSHIELD": "COVERED",
+      "TIRE": "COVERED",
+      "UNDERCARRIAGE": "UNCONFIRMED",
+      "WATER_FORDING": "EXCLUDED",
+      "TOWING": "COVERED",
+      "DEDUCTIBLE": "COVERED"
+    },
+    "FULL": {
+      "COLLISION": "COVERED",
+      "GRAVEL_CHIP": "COVERED",
+      "SAND_ASH": "COVERED",
+      "WINDSHIELD": "COVERED",
+      "TIRE": "COVERED",
+      "UNDERCARRIAGE": "COVERED",
+      "WATER_FORDING": "EXCLUDED",
+      "TOWING": "COVERED",
+      "DEDUCTIBLE": "COVERED"
+    }
+  },
+  "exposureToDimensions": {
+    "GRAVEL_ROAD": [
+      "GRAVEL_CHIP",
+      "TIRE",
+      "UNDERCARRIAGE"
+    ],
+    "GRAVEL_PARKING": [
+      "GRAVEL_CHIP",
+      "WINDSHIELD"
+    ],
+    "WIND_EXPOSED": [
+      "WINDSHIELD",
+      "SAND_ASH"
+    ],
+    "UNPAVED_SPUR": [
+      "UNDERCARRIAGE",
+      "TIRE"
+    ],
+    "F_ROAD_HIGHLAND": [
+      "UNDERCARRIAGE",
+      "TOWING",
+      "GRAVEL_CHIP"
+    ],
+    "FORD_CROSSING": [
+      "WATER_FORDING"
+    ]
+  }
+}

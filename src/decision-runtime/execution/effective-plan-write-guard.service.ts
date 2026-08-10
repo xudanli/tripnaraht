@@ -3,17 +3,20 @@
  * @see ADR-006-Unified-Decision-Runtime.md
  */
 
-import { AsyncLocalStorage } from 'async_hooks';
 import { Injectable, Logger } from '@nestjs/common';
 import { recordEffectivePlanWriteGuardShadowBypass } from './effective-plan-write-guard-shadow.util';
 import {
   isEffectivePlanWriteGuardEnabled,
-  isEffectivePlanWriteGuardEnforce,
   isEffectivePlanWriteGuardShadow,
 } from './effective-plan-write-guard.config';
 import { isEffectivePlanWriteChainEnabled } from './effective-plan-write-chain.config';
+import {
+  effectivePlanWriteAuthorityAls,
+  type EffectivePlanWriteAuthority,
+  hasEffectivePlanWriteAuthority,
+} from './effective-plan-write-authority.als';
 
-export type EffectivePlanWriteAuthority = 'execute' | 'rollback';
+export type { EffectivePlanWriteAuthority };
 
 export class EffectivePlanWriteBypassError extends Error {
   constructor(message: string) {
@@ -25,7 +28,6 @@ export class EffectivePlanWriteBypassError extends Error {
 @Injectable()
 export class EffectivePlanWriteGuardService {
   private readonly logger = new Logger(EffectivePlanWriteGuardService.name);
-  private readonly authorityStore = new AsyncLocalStorage<EffectivePlanWriteAuthority>();
 
   async runWithAuthority<T>(
     authority: EffectivePlanWriteAuthority,
@@ -34,14 +36,14 @@ export class EffectivePlanWriteGuardService {
     if (!isEffectivePlanWriteGuardEnabled() && !isEffectivePlanWriteChainEnabled()) {
       return fn();
     }
-    return this.authorityStore.run(authority, fn);
+    return effectivePlanWriteAuthorityAls.run(authority, fn);
   }
 
   assertSetEffectiveAllowed(caller?: string): void {
     if (!isEffectivePlanWriteGuardEnabled()) {
       return;
     }
-    const authority = this.authorityStore.getStore();
+    const authority = effectivePlanWriteAuthorityAls.getStore();
     if (!authority) {
       if (isEffectivePlanWriteGuardShadow()) {
         const label = caller ?? 'unknown';
@@ -58,7 +60,7 @@ export class EffectivePlanWriteGuardService {
   }
 
   hasWriteAuthority(): boolean {
-    return this.authorityStore.getStore() != null;
+    return hasEffectivePlanWriteAuthority();
   }
 
   assertAuthorizedPlanMutation(caller: string): void {

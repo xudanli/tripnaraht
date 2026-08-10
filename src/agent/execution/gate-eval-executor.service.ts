@@ -70,7 +70,13 @@ export class GateEvalExecutorService implements IGateEvalExecutor {
         const readinessCheckResult = await this.readinessService.checkFromDestination(
           destination,
           tripContext,
-          { enhanceWithGeo: !!(geoLat && geoLng), geoLat, geoLng, lang: 'zh' },
+          {
+            enhanceWithGeo: !!(geoLat && geoLng),
+            geoLat,
+            geoLng,
+            lang: 'zh',
+            userMessage: typeof tripRequest.message === 'string' ? tripRequest.message : undefined,
+          },
         );
 
         readinessBlockers = readinessCheckResult.findings.flatMap((f: any) => f.blockers || []);

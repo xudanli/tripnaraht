@@ -1,0 +1,946 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "updatedAt": "2026-08-09",
+    "disclaimer": "参考骨架，非强制行程；须按季节、路况与体力裁剪，并核对实时封路/预约。",
+    "note": "与 classic-self-drive-routes.v1.json 的 route.id 对齐"
+  },
+  "skeletons": {
+    "cn.route.qinggan_loop": {
+      "defaultVariantId": "8d",
+      "variants": [
+        {
+          "id": "8d",
+          "days": 8,
+          "labelCN": "经典 8 日环线",
+          "labelEN": "Classic 8-day loop",
+          "stops": [
+            {
+              "day": 1,
+              "from": "西宁",
+              "to": "茶卡镇",
+              "driveKmHint": 320,
+              "overnight": "茶卡镇",
+              "highlights": ["塔尔寺", "青海湖"],
+              "notesCN": "翻日月山；湖区勿恋战，傍晚前抵茶卡"
+            },
+            {
+              "day": 2,
+              "from": "茶卡镇",
+              "to": "大柴旦",
+              "driveKmHint": 400,
+              "overnight": "大柴旦",
+              "highlights": ["茶卡盐湖", "翡翠湖"],
+              "notesCN": "柴达木戈壁长段；油箱过半即加"
+            },
+            {
+              "day": 3,
+              "from": "大柴旦",
+              "to": "敦煌",
+              "driveKmHint": 360,
+              "overnight": "敦煌",
+              "highlights": ["U型公路", "水上雅丹"],
+              "notesCN": "区间测速严；当金山风大"
+            },
+            {
+              "day": 4,
+              "from": "敦煌",
+              "to": "敦煌",
+              "driveKmHint": 80,
+              "overnight": "敦煌",
+              "highlights": ["莫高窟", "鸣沙山月牙泉"],
+              "notesCN": "莫高窟须官网提前预约"
+            },
+            {
+              "day": 5,
+              "from": "敦煌",
+              "to": "张掖",
+              "driveKmHint": 580,
+              "overnight": "张掖（丹霞周边）",
+              "highlights": ["嘉峪关", "七彩丹霞"],
+              "notesCN": "全线最长驾驶日；双驾、早出发"
+            },
+            {
+              "day": 6,
+              "from": "张掖",
+              "to": "祁连",
+              "driveKmHint": 220,
+              "overnight": "祁连县",
+              "highlights": ["扁都口", "祁连草原"],
+              "notesCN": "海拔回升，备防寒"
+            },
+            {
+              "day": 7,
+              "from": "祁连",
+              "to": "西宁",
+              "driveKmHint": 280,
+              "overnight": "西宁",
+              "highlights": ["门源油菜花（季节）"],
+              "notesCN": "闭环还车；7 月油菜花旺季错峰"
+            },
+            {
+              "day": 8,
+              "from": "西宁",
+              "to": "西宁",
+              "driveKmHint": 0,
+              "overnight": "—",
+              "highlights": ["返程缓冲"],
+              "notesCN": "建议留缓冲日消化疲劳或天气延误"
+            }
+          ]
+        },
+        {
+          "id": "10d",
+          "days": 10,
+          "labelCN": "舒缓 10 日",
+          "labelEN": "Relaxed 10-day",
+          "stops": [
+            {
+              "day": 1,
+              "from": "西宁",
+              "to": "青海湖",
+              "driveKmHint": 150,
+              "overnight": "青海湖周边",
+              "highlights": ["塔尔寺", "二郎剑/环湖"],
+              "notesCN": "降低首日强度"
+            },
+            {
+              "day": 2,
+              "from": "青海湖",
+              "to": "茶卡镇",
+              "driveKmHint": 300,
+              "overnight": "茶卡镇",
+              "highlights": ["茶卡盐湖"],
+              "notesCN": ""
+            },
+            {
+              "day": 3,
+              "from": "茶卡镇",
+              "to": "大柴旦",
+              "driveKmHint": 400,
+              "overnight": "大柴旦",
+              "highlights": ["翡翠湖"],
+              "notesCN": ""
+            },
+            {
+              "day": 4,
+              "from": "大柴旦",
+              "to": "敦煌",
+              "driveKmHint": 360,
+              "overnight": "敦煌",
+              "highlights": ["雅丹"],
+              "notesCN": ""
+            },
+            {
+              "day": 5,
+              "from": "敦煌",
+              "to": "敦煌",
+              "driveKmHint": 60,
+              "overnight": "敦煌",
+              "highlights": ["莫高窟"],
+              "notesCN": "专日深度"
+            },
+            {
+              "day": 6,
+              "from": "敦煌",
+              "to": "敦煌",
+              "driveKmHint": 40,
+              "overnight": "敦煌",
+              "highlights": ["鸣沙山"],
+              "notesCN": "沙漠日落"
+            },
+            {
+              "day": 7,
+              "from": "敦煌",
+              "to": "嘉峪关",
+              "driveKmHint": 400,
+              "overnight": "嘉峪关",
+              "highlights": ["嘉峪关关城"],
+              "notesCN": "拆开敦煌→张掖超长日"
+            },
+            {
+              "day": 8,
+              "from": "嘉峪关",
+              "to": "张掖",
+              "driveKmHint": 220,
+              "overnight": "张掖",
+              "highlights": ["七彩丹霞"],
+              "notesCN": ""
+            },
+            {
+              "day": 9,
+              "from": "张掖",
+              "to": "祁连",
+              "driveKmHint": 220,
+              "overnight": "祁连",
+              "highlights": ["祁连草原"],
+              "notesCN": ""
+            },
+            {
+              "day": 10,
+              "from": "祁连",
+              "to": "西宁",
+              "driveKmHint": 280,
+              "overnight": "西宁",
+              "highlights": ["门源"],
+              "notesCN": "还车"
+            }
+          ]
+        }
+      ]
+    },
+    "cn.route.g318": {
+      "defaultVariantId": "14d",
+      "variants": [
+        {
+          "id": "14d",
+          "days": 14,
+          "labelCN": "经典 14 日南线",
+          "labelEN": "Classic 14-day southern route",
+          "stops": [
+            {
+              "day": 1,
+              "from": "成都",
+              "to": "康定",
+              "driveKmHint": 320,
+              "overnight": "康定",
+              "highlights": ["折多山过渡"],
+              "notesCN": "勿成都直冲更高海拔夜宿"
+            },
+            {
+              "day": 2,
+              "from": "康定",
+              "to": "新都桥",
+              "driveKmHint": 80,
+              "overnight": "新都桥",
+              "highlights": ["适应日"],
+              "notesCN": "短距适应"
+            },
+            {
+              "day": 3,
+              "from": "新都桥",
+              "to": "理塘",
+              "driveKmHint": 280,
+              "overnight": "理塘",
+              "highlights": ["高原县城"],
+              "notesCN": "高反观察"
+            },
+            {
+              "day": 4,
+              "from": "理塘",
+              "to": "巴塘",
+              "driveKmHint": 180,
+              "overnight": "巴塘",
+              "highlights": ["降海拔缓冲"],
+              "notesCN": ""
+            },
+            {
+              "day": 5,
+              "from": "巴塘",
+              "to": "芒康",
+              "driveKmHint": 200,
+              "overnight": "芒康",
+              "highlights": ["入藏检查站"],
+              "notesCN": "预留证件与检查站时间"
+            },
+            {
+              "day": 6,
+              "from": "芒康",
+              "to": "左贡",
+              "driveKmHint": 220,
+              "overnight": "左贡",
+              "highlights": ["东达山"],
+              "notesCN": "垭口天气窗口"
+            },
+            {
+              "day": 7,
+              "from": "左贡",
+              "to": "波密",
+              "driveKmHint": 320,
+              "overnight": "波密",
+              "highlights": ["然乌湖"],
+              "notesCN": "雨季塌方关注"
+            },
+            {
+              "day": 8,
+              "from": "波密",
+              "to": "林芝",
+              "driveKmHint": 230,
+              "overnight": "林芝",
+              "highlights": ["通麦/峡谷段"],
+              "notesCN": "路况核验"
+            },
+            {
+              "day": 9,
+              "from": "林芝",
+              "to": "林芝",
+              "driveKmHint": 80,
+              "overnight": "林芝",
+              "highlights": ["巴松措"],
+              "notesCN": "缓冲日；可轻游周边"
+            },
+            {
+              "day": 10,
+              "from": "林芝",
+              "to": "米拉山口方向",
+              "driveKmHint": 200,
+              "overnight": "工布江达/中转",
+              "highlights": ["米拉山口"],
+              "notesCN": ""
+            },
+            {
+              "day": 11,
+              "from": "中转",
+              "to": "拉萨",
+              "driveKmHint": 220,
+              "overnight": "拉萨",
+              "highlights": ["轻活动抵达"],
+              "notesCN": "抵达后轻活动"
+            },
+            {
+              "day": 12,
+              "from": "拉萨",
+              "to": "拉萨",
+              "driveKmHint": 40,
+              "overnight": "拉萨",
+              "highlights": ["布达拉宫"],
+              "notesCN": "门票预约"
+            },
+            {
+              "day": 13,
+              "from": "拉萨",
+              "to": "拉萨",
+              "driveKmHint": 60,
+              "overnight": "拉萨",
+              "highlights": ["大昭寺", "八廓街"],
+              "notesCN": ""
+            },
+            {
+              "day": 14,
+              "from": "拉萨",
+              "to": "拉萨",
+              "driveKmHint": 0,
+              "overnight": "—",
+              "highlights": ["返程缓冲"],
+              "notesCN": "预留天气/身体缓冲"
+            }
+          ]
+        }
+      ]
+    },
+    "cn.route.g211": {
+      "defaultVariantId": "12d",
+      "variants": [
+        {
+          "id": "12d",
+          "days": 12,
+          "labelCN": "银榕 12 日纵贯",
+          "labelEN": "12-day Yinchuan–Rongjiang",
+          "stops": [
+            {
+              "day": 1,
+              "from": "银川",
+              "to": "银川",
+              "driveKmHint": 60,
+              "overnight": "银川",
+              "highlights": ["起步整备"],
+              "notesCN": "检查车辆与ETC"
+            },
+            {
+              "day": 2,
+              "from": "银川",
+              "to": "环县/庆阳方向",
+              "driveKmHint": 280,
+              "overnight": "庆阳一带",
+              "highlights": ["黄土高原"],
+              "notesCN": ""
+            },
+            {
+              "day": 3,
+              "from": "庆阳",
+              "to": "旬邑/淳化方向",
+              "driveKmHint": 260,
+              "overnight": "关中北缘",
+              "highlights": ["黄土→关中过渡"],
+              "notesCN": ""
+            },
+            {
+              "day": 4,
+              "from": "关中",
+              "to": "西安",
+              "driveKmHint": 120,
+              "overnight": "西安",
+              "highlights": ["西安缓冲"],
+              "notesCN": "进城关注限行"
+            },
+            {
+              "day": 5,
+              "from": "西安",
+              "to": "柞水/镇安",
+              "driveKmHint": 180,
+              "overnight": "商洛山区",
+              "highlights": ["秦岭段"],
+              "notesCN": "弯道多，勿夜赶"
+            },
+            {
+              "day": 6,
+              "from": "商洛",
+              "to": "安康",
+              "driveKmHint": 200,
+              "overnight": "安康",
+              "highlights": ["秦巴"],
+              "notesCN": ""
+            },
+            {
+              "day": 7,
+              "from": "安康",
+              "to": "城口/开州方向",
+              "driveKmHint": 280,
+              "overnight": "渝东北",
+              "highlights": ["巴山"],
+              "notesCN": "雨季落石"
+            },
+            {
+              "day": 8,
+              "from": "渝东北",
+              "to": "万州",
+              "driveKmHint": 160,
+              "overnight": "万州",
+              "highlights": ["长江节点"],
+              "notesCN": ""
+            },
+            {
+              "day": 9,
+              "from": "万州",
+              "to": "彭水/沿河",
+              "driveKmHint": 260,
+              "overnight": "乌江沿线",
+              "highlights": ["乌江"],
+              "notesCN": ""
+            },
+            {
+              "day": 10,
+              "from": "沿河",
+              "to": "思南/石阡",
+              "driveKmHint": 180,
+              "overnight": "黔东北",
+              "highlights": ["村寨/喀斯特"],
+              "notesCN": "路旅融合段可慢行"
+            },
+            {
+              "day": 11,
+              "from": "黔东北",
+              "to": "镇远/台江",
+              "driveKmHint": 220,
+              "overnight": "黔东南",
+              "highlights": ["传统村落"],
+              "notesCN": ""
+            },
+            {
+              "day": 12,
+              "from": "台江",
+              "to": "榕江",
+              "driveKmHint": 120,
+              "overnight": "榕江",
+              "highlights": ["终点"],
+              "notesCN": "还车或衔接高铁"
+            }
+          ]
+        }
+      ]
+    },
+    "cn.route.duku": {
+      "defaultVariantId": "5d",
+      "variants": [
+        {
+          "id": "5d",
+          "days": 5,
+          "labelCN": "独库 5 日（夏季窗口）",
+          "labelEN": "Duku 5-day (summer window)",
+          "stops": [
+            {
+              "day": 1,
+              "from": "独山子",
+              "to": "乔尔玛",
+              "driveKmHint": 180,
+              "overnight": "乔尔玛/沿线",
+              "highlights": ["天山北段"],
+              "notesCN": "出发前核验开园通告"
+            },
+            {
+              "day": 2,
+              "from": "乔尔玛",
+              "to": "巴音布鲁克",
+              "driveKmHint": 200,
+              "overnight": "巴音布鲁克",
+              "highlights": ["草原"],
+              "notesCN": "临崖弯道，勿夜行"
+            },
+            {
+              "day": 3,
+              "from": "巴音布鲁克",
+              "to": "巴音布鲁克",
+              "driveKmHint": 80,
+              "overnight": "巴音布鲁克",
+              "highlights": ["九曲十八弯"],
+              "notesCN": "天气窗口；可轻游观景台"
+            },
+            {
+              "day": 4,
+              "from": "巴音布鲁克",
+              "to": "库车方向",
+              "driveKmHint": 220,
+              "overnight": "库车",
+              "highlights": ["天山南段下山"],
+              "notesCN": ""
+            },
+            {
+              "day": 5,
+              "from": "库车",
+              "to": "库车",
+              "driveKmHint": 40,
+              "overnight": "—",
+              "highlights": ["库车王府"],
+              "notesCN": "整备/返程前可短游"
+            }
+          ]
+        }
+      ]
+    },
+    "cn.route.g219": {
+      "defaultVariantId": "18d",
+      "variants": [
+        {
+          "id": "18d",
+          "days": 18,
+          "labelCN": "新藏 18 日（硬核压缩）",
+          "labelEN": "G219 18-day compressed",
+          "stops": [
+            {
+              "day": 1,
+              "from": "叶城",
+              "to": "叶城",
+              "driveKmHint": 40,
+              "overnight": "叶城",
+              "highlights": ["出征整备"],
+              "notesCN": "加满油、双备胎、卫星通讯核验"
+            },
+            {
+              "day": 2,
+              "from": "叶城",
+              "to": "麻扎达坂",
+              "driveKmHint": 280,
+              "overnight": "麻扎达坂",
+              "highlights": ["出入境/通行核验"],
+              "notesCN": "证件与通行许可"
+            },
+            {
+              "day": 3,
+              "from": "麻扎达坂",
+              "to": "界山达坂",
+              "driveKmHint": 200,
+              "overnight": "界山达坂",
+              "highlights": ["强制慢升"],
+              "notesCN": "强制慢升"
+            },
+            {
+              "day": 4,
+              "from": "界山达坂",
+              "to": "甜水海",
+              "driveKmHint": 180,
+              "overnight": "甜水海",
+              "highlights": ["天气窗口"],
+              "notesCN": "天气窗口出发"
+            },
+            {
+              "day": 5,
+              "from": "甜水海",
+              "to": "改则",
+              "driveKmHint": 250,
+              "overnight": "改则",
+              "highlights": ["深度补给"],
+              "notesCN": "有补给必加满"
+            },
+            {
+              "day": 6,
+              "from": "改则",
+              "to": "改则",
+              "driveKmHint": 60,
+              "overnight": "改则",
+              "highlights": ["检修休整"],
+              "notesCN": "身体与车辆检修"
+            },
+            {
+              "day": 7,
+              "from": "改则",
+              "to": "措勤",
+              "driveKmHint": 280,
+              "overnight": "措勤",
+              "highlights": ["高原过渡"],
+              "notesCN": ""
+            },
+            {
+              "day": 8,
+              "from": "措勤",
+              "to": "狮泉河",
+              "driveKmHint": 320,
+              "overnight": "狮泉河",
+              "highlights": ["阿里补给"],
+              "notesCN": "深度补给"
+            },
+            {
+              "day": 9,
+              "from": "狮泉河",
+              "to": "狮泉河",
+              "driveKmHint": 80,
+              "overnight": "狮泉河",
+              "highlights": ["补给休整"],
+              "notesCN": "勿连续硬推"
+            },
+            {
+              "day": 10,
+              "from": "狮泉河",
+              "to": "札达",
+              "driveKmHint": 240,
+              "overnight": "札达",
+              "highlights": ["古格王国遗址"],
+              "notesCN": "支线按体力取舍"
+            },
+            {
+              "day": 11,
+              "from": "札达",
+              "to": "仲巴",
+              "driveKmHint": 300,
+              "overnight": "仲巴",
+              "highlights": ["新藏走廊"],
+              "notesCN": ""
+            },
+            {
+              "day": 12,
+              "from": "仲巴",
+              "to": "萨嘎",
+              "driveKmHint": 220,
+              "overnight": "萨嘎",
+              "highlights": ["接日喀则方向"],
+              "notesCN": ""
+            },
+            {
+              "day": 13,
+              "from": "萨嘎",
+              "to": "日喀则",
+              "driveKmHint": 320,
+              "overnight": "日喀则",
+              "highlights": ["抵日喀则"],
+              "notesCN": ""
+            },
+            {
+              "day": 14,
+              "from": "日喀则",
+              "to": "日喀则",
+              "driveKmHint": 60,
+              "overnight": "日喀则",
+              "highlights": ["扎什伦布寺"],
+              "notesCN": "缓冲休整"
+            },
+            {
+              "day": 15,
+              "from": "日喀则",
+              "to": "拉萨",
+              "driveKmHint": 280,
+              "overnight": "拉萨",
+              "highlights": ["轻活动抵达"],
+              "notesCN": "仍须轻活动"
+            },
+            {
+              "day": 16,
+              "from": "拉萨",
+              "to": "拉萨",
+              "driveKmHint": 40,
+              "overnight": "拉萨",
+              "highlights": ["布达拉宫"],
+              "notesCN": "预约"
+            },
+            {
+              "day": 17,
+              "from": "拉萨",
+              "to": "拉萨",
+              "driveKmHint": 40,
+              "overnight": "拉萨",
+              "highlights": ["大昭寺"],
+              "notesCN": ""
+            },
+            {
+              "day": 18,
+              "from": "拉萨",
+              "to": "拉萨",
+              "driveKmHint": 0,
+              "overnight": "拉萨",
+              "highlights": ["返程缓冲"],
+              "notesCN": "预留天气/身体延误"
+            }
+          ]
+        }
+      ]
+    },
+    "cn.route.g317": {
+      "defaultVariantId": "14d",
+      "variants": [
+        {
+          "id": "14d",
+          "days": 14,
+          "labelCN": "川藏北线 14 日",
+          "labelEN": "G317 14-day northern route",
+          "stops": [
+            {
+              "day": 1,
+              "from": "成都",
+              "to": "马尔康",
+              "driveKmHint": 360,
+              "overnight": "马尔康",
+              "highlights": ["渐进升海拔"],
+              "notesCN": "勿直冲更高海拔"
+            },
+            {
+              "day": 2,
+              "from": "马尔康",
+              "to": "马尔康",
+              "driveKmHint": 60,
+              "overnight": "马尔康",
+              "highlights": ["短距适应"],
+              "notesCN": "短距适应"
+            },
+            {
+              "day": 3,
+              "from": "马尔康",
+              "to": "炉霍",
+              "driveKmHint": 240,
+              "overnight": "炉霍",
+              "highlights": ["道孚"],
+              "notesCN": ""
+            },
+            {
+              "day": 4,
+              "from": "炉霍",
+              "to": "德格",
+              "driveKmHint": 280,
+              "overnight": "德格",
+              "highlights": ["德格印经院"],
+              "notesCN": ""
+            },
+            {
+              "day": 5,
+              "from": "德格",
+              "to": "江达",
+              "driveKmHint": 200,
+              "overnight": "江达",
+              "highlights": ["金沙江过境"],
+              "notesCN": "检查站预留"
+            },
+            {
+              "day": 6,
+              "from": "江达",
+              "to": "昌都",
+              "driveKmHint": 260,
+              "overnight": "昌都",
+              "highlights": ["深度补给"],
+              "notesCN": "深度补给"
+            },
+            {
+              "day": 7,
+              "from": "昌都",
+              "to": "昌都",
+              "driveKmHint": 50,
+              "overnight": "昌都",
+              "highlights": ["检修休整"],
+              "notesCN": "雨季塌方核验"
+            },
+            {
+              "day": 8,
+              "from": "昌都",
+              "to": "丁青",
+              "driveKmHint": 280,
+              "overnight": "丁青",
+              "highlights": ["北线继续西行"],
+              "notesCN": ""
+            },
+            {
+              "day": 9,
+              "from": "丁青",
+              "to": "比如",
+              "driveKmHint": 300,
+              "overnight": "比如",
+              "highlights": ["聂荣"],
+              "notesCN": "高反观察"
+            },
+            {
+              "day": 10,
+              "from": "比如",
+              "to": "那曲",
+              "driveKmHint": 200,
+              "overnight": "那曲",
+              "highlights": ["羌塘过渡"],
+              "notesCN": ""
+            },
+            {
+              "day": 11,
+              "from": "那曲",
+              "to": "当雄",
+              "driveKmHint": 240,
+              "overnight": "当雄",
+              "highlights": ["念青唐古拉方向"],
+              "notesCN": ""
+            },
+            {
+              "day": 12,
+              "from": "当雄",
+              "to": "拉萨",
+              "driveKmHint": 170,
+              "overnight": "拉萨",
+              "highlights": ["轻活动抵达"],
+              "notesCN": ""
+            },
+            {
+              "day": 13,
+              "from": "拉萨",
+              "to": "拉萨",
+              "driveKmHint": 40,
+              "overnight": "拉萨",
+              "highlights": ["布达拉宫", "大昭寺"],
+              "notesCN": ""
+            },
+            {
+              "day": 14,
+              "from": "拉萨",
+              "to": "拉萨",
+              "driveKmHint": 0,
+              "overnight": "拉萨",
+              "highlights": ["返程缓冲"],
+              "notesCN": ""
+            }
+          ]
+        }
+      ]
+    },
+    "cn.route.dianzang": {
+      "defaultVariantId": "12d",
+      "variants": [
+        {
+          "id": "12d",
+          "days": 12,
+          "labelCN": "滇藏 12 日",
+          "labelEN": "Yunnan–Tibet 12-day",
+          "stops": [
+            {
+              "day": 1,
+              "from": "大理",
+              "to": "丽江",
+              "driveKmHint": 180,
+              "overnight": "丽江",
+              "highlights": ["起步"],
+              "notesCN": "亦可昆明高铁接大理"
+            },
+            {
+              "day": 2,
+              "from": "丽江",
+              "to": "香格里拉",
+              "driveKmHint": 180,
+              "overnight": "香格里拉",
+              "highlights": ["渐进升高"],
+              "notesCN": "适应开始"
+            },
+            {
+              "day": 3,
+              "from": "香格里拉",
+              "to": "香格里拉",
+              "driveKmHint": 60,
+              "overnight": "香格里拉",
+              "highlights": ["普达措"],
+              "notesCN": "短距适应；可轻游普达措"
+            },
+            {
+              "day": 4,
+              "from": "香格里拉",
+              "to": "德钦",
+              "driveKmHint": 180,
+              "overnight": "德钦",
+              "highlights": ["飞来寺观景台"],
+              "notesCN": "雨季塌方关注"
+            },
+            {
+              "day": 5,
+              "from": "德钦",
+              "to": "盐井/芒康方向",
+              "driveKmHint": 220,
+              "overnight": "芒康或盐井",
+              "highlights": ["滇藏交接"],
+              "notesCN": "检查站预留"
+            },
+            {
+              "day": 6,
+              "from": "芒康",
+              "to": "左贡",
+              "driveKmHint": 220,
+              "overnight": "左贡",
+              "highlights": ["汇入318廊道"],
+              "notesCN": "此后可套用 G318 后段规则"
+            },
+            {
+              "day": 7,
+              "from": "左贡",
+              "to": "波密",
+              "driveKmHint": 320,
+              "overnight": "波密",
+              "highlights": ["然乌湖"],
+              "notesCN": ""
+            },
+            {
+              "day": 8,
+              "from": "波密",
+              "to": "林芝",
+              "driveKmHint": 230,
+              "overnight": "林芝",
+              "highlights": ["通麦段"],
+              "notesCN": "路况核验"
+            },
+            {
+              "day": 9,
+              "from": "林芝",
+              "to": "林芝",
+              "driveKmHint": 60,
+              "overnight": "林芝",
+              "highlights": ["巴松措"],
+              "notesCN": "缓冲日"
+            },
+            {
+              "day": 10,
+              "from": "林芝",
+              "to": "拉萨",
+              "driveKmHint": 400,
+              "overnight": "拉萨",
+              "highlights": ["米拉山口"],
+              "notesCN": "可拆两日更稳"
+            },
+            {
+              "day": 11,
+              "from": "拉萨",
+              "to": "拉萨",
+              "driveKmHint": 40,
+              "overnight": "拉萨",
+              "highlights": ["布达拉宫", "大昭寺"],
+              "notesCN": "预约"
+            },
+            {
+              "day": 12,
+              "from": "拉萨",
+              "to": "拉萨",
+              "driveKmHint": 0,
+              "overnight": "—",
+              "highlights": ["返程缓冲"],
+              "notesCN": ""
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

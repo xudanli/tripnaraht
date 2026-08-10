@@ -91,10 +91,36 @@ export interface ExecutionPlan {
 }
 
 /**
+ * 编排业务终态（与兼容字段 `success` 解耦）
+ * @see finalizeOrchestrationOutcome
+ */
+export type OrchestrationStatus =
+  | 'DONE'
+  | 'NEED_USER_INPUT'
+  | 'NEED_USER_CONFIRM'
+  | 'BLOCKED'
+  | 'NO_FEASIBLE_PATH'
+  | 'DELEGATED'
+  | 'DEGRADED'
+  | 'FAILED';
+
+/**
  * 编排结果
  */
 export interface OrchestrationResult {
+  /**
+   * 兼容字段：仅 `status===DONE` 时为 true。
+   * 澄清 / 委派 / 阻断时为 false；请优先读 `status`。
+   */
   success: boolean;
+  /** 业务终态；缺省时调用方可按 success 推断（旧路径） */
+  status?: OrchestrationStatus;
+  /** 编排过程是否技术上跑完（无未捕获异常） */
+  technicalSuccess?: boolean;
+  /** 是否已完成用户任务（委派/澄清均为 false） */
+  userTaskCompleted?: boolean;
+  /** status=DELEGATED 时的下游执行器 */
+  delegateTo?: string;
   result: {
     // 业务结果（成功时）
     [key: string]: any;
@@ -154,6 +180,24 @@ export interface AgentContext {
   abortSignal?: AbortSignal;
   /** AgentService 注入：与 `signalsFromRequest` 的 taskType 对齐，供动态编排选择轻量路径 */
   routingTaskType?: TaskType;
+  /** AgentService 注入：与 `signalsFromRequest` 的 actionKind 对齐，供 CRE OperationResolver */
+  routingActionKind?: import('../utils/orchestration-signals.util').RouteRunActionKind;
+  /** RequestRouter（orchestrate 入口）决策快照，供观测 / Assembler */
+  requestRouterDecision?: import('../routing/request-router.types').OrchestrateEntryDecision;
+  /** Context Requirement Engine P0：操作合同 + 缺口计划（RequestRouter 之后） */
+  contextRequirementPlan?: import('../context-requirement/context-requirement.types').ContextRequirementPlan;
+  /**
+   * Unified Intent Shadow（P0）：新旧意图/路由对比，不改变现网分发。
+   * schema: tripnara.unified_intent_shadow@v1
+   */
+  unifiedIntentShadow?: import('../intent/unified-intent.types').UnifiedIntentShadowCompare;
+  /**
+   * Decision State Contract Shadow（Phase1）：Decision Class × MDS × Readiness，只观测。
+   * schema: tripnara.decision_state_contract_shadow@v1
+   */
+  decisionStateShadow?: import('../decision-state/decision-state.types').DecisionStateShadowV1;
+  /** Reality Observation Runtime P0：冻结后的现实快照（Gate 只读 decisionSnapshot） */
+  realityObservationSnapshot?: import('../reality-observation/reality-observation.types').RorRealitySnapshot;
   /** Phase B+：外层 Recovery 重试进入 SM 时携带，供每条 orchestrator decision_log 打章 */
   recoveryInvocation?: RecoveryInvocationContext;
 }

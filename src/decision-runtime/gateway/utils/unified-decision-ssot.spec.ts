@@ -28,6 +28,27 @@ describe('decision-queue-admission.util', () => {
     ).toBe(false);
   });
 
+  it('excludes DECIDED from decision queue', () => {
+    expect(
+      qualifiesForDecisionQueue({
+        enforcement: 'REQUIRE_ADJUSTMENT',
+        workflowStatus: 'DECIDED',
+        title: '选择哪种冰川体验？',
+      }),
+    ).toBe(false);
+  });
+
+  it('excludes WARN soft tips from decision queue', () => {
+    expect(
+      qualifiesForDecisionQueue({
+        enforcement: 'WARN',
+        workflowStatus: 'ASSESSING',
+        title: '同日交通偏紧',
+        hasExecutableOptions: true,
+      }),
+    ).toBe(false);
+  });
+
   it('includes BLOCK transport problems in planning conflicts', () => {
     expect(
       qualifiesForPlanningConflicts({

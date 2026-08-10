@@ -125,6 +125,15 @@ export class McpCapabilityManagerService implements OnModuleInit {
       authRequired: false,
       defaultEnabled: true,
     }],
+    ['activity', {
+      serviceName: 'activity',
+      displayName: 'Activity Booking',
+      description: '活动/门票预订检索（Browserbase 探运营商页 + 静态目录回落）',
+      tools: ['activity.search'],
+      category: 'activity',
+      authRequired: false,
+      defaultEnabled: true,
+    }],
     ['restaurant', {
       serviceName: 'restaurant',
       displayName: 'Restaurant',

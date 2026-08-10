@@ -1,0 +1,66 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "updatedAt": "2026-08-09",
+    "corridor": "cn.route.g318",
+    "disclaimer": "海拔与垭口为公开资料近似值，用于高原门禁提示与日里程编排；非测绘级、非实时通告。",
+    "source": "public travel/geo summaries + classic-route seed alignment"
+  },
+  "overnightHubs": [
+    { "nameCN": "成都", "altitudeMeters": 500, "role": "gateway" },
+    { "nameCN": "康定", "altitudeMeters": 2560, "role": "acclimatize" },
+    { "nameCN": "新都桥", "altitudeMeters": 3300, "role": "overnight" },
+    { "nameCN": "理塘", "altitudeMeters": 4014, "role": "high_plateau" },
+    { "nameCN": "芒康", "altitudeMeters": 3870, "role": "overnight" },
+    { "nameCN": "波密", "altitudeMeters": 2750, "role": "overnight" },
+    { "nameCN": "林芝", "altitudeMeters": 3000, "role": "overnight" },
+    { "nameCN": "拉萨", "altitudeMeters": 3650, "role": "terminus" }
+  ],
+  "passes": [
+    {
+      "nameCN": "折多山垭口",
+      "nameEN": "Zheduo Pass",
+      "altitudeMeters": 4298,
+      "nearHubCN": "康定",
+      "segmentHint": "康定→新都桥",
+      "notesCN": "川藏南线首个显著高垭口；急升后不宜当日再冲更高过夜"
+    },
+    {
+      "nameCN": "卡子拉山垭口",
+      "nameEN": "Kazila Pass",
+      "altitudeMeters": 4718,
+      "nearHubCN": "理塘",
+      "segmentHint": "新都桥→理塘一带",
+      "notesCN": "理塘前高点；注意高反与天气突变"
+    },
+    {
+      "nameCN": "海子山垭口",
+      "nameEN": "Haizi Shan Pass",
+      "altitudeMeters": 4500,
+      "nearHubCN": "理塘",
+      "segmentHint": "理塘周边",
+      "notesCN": "高原段；补给与氧气提醒"
+    },
+    {
+      "nameCN": "东达山垭口",
+      "nameEN": "Dongda Pass",
+      "altitudeMeters": 5008,
+      "nearHubCN": "芒康",
+      "segmentHint": "芒康方向",
+      "notesCN": "常见报道高峰垭口之一；以交警/路况通告为准"
+    },
+    {
+      "nameCN": "业拉山垭口",
+      "nameEN": "Yela Pass",
+      "altitudeMeters": 4658,
+      "nearHubCN": "波密",
+      "segmentHint": "藏东段",
+      "notesCN": "雨季塌方风险窗口需叠加 ROAD 规则"
+    }
+  ],
+  "acclimatizationHintsCN": [
+    "勿成都当日直冲 3500m+ 过夜；优先康定适应",
+    "连续两日净升超过约 1000m 时下调高强度行程",
+    "垭口停留宜短，过夜回落到相对更低的县城"
+  ]
+}

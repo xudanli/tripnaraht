@@ -1,0 +1,21 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "sampledAt": "2026-08-09T16:00:52.875Z",
+    "source": "restapi.amap.com/v3/place/text",
+    "corridor": "cn.route.g219",
+    "disclaimer": "高德 POI 文本搜首条；垭口/无人区可能偏差大，须人工确认。",
+    "blockedReason": "USER_DAILY_QUERY_OVER_LIMIT — 待配额恢复后重跑 scripts/verify-g219-amap-coords.ts --apply"
+  },
+  "summary": {
+    "targets": 14,
+    "ok": 0,
+    "miss": 14,
+    "maxDeltaKm": 0,
+    "appliedCount": 0,
+    "thresholdKm": 3,
+    "apply": true,
+    "note": "全部 amap_quota；未回写 seed 坐标"
+  },
+  "rows": []
+}

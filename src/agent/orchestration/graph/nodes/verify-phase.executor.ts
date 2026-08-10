@@ -15,9 +15,11 @@ import {
   formatVerifyOutputsAdjustZh,
   resolveItineraryAdjustRunContext,
 } from '../../../utils/itinerary-adjust-decision-log.util';
+import { attachFutureSimulationCognition } from '../../../../decision/kernel/decision-cognition.util';
 
 /**
  * VERIFY 执行体：确定性校验 + 证据链对齐；FATAL / L2 路由由 Host 根据 Verdict 处理。
+ * 出口附着 FUTURE_SIMULATION 认知切片。
  */
 export async function runVerifyPhase(
   host: VerifyPhaseHost,
@@ -52,7 +54,17 @@ export async function runVerifyPhase(
         | undefined,
     };
     const { newState, issues } = await host.decisionKernel.executeVerify(effectiveDecisionState, ctx);
-    host.syncOrchestratorFromDecisionState(newState, state);
+    const withFuture = attachFutureSimulationCognition(newState, {
+      decisionDepth:
+        context.requestRouterDecision?.decisionDepth ??
+        ((state.metadata as Record<string, unknown> | undefined)?.decision_depth as
+          | import('../../../../decision/kernel/decision-cognition.types').DecisionDepth
+          | undefined) ??
+        newState.cognition?.decisionDepth,
+    });
+    host.syncOrchestratorFromDecisionState(withFuture, state);
+    meta.cognition_markers = withFuture.cognition?.markers ?? [];
+    state.metadata = meta as typeof state.metadata;
 
     const adjustCtx = resolveItineraryAdjustRunContext(state);
     const targetDay =
@@ -72,12 +84,16 @@ export async function runVerifyPhase(
     const fatalIssues = issuesForLog.filter((i) => i?.class === 'FATAL');
     const conflictIssues = issuesForLog.filter((i) => i?.class === 'CONFLICT');
     const advisoryIssues = issuesForLog.filter((i) => i?.class === 'ADVISORY');
-
-    if (issues.length > 0) {
+    /** 仅 FATAL/CONFLICT 进入 REPAIR；纯 ADVISORY 不得写 errors（否则 VERIFY↔REPAIR 死循环） */
+    const blockingIssueCount = fatalIssues.length + conflictIssues.length;
+    state.errors = (state.errors ?? []).filter(
+      (e) => !(e.step === 'VERIFY' && e.error_code === 'VERIFICATION_ISSUES'),
+    );
+    if (blockingIssueCount > 0) {
       state.errors.push({
         step: 'VERIFY',
         error_code: 'VERIFICATION_ISSUES',
-        message: `发现 ${issues.length} 个验证问题`,
+        message: `发现 ${blockingIssueCount} 个需修复的验证问题`,
         timestamp: new Date().toISOString(),
       });
     }
@@ -114,6 +130,7 @@ export async function runVerifyPhase(
       metadata: {
         duration_ms: Date.now() - stepStartTime,
         issues,
+        cognition_marker: 'FUTURE_SIMULATED',
         ...(adjustCtx.active
           ? {
               issues_scoped_to_target_day: issuesForLog,
@@ -133,7 +150,7 @@ export async function runVerifyPhase(
 
     state.metadata.last_updated_at = new Date().toISOString();
     await host.generateDecisionStepForStep(state, 'VERIFY', 'CoreDecision');
-    return newState;
+    return withFuture;
   }
   return host.executePhaseViaKernel(decisionState, state, 'VERIFY', () =>
     host.executeVerifyStep(request, context, state, llmProvider),

@@ -93,6 +93,7 @@ import { TeamInvitePublicController } from './controllers/team-invite-public.con
 
 // 用户端控制器
 import { OptimizationUserController } from './controllers/user/optimization-user.controller';
+import { CgusTripReviewController } from './controllers/cgus-trip-review.controller';
 import { TeamUserController } from './controllers/user/team-user.controller';
 import { GuardianTripController } from './controllers/user/guardian-trip.controller';
 import { RealtimeUserController } from './controllers/user/realtime-user.controller';
@@ -132,6 +133,7 @@ import { CANDIDATE_SCORER } from './scoring/candidate-scorer.tokens';
     
     // 用户端（/api/v2/user/...）
     OptimizationUserController,
+    CgusTripReviewController,
     TeamUserController,
     RealtimeUserController,
     GuardianTripController,

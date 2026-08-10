@@ -12,6 +12,22 @@ describe('inferDestinationTaxonomy', () => {
     });
   });
 
+  it('matches G318 / 川藏南线', () => {
+    const match = inferDestinationTaxonomy('暑假跑一趟 G318 川藏南线');
+    expect(match?.destinationSubScopeId).toBe('g318_chuan_zang');
+    expect(match?.destination).toContain('318');
+  });
+
+  it('matches G211 银榕线', () => {
+    const match = inferDestinationTaxonomy('想走 211 国道银榕线看秦岭秋色');
+    expect(match?.destinationSubScopeId).toBe('g211_yinrong');
+  });
+
+  it('matches 独库公路 before generic 新疆', () => {
+    const match = inferDestinationTaxonomy('夏天开独库公路');
+    expect(match?.destinationSubScopeId).toBe('duku_highway');
+  });
+
   it('matches 新疆 helicopter skiing', () => {
     const match = inferDestinationTaxonomy('打算去新疆搞一次高强度的直升机滑雪');
     expect(match?.destinationRegionId).toBe('domestic_northwest');

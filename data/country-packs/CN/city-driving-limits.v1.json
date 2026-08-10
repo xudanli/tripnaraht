@@ -1,0 +1,128 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "country_code": "CN",
+    "schema": "tripnara.city_driving_limits/v1",
+    "last_updated": "2026-08-08",
+    "description": "中国主要城市外地车/尾号限行提示骨架（非实时交规；出行前须核验官方通告）",
+    "disclaimer": "限行政策高频变更；本表仅作规划提示，以当地交管部门当日通告为准。"
+  },
+  "defaults": {
+    "checkOfficialBeforeDrive": true,
+    "etcRecommended": true
+  },
+  "cities": [
+    {
+      "cityCN": "北京",
+      "cityEN": "Beijing",
+      "regionCode": "CN-BJ",
+      "limitType": "TAIL_NUMBER_AND_AREA",
+      "severity": "high",
+      "summaryCN": "工作日高峰尾号限行；五环内等区域对外地车另有限制，进城前核验。",
+      "summaryEN": "Weekday tail-number limits; additional restrictions for non-local plates — verify before entry.",
+      "appliesTo": ["non_local_plate", "local_plate"],
+      "peakHint": "weekday_peak",
+      "officialHintUrl": "https://www.bjjtgl.gov.cn/"
+    },
+    {
+      "cityCN": "上海",
+      "cityEN": "Shanghai",
+      "regionCode": "CN-SH",
+      "limitType": "OUTER_PLATE_PEAK",
+      "severity": "high",
+      "summaryCN": "外牌高峰时段禁行快速路/高架部分路段；需关注临牌与预约通行政策。",
+      "summaryEN": "Non-local plates restricted on expressways in peak hours; check permit rules.",
+      "appliesTo": ["non_local_plate"],
+      "peakHint": "weekday_peak",
+      "officialHintUrl": "https://jtw.sh.gov.cn/"
+    },
+    {
+      "cityCN": "广州",
+      "cityEN": "Guangzhou",
+      "regionCode": "CN-GD",
+      "limitType": "OUTER_PLATE_PEAK",
+      "severity": "medium",
+      "summaryCN": "外地车高峰限行区域常见；自驾进市区前查当日通告。",
+      "summaryEN": "Non-local peak-hour limits common — check daily notices.",
+      "appliesTo": ["non_local_plate"],
+      "peakHint": "weekday_peak"
+    },
+    {
+      "cityCN": "深圳",
+      "cityEN": "Shenzhen",
+      "regionCode": "CN-GD",
+      "limitType": "OUTER_PLATE_PEAK",
+      "severity": "medium",
+      "summaryCN": "外地车高峰限行；关注临牌与电子通行证要求。",
+      "summaryEN": "Non-local peak limits; e-permit may be required.",
+      "appliesTo": ["non_local_plate"],
+      "peakHint": "weekday_peak"
+    },
+    {
+      "cityCN": "杭州",
+      "cityEN": "Hangzhou",
+      "regionCode": "CN-ZJ",
+      "limitType": "OUTER_PLATE_PEAK",
+      "severity": "medium",
+      "summaryCN": "外地车工作日高峰限行；景区周边另有拥堵与停车压力。",
+      "summaryEN": "Non-local weekday peak limits; expect parking pressure near attractions.",
+      "appliesTo": ["non_local_plate"],
+      "peakHint": "weekday_peak"
+    },
+    {
+      "cityCN": "成都",
+      "cityEN": "Chengdu",
+      "regionCode": "CN-SC",
+      "limitType": "TAIL_NUMBER",
+      "severity": "medium",
+      "summaryCN": "工作日尾号限行政策常见；进二环/三环前核验当期规则。",
+      "summaryEN": "Weekday tail-number limits often apply — verify current ring-road rules.",
+      "appliesTo": ["local_plate", "non_local_plate"],
+      "peakHint": "weekday"
+    },
+    {
+      "cityCN": "天津",
+      "cityEN": "Tianjin",
+      "regionCode": "CN-TJ",
+      "limitType": "OUTER_PLATE_AND_TAIL",
+      "severity": "medium",
+      "summaryCN": "外地车及尾号限行并存；进市前查交管通告。",
+      "summaryEN": "Non-local and tail-number rules may both apply.",
+      "appliesTo": ["non_local_plate", "local_plate"],
+      "peakHint": "weekday_peak"
+    },
+    {
+      "cityCN": "西安",
+      "cityEN": "Xi'an",
+      "regionCode": "CN-SN",
+      "limitType": "TAIL_NUMBER",
+      "severity": "medium",
+      "summaryCN": "市区尾号限行；古城墙内停车与通行另有约束。",
+      "summaryEN": "Urban tail-number limits; extra constraints inside city wall area.",
+      "appliesTo": ["local_plate", "non_local_plate"],
+      "peakHint": "weekday"
+    },
+    {
+      "cityCN": "重庆",
+      "cityEN": "Chongqing",
+      "regionCode": "CN-CQ",
+      "limitType": "AREA_AND_BRIDGE",
+      "severity": "low",
+      "summaryCN": "重点核验桥梁/隧道与核心区通行；山地城市绕行成本高。",
+      "summaryEN": "Check bridge/tunnel and core-area rules; detours costly in mountain city.",
+      "appliesTo": ["non_local_plate", "local_plate"],
+      "peakHint": "all_day"
+    },
+    {
+      "cityCN": "武汉",
+      "cityEN": "Wuhan",
+      "regionCode": "CN-HB",
+      "limitType": "OUTER_PLATE_PEAK",
+      "severity": "medium",
+      "summaryCN": "外地车高峰限行常见；过江通道拥堵需留缓冲。",
+      "summaryEN": "Non-local peak limits common; buffer time for river crossings.",
+      "appliesTo": ["non_local_plate"],
+      "peakHint": "weekday_peak"
+    }
+  ]
+}

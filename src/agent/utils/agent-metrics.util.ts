@@ -19,7 +19,10 @@ export type EntryPoint =
   | 'trip_detail_page'
   | 'trip_list_page'
   | 'dashboard'
-  | 'planning_workbench';
+  | 'planning_workbench'
+  | 'agent_chat'
+  | 'itinerary_day_editor'
+  | 'arrange_itinerary';
 
 /**
  * 重定向原因类型

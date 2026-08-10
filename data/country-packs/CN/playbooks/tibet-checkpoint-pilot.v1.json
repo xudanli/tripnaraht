@@ -1,0 +1,56 @@
+{
+  "metadata": {
+    "id": "cn.playbook.tibet_checkpoint_pilot",
+    "version": "1.0.0",
+    "updatedAt": "2026-08-09",
+    "status": "ACTIVE",
+    "scope": ["cn.route.g318", "cn.route.g317", "cn.route.g219", "cn.route.dianzang"],
+    "disclaimer": "产品运营与编排提示，非法律意见、非行政许可。通行证件与边防/检查站要求以当地主管部门当日规定为准；TripNARA 不代办审批、不保证可通行。"
+  },
+  "summaryCN": "涉藏经典线试点：把「证件与检查站核验」做成出发前硬门禁提示，禁止在未提示的情况下默认排入可通行行程。",
+  "summaryEN": "Tibet-corridor pilot: treat documents/checkpoints as a pre-departure hard advisory; never silently assume free passage.",
+  "hardGates": [
+    {
+      "id": "docs_self_verify",
+      "severity": "HARD",
+      "titleCN": "证件与通行资格自核",
+      "hintCN": "境内居民身份证、驾驶证、行驶证/租车合同；涉外旅客护照签证及进藏相关要求须自行向官方渠道确认。"
+    },
+    {
+      "id": "no_proxy_permit",
+      "severity": "HARD",
+      "titleCN": "禁止代办暗示",
+      "hintCN": "对话与卡片不得暗示平台可代办进藏许可、边防证或绕过检查站；仅提示用户自行核验。"
+    },
+    {
+      "id": "buffer_for_checkpoint",
+      "severity": "SOFT",
+      "titleCN": "检查站时间缓冲",
+      "hintCN": "入藏/跨地区检查站预留排队与核验时间，勿把理论驾驶时长排满。"
+    }
+  ],
+  "checklistCN": [
+    "出发前核验身份证件在有效期内，姓名与租车/购票一致",
+    "自驾：驾驶证、行驶证或租车合同、交强险凭证备齐纸质/电子件",
+    "涉外或特殊区域：自行确认是否需要额外通行许可；不确定则勿排入默认日程",
+    "车辆外观与车牌清晰；夜间到达检查站预留更多时间",
+    "配合检查，禁止冲卡；遇临时管控以现场通告为准并启用缓冲日",
+    "高反不适时降强度，优先休整而非赶检查站时段"
+  ],
+  "productRules": [
+    "wantsXizang=true 时 drivingContext.checkpointLikely 必须为 true",
+    "合规卡 checkpoint_documents 必须可点开文案（contentUrl 非空）",
+    "咨询回复涉及检查站时附带 playbook disclaimer，禁止编造具体证照名称以外的「保证可过」话术",
+    "G219/边境邻近段：额外提示军事/边境管理区，非经验车队勿作默认推荐"
+  ],
+  "advisoriesCN": [
+    "涉藏检查站：自行核验证件与通行资格，产品不代办审批。",
+    "入藏/跨区段预留检查站缓冲，勿排满理论驾驶时长。"
+  ],
+  "advisoriesEN": [
+    "Tibet checkpoints: verify your own documents/permits; we do not process approvals.",
+    "Leave buffer time for checkpoint queues; do not pack the day to theoretical drive time."
+  ],
+  "relatedComplianceIds": ["checkpoint_documents", "high_altitude_pace", "timed_entry_booking"],
+  "contentPath": "data/country-packs/CN/playbooks/tibet-checkpoint-pilot.v1.md"
+}

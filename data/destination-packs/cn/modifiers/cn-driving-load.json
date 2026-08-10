@@ -1,0 +1,33 @@
+{
+  "schemaId": "tripnara.tep.driving_load@v1",
+  "modifierId": "CN_DRIVING_LOAD",
+  "domain": "tep_driving_load",
+  "semanticKeys": ["EXCESSIVE_DAILY_LOAD"],
+  "roadFactors": {
+    "paved": 1.0,
+    "narrowMountain": 1.25,
+    "gravel": 1.15,
+    "highAltitudePass": 1.35
+  },
+  "weatherFactors": {
+    "moderate": 1.15,
+    "highImpact": 1.35,
+    "rainySeasonLandslide": 1.4
+  },
+  "vehicleFactors": {
+    "suvRecommended": 1.0,
+    "sedanPenalty": 1.1
+  },
+  "penalties": {
+    "noviceAbroadMinutes": 40,
+    "nightDrivingMultiplier": 1.25,
+    "plannedStopMinutesMin": 15,
+    "plannedStopMinutesMax": 30
+  },
+  "tierThresholdsMinutes": {
+    "LOW": { "min": 0, "max": 180 },
+    "MEDIUM": { "min": 181, "max": 300 },
+    "HIGH": { "min": 301, "max": 420 },
+    "EXTREME": { "min": 421 }
+  }
+}

@@ -14,3 +14,5 @@ disable-model-invocation: true
 2. **小队提示词（可选）**：`.cursor/org/decision-platform-roles/prompts-engineering-squads.md` 中 **「CGUS 与概率效用工程师」** 整段；组织侧 Consult 见 `.cursor/org/decision-platform-roles/prompts-manifest-roles-short.md` 的 **`chief_optimization_scientist`**。
 
 **当前职责域**：CGUS 五步、`cgus-search`、`ExpectedUtility` / `deterministicWorld`、`ObjectiveFunction`、相关 `*.spec.ts` 与 `scripts/replay-cgus-suite.ts` / `test-optimize-cgus`。
+
+**V1 运营验证**：先读 `CGUS_V1_OPERATIONAL_POLICY.md` 与 `CGUS_V1_OPERATIONAL_VALIDATION_01.md`。只做 Outcome Loop 回写；不为对齐图 13 补公式或接入 WeightLearner。

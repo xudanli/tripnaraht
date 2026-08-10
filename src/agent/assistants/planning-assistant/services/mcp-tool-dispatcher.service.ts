@@ -19,8 +19,36 @@ import { ExaService } from '../../../../mcp/exa.service';
 import { GoogleCalendarService } from '../../../../mcp/google-calendar.service';
 import { GoogleMapsDirectService } from '../../../../mcp/google-maps-direct.service';
 import { HotelDirectService } from '../../../../mcp/hotel-direct.service';
+import { AmapHotelService } from '../../../../mcp/amap-hotel.service';
+import { FliggyDirectService } from '../../../../mcp/fliggy-direct.service';
+import {
+  hasChinaFliggyHubHint,
+  isChinaOtaMarketLoose,
+  resolveFliggyDestName,
+  resolveFliggyHotelKeywords,
+  resolveFliggyLodgingSearch,
+  stripClientContextAppendix,
+} from '../../../../mcp/fliggy-dest.util';
+import { XiaohongshuDirectService } from '../../../../mcp/xiaohongshu-direct.service';
+import { mapXhsFeedsToExperienceBundle } from '../../../../mcp/xiaohongshu-evidence.mapper';
+import { formatXhsExperienceNarratorBlock } from '../../../../mcp/format-xhs-experience-narrator.util';
 import { BookingComService } from '../../../../mcp/booking-com.service';
+import { CarRentalDirectService } from '../../../../mcp/car-rental-direct.service';
+import { ActivityDirectService } from '../../../../mcp/activity-direct.service';
+import { RestaurantDirectService } from '../../../../mcp/restaurant-direct.service';
 import { AdvancedGeocodingService, LocationContext } from './advanced-geocoding.service';
+import {
+  isChinaHotelSearchScope,
+  lodgingTownAliasForAirbnb,
+  resolveAirbnbSearchLocation,
+} from '../utils/hotel-search-location.util';
+import {
+  listingHasStayPriceHint,
+  preferStayPricedAirbnbListings,
+  stampPoiCatalogInventory,
+  tagAirbnbInventoryFields,
+  type HotelInventoryMeta,
+} from '../../../utils/hotel-inventory-verify.util';
 
 @Injectable()
 export class McpToolDispatcherService implements OnModuleInit {
@@ -214,12 +242,18 @@ export class McpToolDispatcherService implements OnModuleInit {
     @Optional() private readonly googleCalendarService?: GoogleCalendarService,
     @Optional() private readonly googleMapsDirectService?: GoogleMapsDirectService,
     @Optional() private readonly hotelDirectService?: HotelDirectService,
+    @Optional() private readonly amapHotelService?: AmapHotelService,
+    @Optional() private readonly fliggyDirectService?: FliggyDirectService,
+    @Optional() private readonly xiaohongshuDirectService?: XiaohongshuDirectService,
     @Optional() private readonly bookingComService?: BookingComService,
+    @Optional() private readonly carRentalDirectService?: CarRentalDirectService,
+    @Optional() private readonly activityDirectService?: ActivityDirectService,
+    @Optional() private readonly restaurantDirectService?: RestaurantDirectService,
     @Optional() private readonly advancedGeocodingService?: AdvancedGeocodingService,
   ) {
     this.logger.log('🚀 MCP Tool Dispatcher Service 初始化');
     this.logger.log(
-      `服务注入状态: Airbnb=${!!airbnbService}, Weather=${!!weatherDirectService}, Exa=${!!exaService}, GoogleCalendar=${!!googleCalendarService}, GoogleMaps=${!!googleMapsDirectService}, Hotel=${!!hotelDirectService}, BookingCom=${!!bookingComService}, AdvancedGeocoding=${!!advancedGeocodingService}`,
+      `服务注入状态: Airbnb=${!!airbnbService}, Weather=${!!weatherDirectService}, Exa=${!!exaService}, GoogleCalendar=${!!googleCalendarService}, GoogleMaps=${!!googleMapsDirectService}, Hotel=${!!hotelDirectService}, AmapHotel=${!!amapHotelService}, Fliggy=${!!fliggyDirectService}, Xiaohongshu=${!!xiaohongshuDirectService}, BookingCom=${!!bookingComService}, CarRentalDirect=${!!carRentalDirectService}, Activity=${!!activityDirectService}, Restaurant=${!!restaurantDirectService}, AdvancedGeocoding=${!!advancedGeocodingService}`,
     );
     if (!airbnbService) {
       this.logger.warn('⚠️ AirbnbService 未注入！');
@@ -245,6 +279,22 @@ export class McpToolDispatcherService implements OnModuleInit {
     if (!advancedGeocodingService) {
       this.logger.warn('⚠️ AdvancedGeocodingService 未注入！');
     }
+  }
+
+  /** 轻量路径：Booking.com RapidAPI 是否可用 */
+  isBookingComCarRentalAvailable(): boolean {
+    return this.bookingComService?.isAvailable() === true;
+  }
+
+  /**
+   * 轻量路径：租车检索是否可跑。
+   * Booking Key 缺失时仍可用 CarRentalDirect（Browserbase 探页 + 目录）。
+   */
+  isCarRentalSearchAvailable(): boolean {
+    return (
+      this.bookingComService?.isAvailable() === true ||
+      this.carRentalDirectService?.isAvailable() === true
+    );
   }
 
   /**
@@ -293,6 +343,33 @@ export class McpToolDispatcherService implements OnModuleInit {
             return await this.executeGoogleCalendarTool(actualToolName.startsWith('google-calendar.') ? actualToolName : `google-calendar.${actualToolName}`, params);
           case 'hotel':
             return await this.executeHotelTool(actualToolName.startsWith('hotel.') ? actualToolName : `hotel.${actualToolName}`, params);
+          case 'activity':
+            return await this.executeActivityTool(
+              actualToolName.startsWith('activity.') ? actualToolName : `activity.${actualToolName}`,
+              params,
+            );
+          case 'fliggy':
+            return await this.executeFliggyTool(
+              actualToolName.startsWith('fliggy.')
+                ? actualToolName
+                : `fliggy.${actualToolName}`,
+              params,
+            );
+          case 'xiaohongshu':
+          case 'xhs':
+            return await this.executeXiaohongshuTool(
+              actualToolName.startsWith('xiaohongshu.')
+                ? actualToolName
+                : `xiaohongshu.${actualToolName}`,
+              params,
+            );
+          case 'restaurant':
+            return await this.executeRestaurantTool(
+              actualToolName.startsWith('restaurant.')
+                ? actualToolName
+                : `restaurant.${actualToolName}`,
+              params,
+            );
           case 'car_rental':
             return await this.executeBookingComTool(
               actualToolName.startsWith('car_rental.') ? actualToolName : `car_rental.${actualToolName}`,
@@ -494,20 +571,48 @@ export class McpToolDispatcherService implements OnModuleInit {
         // 处理位置参数（可能是字符串或坐标对象）
         let location: { lat: number; lng: number } | undefined;
 
-        // 策略0: 若有 tripId + checkIn，从当天最后行程项获取地点名称（用名称搜索更符合 Airbnb 匹配逻辑）
-        let locationFromItineraryPlace: { placeName: string; countryName: string } | null = null;
+        // 策略 -1: 上游已算好走廊/锚点坐标（DayN 末站↔次日首站）时优先使用，勿被「当日最后一项」覆盖
+        if (
+          params.location &&
+          typeof params.location === 'object' &&
+          typeof (params.location as { lat?: unknown }).lat === 'number' &&
+          typeof (params.location as { lng?: unknown }).lng === 'number'
+        ) {
+          location = {
+            lat: (params.location as { lat: number }).lat,
+            lng: (params.location as { lng: number }).lng,
+          };
+          this.logger.debug(
+            `使用上游传入住宿检索坐标: (${location.lat.toFixed(4)}, ${location.lng.toFixed(4)})`,
+          );
+        }
+
+        // 策略0: 若有 tripId + checkIn，取当天最后行程项地名（即使已有坐标，也供 Airbnb 文本检索）
+        let locationFromItineraryPlace: {
+          placeName: string;
+          nameCN?: string;
+          nameEN?: string;
+          countryName: string;
+        } | null = null;
         const checkIn = params.checkIn || params.checkin;
         if (params.tripId && checkIn && this.prisma) {
           const dateStr = typeof checkIn === 'string' ? checkIn.split('T')[0] : String(checkIn).split('T')[0];
           const lastItemPlace = await this.getLastItineraryItemPlaceForDate(params.tripId, dateStr);
-          if (lastItemPlace && params.countryCode) {
-            const countryName = this.getCountryNameFromCode(params.countryCode);
+          if (lastItemPlace) {
+            const countryName = params.countryCode
+              ? this.getCountryNameFromCode(params.countryCode)
+              : 'Iceland';
             locationFromItineraryPlace = {
               placeName: lastItemPlace.placeName,
+              nameCN: lastItemPlace.nameCN,
+              nameEN: lastItemPlace.nameEN,
               countryName,
             };
-            this.logger.debug(`使用当天最后行程项地点搜索: ${locationFromItineraryPlace.placeName}, ${locationFromItineraryPlace.countryName}`);
-            // 为 HotelDirectService 降级准备坐标：地理编码行程项地点
+            this.logger.debug(
+              `使用当天最后行程项地点搜索: ${locationFromItineraryPlace.placeName}, ${locationFromItineraryPlace.countryName}`,
+            );
+            // 尚无坐标时：地理编码行程项地点，供 HotelDirect / 距离过滤
+            if (!location) {
             const placeAddress = `${locationFromItineraryPlace.placeName}, ${locationFromItineraryPlace.countryName}`;
             if (this.advancedGeocodingService) {
               try {
@@ -535,6 +640,7 @@ export class McpToolDispatcherService implements OnModuleInit {
                   }
                 }
               } catch (_) {}
+            }
             }
           }
         }
@@ -723,29 +829,193 @@ export class McpToolDispatcherService implements OnModuleInit {
           }
         }
 
+        // 国内行程：跳过 Airbnb，优先飞猪（可跳转预订）→ 高德；海外仍 Airbnb 优先
+        const providerErrors: string[] = [];
+        const preferChina = isChinaHotelSearchScope({
+          countryCode: params.countryCode,
+          destination: params.destination,
+          placeHint:
+            params.naturalLanguage ||
+            params.query ||
+            locationFromItineraryPlace?.nameCN ||
+            locationFromItineraryPlace?.placeName,
+        });
+
+        // 国内飞猪靠 dest/poi 锚点，不必串行 Google geocode（代理挂掉时曾拖到首都中心）
+        if (!location && preferChina) {
+          this.logger.debug(
+            '国内酒店检索：跳过强制 geocode，使用占位坐标后走飞猪 dest 锚点',
+          );
+          location = { lat: 30.057, lng: 101.965 }; // 康定附近占位；真实检索以 destName 为准
+        }
+
         if (!location) {
           throw new Error('缺少必需参数: location。请提供位置信息（location、countryCode、destination 或 naturalLanguage）');
         }
 
-        // 优先级1: 优先尝试 Airbnb
-        if (this.airbnbService) {
+        if (preferChina && this.fliggyDirectService?.isServiceAvailable()) {
+          try {
+            const itineraryPlaceName =
+              locationFromItineraryPlace?.nameCN?.trim() ||
+              locationFromItineraryPlace?.placeName?.trim() ||
+              null;
+            const lodging = resolveFliggyLodgingSearch({
+              destination:
+                typeof params.destination === 'string' ? params.destination : null,
+              placeHint:
+                typeof params.naturalLanguage === 'string'
+                  ? params.naturalLanguage
+                  : null,
+              naturalLanguage:
+                typeof params.naturalLanguage === 'string'
+                  ? params.naturalLanguage
+                  : null,
+              query: typeof params.query === 'string' ? params.query : null,
+              itineraryPlaceName,
+            });
+            if (!lodging?.destName) {
+              this.logger.warn(
+                '酒店搜索：国内飞猪缺少当晚锚点城市（避免误搜成都），跳过飞猪改高德/坐标',
+              );
+              providerErrors.push('飞猪: 缺少行程锚点城市');
+            } else {
+              const keyWords =
+                lodging.keyWords ||
+                resolveFliggyHotelKeywords({
+                  query: typeof params.query === 'string' ? params.query : null,
+                  naturalLanguage:
+                    typeof params.naturalLanguage === 'string'
+                      ? params.naturalLanguage
+                      : null,
+                  placeHint: itineraryPlaceName,
+                });
+              this.logger.log(
+                `酒店搜索：国内优先飞猪 dest=${lodging.destName}` +
+                  (lodging.poiName ? ` poi=${lodging.poiName}` : '') +
+                  (keyWords ? ` kw=${keyWords}` : '') +
+                  (itineraryPlaceName ? ` anchor=${itineraryPlaceName}` : ''),
+              );
+              const searchOnce = (poiName?: string) =>
+                this.fliggyDirectService!.searchHotels({
+                  destName: lodging.destName,
+                  poiName,
+                  keyWords,
+                  checkInDate:
+                    typeof params.checkIn === 'string' ? params.checkIn : undefined,
+                  checkOutDate:
+                    typeof params.checkOut === 'string'
+                      ? params.checkOut
+                      : undefined,
+                  limit: 12,
+                });
+              let fliggyResult = await searchOnce(lodging.poiName);
+              // 429 时勿立刻再打一次 dest-only，避免加倍消耗配额
+              if (
+                !fliggyResult.results?.length &&
+                lodging.poiName &&
+                !fliggyResult.rateLimited
+              ) {
+                this.logger.debug(
+                  `飞猪 poi=${lodging.poiName} 无结果，回退仅 dest=${lodging.destName}`,
+                );
+                fliggyResult = await searchOnce(undefined);
+              }
+              if (fliggyResult.results?.length) {
+                return {
+                  success: true,
+                  results: fliggyResult.results,
+                  totalResults: fliggyResult.results.length,
+                  source: 'fliggy',
+                  inventory_meta: {
+                    inventory_verified: fliggyResult.results.some(
+                      (r) => r.inventoryVerified,
+                    ),
+                    inventory_mode: fliggyResult.results.some(
+                      (r) => r.inventoryVerified,
+                    )
+                      ? 'stay_priced'
+                      : 'poi_catalog',
+                    disclaimer_zh: `飞猪检索：${lodging.destName}${
+                      lodging.poiName ? ` · ${lodging.poiName}` : ''
+                    }周边，下单前请以飞猪页为准。`,
+                  },
+                };
+              }
+              providerErrors.push(`飞猪: ${fliggyResult.error || '无结果'}`);
+            }
+          } catch (fliggyErr: any) {
+            this.logger.warn(`飞猪酒店搜索失败: ${fliggyErr.message}`);
+            providerErrors.push(`飞猪: ${fliggyErr.message}`);
+          }
+        }
+
+        if (preferChina && this.amapHotelService?.isServiceAvailable()) {
+          try {
+            this.logger.debug('酒店搜索：国内飞猪无结果，尝试高德住宿 POI...');
+            const amapResult = await this.amapHotelService.searchHotels({
+              keywords: params.query || params.naturalLanguage || '酒店',
+              location,
+              city:
+                typeof params.destination === 'string' &&
+                !/^[A-Z]{2}$/i.test(params.destination)
+                  ? params.destination
+                  : undefined,
+              radiusMeters: params.radius || 8000,
+              limit: 12,
+            });
+            if (amapResult.results?.length) {
+              const stamped = stampPoiCatalogInventory(
+                amapResult.results as unknown as Array<Record<string, unknown>>,
+                'amap',
+              );
+              return {
+                success: true,
+                results: stamped.results,
+                totalResults: stamped.results.length,
+                source: 'amap',
+                inventory_meta: stamped.inventory_meta,
+              };
+            }
+            providerErrors.push('高德: 无结果');
+          } catch (amapErr: any) {
+            this.logger.warn(`高德住宿搜索失败: ${amapErr.message}`);
+            providerErrors.push(`高德: ${amapErr.message}`);
+          }
+        }
+
+        // 海外 / 国内供应商皆空：再试 Airbnb（国内默认跳过）
+        if (!preferChina && this.airbnbService) {
           try {
             this.logger.debug('酒店搜索：优先尝试 Airbnb...');
 
-            // 有 countryCode 时只用国家映射（如 Reykjavik, Iceland），避免行程项名称歧义导致返回错误国家
             const countryCodeForAirbnb =
               (params.location && typeof params.location === 'string' && params.location.trim().length === 2 && /^[A-Za-z]{2}$/.test(params.location.trim())
                 ? params.location.trim().toUpperCase()
                 : params.countryCode?.toUpperCase()) ?? null;
-            const airbnbCity = countryCodeForAirbnb ? this.getAirbnbLocationFromCountryCode(countryCodeForAirbnb) : null;
-            const airbnbLocationStr = airbnbCity
-              ? (() => {
-                  this.logger.debug(`Airbnb 搜索使用国家映射(保证正确国家): ${countryCodeForAirbnb} -> "${airbnbCity}"`);
-                  return airbnbCity;
-                })()
-              : locationFromItineraryPlace
-                ? `${locationFromItineraryPlace.placeName}, ${locationFromItineraryPlace.countryName}`
-                : `${location.lat},${location.lng}`;
+            const countryNameForAirbnb = countryCodeForAirbnb
+              ? this.getCountryNameFromCode(countryCodeForAirbnb)
+              : null;
+            const capitalFallback = countryCodeForAirbnb
+              ? this.getAirbnbLocationFromCountryCode(countryCodeForAirbnb)
+              : null;
+            const itineraryPlaceForAirbnb =
+              locationFromItineraryPlace?.nameEN?.trim() ||
+              locationFromItineraryPlace?.nameCN?.trim() ||
+              locationFromItineraryPlace?.placeName ||
+              null;
+            const airbnbLocationStr = resolveAirbnbSearchLocation({
+              countryCode: countryCodeForAirbnb,
+              countryName: countryNameForAirbnb,
+              placeHint: params.naturalLanguage,
+              itineraryPlaceName: itineraryPlaceForAirbnb,
+              query: params.query,
+              countryCapitalFallback: capitalFallback,
+              latLngFallback: location,
+              preferLatLngOverCapital: Boolean(
+                locationFromItineraryPlace || params.naturalLanguage || location,
+              ),
+            });
+            this.logger.debug(`Airbnb 搜索 location=${airbnbLocationStr}`);
 
             // 构建 Airbnb 搜索参数（ignoreRobotsText 用于绕过 Airbnb robots.txt 限制）
             const airbnbParams: any = {
@@ -772,6 +1042,7 @@ export class McpToolDispatcherService implements OnModuleInit {
                 const data = JSON.parse(airbnbResult.content[0].text);
                 if (data.error) {
                   this.logger.warn(`Airbnb 返回错误: ${data.error}`);
+                  providerErrors.push(`Airbnb: ${data.error}`);
                 } else {
                   searchResults = data.searchResults || [];
                 }
@@ -785,37 +1056,167 @@ export class McpToolDispatcherService implements OnModuleInit {
               }
               searchResults = filtered;
             }
+            /**
+             * 走廊中文合成名易导致 Airbnb 漂到错误国家 → 国家过滤后变 0。
+             * 用行程锚点 lat/lng 或英文末站名重试一次，避免整段降级空卡。
+             */
+            if (
+              searchResults.length === 0 &&
+              countryCodeForAirbnb &&
+              (location || itineraryPlaceForAirbnb)
+            ) {
+              const retryLoc = location
+                ? `${location.lat},${location.lng}`
+                : `${lodgingTownAliasForAirbnb(String(itineraryPlaceForAirbnb))}, ${countryNameForAirbnb || 'Iceland'}`;
+              if (retryLoc && retryLoc !== airbnbLocationStr) {
+                this.logger.warn(
+                  `Airbnb 国家过滤后为空，改用锚点重试 location=${retryLoc} (原=${airbnbLocationStr})`,
+                );
+                try {
+                  const retryResult = await this.airbnbService.searchListings({
+                    ...airbnbParams,
+                    location: retryLoc,
+                  });
+                  let retryRows: any[] = [];
+                  if (retryResult?.content?.[0]?.type === 'text') {
+                    try {
+                      const data = JSON.parse(retryResult.content[0].text);
+                      if (!data.error) retryRows = data.searchResults || [];
+                    } catch (_) {}
+                  }
+                  if (retryRows.length > 0 && countryCodeForAirbnb) {
+                    retryRows = this.filterListingsByCountry(retryRows, countryCodeForAirbnb);
+                  }
+                  if (retryRows.length > 0) {
+                    searchResults = retryRows;
+                    this.logger.debug(`Airbnb 锚点重试成功，找到 ${searchResults.length} 个房源`);
+                  }
+                } catch (retryErr: any) {
+                  this.logger.debug(`Airbnb 锚点重试失败: ${retryErr?.message || retryErr}`);
+                }
+              }
+            }
+            // 有行程锚点坐标时：丢掉离锚点过远的房源（典型：南岸晚却漂到雷克雅未克）
+            if (searchResults.length > 0 && location) {
+              const near = this.filterListingsNearAnchor(searchResults, location, 180);
+              if (near.length > 0 && near.length < searchResults.length) {
+                this.logger.debug(
+                  `Airbnb 按锚点距离过滤: ${searchResults.length} -> ${near.length} (anchor=${location.lat.toFixed(3)},${location.lng.toFixed(3)})`,
+                );
+                searchResults = near;
+              } else if (near.length === 0) {
+                this.logger.warn(
+                  `Airbnb 锚点 ${location.lat.toFixed(3)},${location.lng.toFixed(3)} 180km 内无房源，保留原结果以免空列表`,
+                );
+              }
+            }
             if (searchResults.length > 0) {
               this.logger.debug(`Airbnb 搜索成功，找到 ${searchResults.length} 个房源`);
-              // 对前 5 条批量获取详情（图片、地址），补充到卡片
-              const enriched = await this.enrichAirbnbResultsWithDetails(searchResults, {
-                checkIn: params.checkIn,
-                checkOut: params.checkOut,
+              /**
+               * Direct 结果已够卡片展示；再调 MCP listingDetails 易卡住整段 LIVE_TOOL_HOTEL。
+               * 富化限时 2s，超时直接用搜索结果。
+               */
+              const fromDirect =
+                typeof airbnbResult?.content?.[0]?.text === 'string' &&
+                airbnbResult.content[0].text.includes('"source":"airbnb_direct"');
+              let enriched = searchResults;
+              if (!fromDirect) {
+                enriched = await Promise.race([
+                  this.enrichAirbnbResultsWithDetails(searchResults, {
+                    checkIn: params.checkIn,
+                    checkOut: params.checkOut,
+                    adults: params.guests || params.adults || 1,
+                    limit: 3,
+                  }),
+                  new Promise<any[]>((resolve) =>
+                    setTimeout(() => resolve(searchResults), 2_000),
+                  ),
+                ]);
+              }
+
+              const stayCi = params.checkIn ? String(params.checkIn).slice(0, 10) : undefined;
+              const stayCo = params.checkOut ? String(params.checkOut).slice(0, 10) : undefined;
+              const verifiedPack = await this.verifyAirbnbStayInventory(enriched, {
+                checkIn: stayCi,
+                checkOut: stayCo,
                 adults: params.guests || params.adults || 1,
-                limit: 5,
               });
-              return {
-                success: true,
-                results: enriched,
-                totalResults: enriched.length,
-                source: 'airbnb',
-              };
+              if (verifiedPack.results.length === 0) {
+                this.logger.debug(
+                  `Airbnb 核验后无可订示意结果（dropped=${verifiedPack.inventory_meta.dropped_unavailable ?? 0}），降级到 HotelDirect / 高德`,
+                );
+                providerErrors.push('Airbnb: 核验后无可订结果');
+              } else {
+                return {
+                  success: true,
+                  results: verifiedPack.results,
+                  totalResults: verifiedPack.results.length,
+                  source: 'airbnb',
+                  inventory_meta: verifiedPack.inventory_meta,
+                };
+              }
+            } else {
+              this.logger.debug('Airbnb 搜索无结果，降级到 HotelDirect / 高德');
+              if (!providerErrors.some((e) => e.startsWith('Airbnb:'))) {
+                providerErrors.push('Airbnb: 无结果');
+              }
             }
-            this.logger.debug('Airbnb 搜索无结果，降级到 HotelDirectService');
           } catch (airbnbError: any) {
-            this.logger.warn(`Airbnb 搜索失败，降级到 HotelDirectService: ${airbnbError.message}`);
+            this.logger.warn(`Airbnb 搜索失败，降级到 HotelDirect / 高德: ${airbnbError.message}`);
+            providerErrors.push(`Airbnb: ${airbnbError.message}`);
           }
-        } else {
-          this.logger.debug('AirbnbService 不可用，降级到 HotelDirectService');
+        } else if (!preferChina) {
+          this.logger.debug('AirbnbService 不可用，降级到 HotelDirect / 高德');
+          providerErrors.push('Airbnb: 服务未注入');
         }
 
-        // 优先级2: 如果 Airbnb 不可用或结果为空，使用 HotelDirectService
+        // Google Places（HotelDirect）兜底
         if (!this.hotelDirectService) {
-          throw new Error('HotelDirectService 不可用: 服务未注入，请检查 HotelDirectModule 是否正确导入到 PlanningAssistantModule');
+          throw new Error(
+            `住宿检索失败（飞猪/Airbnb/高德均不可用，且 HotelDirectService 未注入）。详情: ${providerErrors.join(' | ') || '无'}`,
+          );
         }
 
-        if (!this.hotelDirectService.isServiceAvailable()) {
-          throw new Error('HotelDirectService 不可用: Google Places API Key 未配置。请设置环境变量 GOOGLE_PLACES_API_KEY');
+        const googleOk = await this.hotelDirectService.ensureAvailable();
+        if (!googleOk) {
+          // 国内再试一次高德（若前面因非 CN 跳过）
+          if (!preferChina && this.amapHotelService?.isServiceAvailable()) {
+            try {
+              const amapResult = await this.amapHotelService.searchHotels({
+                keywords: params.query || params.naturalLanguage || '酒店',
+                location,
+                radiusMeters: params.radius || 8000,
+                limit: 12,
+              });
+              if (amapResult.results?.length) {
+                const stamped = stampPoiCatalogInventory(
+                  amapResult.results as unknown as Array<Record<string, unknown>>,
+                  'amap',
+                );
+                return {
+                  success: true,
+                  results: stamped.results,
+                  totalResults: stamped.results.length,
+                  source: 'amap',
+                  inventory_meta: stamped.inventory_meta,
+                };
+              }
+            } catch (amapErr: any) {
+              providerErrors.push(`高德兜底: ${amapErr.message}`);
+            }
+          }
+          providerErrors.push(`Google Places: ${this.hotelDirectService.getUnavailableReason()}`);
+          /** 供应商全挂：软失败，勿抛栈（轻量路径会记 live_sensor_audit） */
+          this.logger.warn(
+            `住宿检索无可用供应商: ${providerErrors.join(' | ')}`,
+          );
+          return {
+            success: false,
+            results: [],
+            totalResults: 0,
+            source: null,
+            error: `住宿检索失败。${providerErrors.join(' | ')}`,
+          };
         }
 
         this.logger.debug('使用 HotelDirectService 搜索酒店...');
@@ -853,11 +1254,16 @@ export class McpToolDispatcherService implements OnModuleInit {
         }
         
         const hotelResult = await this.hotelDirectService.searchHotels(hotelSearchParams);
-
-        // 标记来源
+        const googleRows = Array.isArray((hotelResult as any)?.results)
+          ? ((hotelResult as any).results as Array<Record<string, unknown>>)
+          : [];
+        const stampedGoogle = stampPoiCatalogInventory(googleRows, 'hotel');
         return {
           ...hotelResult,
-          source: 'hotel', // 标记来源
+          results: stampedGoogle.results,
+          totalResults: stampedGoogle.results.length,
+          source: 'hotel',
+          inventory_meta: stampedGoogle.inventory_meta,
         };
 
       case 'hotel.getDetails':
@@ -874,6 +1280,352 @@ export class McpToolDispatcherService implements OnModuleInit {
 
       default:
         throw new Error(`未知的 Hotel 工具: ${toolName}`);
+    }
+  }
+
+  private async executeActivityTool(toolName: string, params: Record<string, unknown>): Promise<unknown> {
+    switch (toolName) {
+      case 'activity.search': {
+        const query = String(
+          params.query ?? params.q ?? params.message ?? params.naturalLanguage ?? '',
+        ).trim();
+        const destination =
+          typeof params.destination === 'string' ? params.destination : null;
+        const countryCode =
+          typeof params.countryCode === 'string' ? params.countryCode : null;
+        // 国内活动/门票：国家码 / 常见城市名 / 飞猪锚点（九寨沟等）→ 优先 FlyAI search-poi
+        const china =
+          isChinaHotelSearchScope({
+            countryCode,
+            destination,
+            placeHint: query,
+          }) ||
+          isChinaOtaMarketLoose({ countryCode, destination }) ||
+          hasChinaFliggyHubHint(query, destination);
+        if (china && this.fliggyDirectService?.isServiceAvailable()) {
+          const lodging = resolveFliggyLodgingSearch({
+            destination:
+              typeof params.destination === 'string' ? params.destination : null,
+            placeHint: query,
+            query,
+          });
+          const city = lodging?.destName;
+          if (city) {
+            const fliggy = await this.fliggyDirectService.searchPois({
+              cityName: city,
+              keyword:
+                lodging?.poiName ||
+                resolveFliggyHotelKeywords({ query }) ||
+                query ||
+                undefined,
+              limit:
+                typeof params.limit === 'number'
+                  ? params.limit
+                  : Number(params.limit) || 6,
+            });
+            if (fliggy.activities?.length) {
+              return {
+                activities: fliggy.activities,
+                meta: {
+                  query: query || city,
+                  browserbase_available: false,
+                  probed: 0,
+                  fallback: 0,
+                  latency_ms: fliggy.latency_ms ?? 0,
+                  mode: 'fliggy',
+                  source: 'fliggy',
+                },
+              };
+            }
+            const kw = await this.fliggyDirectService.keywordSearch(
+              query || `${city} 门票`,
+              6,
+            );
+            if (kw.activities?.length) {
+              return {
+                activities: kw.activities,
+                meta: {
+                  query: query || city,
+                  browserbase_available: false,
+                  probed: 0,
+                  fallback: 0,
+                  latency_ms: kw.latency_ms ?? 0,
+                  mode: 'fliggy_keyword',
+                  source: 'fliggy',
+                },
+              };
+            }
+          }
+        }
+        if (!this.activityDirectService) {
+          throw new Error('ActivityDirectService 不可用');
+        }
+        return this.activityDirectService.searchActivities({
+          query: query || '冰岛活动预订',
+          limit: typeof params.limit === 'number' ? params.limit : Number(params.limit) || 4,
+          date:
+            typeof params.date === 'string'
+              ? params.date
+              : typeof params.activityDate === 'string'
+                ? params.activityDate
+                : undefined,
+        });
+      }
+      default:
+        throw new Error(`未知的 Activity 工具: ${toolName}`);
+    }
+  }
+
+  private async executeXiaohongshuTool(
+    toolName: string,
+    params: Record<string, unknown>,
+  ): Promise<unknown> {
+    if (!this.xiaohongshuDirectService?.isServiceAvailable()) {
+      throw new Error(
+        'XiaohongshuDirectService 不可用。请启动 xiaohongshu-mcp（默认 http://localhost:18060/mcp）并设置 XHS_MCP_ENABLED=true',
+      );
+    }
+    switch (toolName) {
+      case 'xiaohongshu.search_feeds':
+      case 'xiaohongshu.searchFeeds': {
+        const keyword = String(
+          params.keyword ?? params.query ?? params.q ?? '',
+        ).trim();
+        const searched = await this.xiaohongshuDirectService.searchFeeds({
+          keyword,
+          limit:
+            typeof params.limit === 'number'
+              ? params.limit
+              : Number(params.limit) || 20,
+          filters:
+            params.filters && typeof params.filters === 'object'
+              ? (params.filters as {
+                  sort_by?: string;
+                  note_type?: string;
+                  publish_time?: string;
+                  search_scope?: string;
+                  location?: string;
+                })
+              : undefined,
+        });
+        const bundle = mapXhsFeedsToExperienceBundle({
+          query: keyword,
+          destinationHint:
+            typeof params.destination === 'string'
+              ? params.destination
+              : typeof params.destinationHint === 'string'
+                ? params.destinationHint
+                : null,
+          raw: searched.raw,
+          limit:
+            typeof params.limit === 'number'
+              ? params.limit
+              : Number(params.limit) || 20,
+        });
+        return {
+          ...searched,
+          experience_bundle: bundle,
+          disclaimer_zh: bundle.disclaimerZh,
+          narrator_hint_zh: formatXhsExperienceNarratorBlock(bundle),
+        };
+      }
+      case 'xiaohongshu.get_feed_detail':
+      case 'xiaohongshu.getFeedDetail':
+        return this.xiaohongshuDirectService.getFeedDetail({
+          feed_id: String(params.feed_id ?? params.feedId ?? '').trim(),
+          xsec_token: String(params.xsec_token ?? params.xsecToken ?? '').trim(),
+          load_all_comments:
+            params.load_all_comments === true ||
+            params.loadAllComments === true,
+          limit:
+            typeof params.limit === 'number'
+              ? params.limit
+              : Number(params.limit) || undefined,
+        });
+      case 'xiaohongshu.user_profile':
+      case 'xiaohongshu.userProfile':
+        return this.xiaohongshuDirectService.userProfile({
+          user_id: String(params.user_id ?? params.userId ?? '').trim(),
+          xsec_token: String(params.xsec_token ?? params.xsecToken ?? '').trim(),
+        });
+      case 'xiaohongshu.list_feeds':
+      case 'xiaohongshu.listFeeds':
+        return this.xiaohongshuDirectService.listFeeds();
+      default:
+        throw new Error(`未知或未开放的小红书工具: ${toolName}`);
+    }
+  }
+
+  private async executeFliggyTool(
+    toolName: string,
+    params: Record<string, unknown>,
+  ): Promise<unknown> {
+    if (!this.fliggyDirectService?.isServiceAvailable()) {
+      throw new Error(
+        'FliggyDirectService 不可用。请安装 @fly-ai/flyai-cli 并可选配置 FLYAI_API_KEY（https://open.fly.ai/docs/quickstart）',
+      );
+    }
+    switch (toolName) {
+      case 'fliggy.search_hotel':
+      case 'fliggy.hotel_search':
+      case 'fliggy.searchHotel': {
+        const destName =
+          String(params.dest_name ?? params.destName ?? params.destination ?? '').trim() ||
+          resolveFliggyDestName({
+            destination:
+              typeof params.destination === 'string' ? params.destination : null,
+            query: typeof params.query === 'string' ? params.query : null,
+          }) ||
+          '';
+        return this.fliggyDirectService.searchHotels({
+          destName,
+          keyWords: String(params.key_words ?? params.keyWords ?? params.query ?? '').trim() || undefined,
+          poiName: String(params.poi_name ?? params.poiName ?? '').trim() || undefined,
+          checkInDate: String(params.check_in_date ?? params.checkIn ?? '').trim() || undefined,
+          checkOutDate: String(params.check_out_date ?? params.checkOut ?? '').trim() || undefined,
+          maxPrice:
+            typeof params.max_price === 'number'
+              ? params.max_price
+              : typeof params.maxPrice === 'number'
+                ? params.maxPrice
+                : undefined,
+          limit: typeof params.limit === 'number' ? params.limit : 12,
+        });
+      }
+      case 'fliggy.search_poi':
+      case 'fliggy.poi_search':
+      case 'fliggy.searchPoi': {
+        const cityName =
+          String(params.city_name ?? params.cityName ?? params.destination ?? '').trim() ||
+          resolveFliggyDestName({
+            destination:
+              typeof params.destination === 'string' ? params.destination : null,
+            query: typeof params.query === 'string' ? params.query : null,
+          }) ||
+          '';
+        return this.fliggyDirectService.searchPois({
+          cityName,
+          keyword: String(params.keyword ?? params.query ?? '').trim() || undefined,
+          category: String(params.category ?? '').trim() || undefined,
+          poiLevel:
+            typeof params.poi_level === 'number'
+              ? params.poi_level
+              : typeof params.poiLevel === 'number'
+                ? params.poiLevel
+                : undefined,
+          limit: typeof params.limit === 'number' ? params.limit : 6,
+        });
+      }
+      case 'fliggy.search_flight':
+      case 'fliggy.searchFlight':
+      case 'fliggy.flight_search': {
+        return this.fliggyDirectService.searchFlights({
+          origin: String(params.origin ?? params.from ?? '').trim(),
+          destination: String(params.destination ?? params.to ?? '').trim() || undefined,
+          depDate: String(
+            params.dep_date ?? params.depDate ?? params.departureDate ?? '',
+          ).trim() || undefined,
+          backDate: String(
+            params.back_date ?? params.backDate ?? params.returnDate ?? '',
+          ).trim() || undefined,
+          sortType:
+            typeof params.sort_type === 'number' || typeof params.sort_type === 'string'
+              ? params.sort_type
+              : typeof params.sortType === 'number' || typeof params.sortType === 'string'
+                ? params.sortType
+                : 3,
+          maxPrice:
+            typeof params.max_price === 'number'
+              ? params.max_price
+              : typeof params.maxPrice === 'number'
+                ? params.maxPrice
+                : undefined,
+          limit: typeof params.limit === 'number' ? params.limit : 6,
+        });
+      }
+      case 'fliggy.keyword_search':
+      case 'fliggy.keywordSearch': {
+        const q = String(params.query ?? params.q ?? '').trim();
+        return this.fliggyDirectService.keywordSearch(
+          q,
+          typeof params.limit === 'number' ? params.limit : 8,
+        );
+      }
+      default:
+        throw new Error(`未知的 Fliggy 工具: ${toolName}`);
+    }
+  }
+
+  private async executeRestaurantTool(toolName: string, params: Record<string, unknown>): Promise<unknown> {
+    switch (toolName) {
+      case 'restaurant.search':
+      case 'restaurant.nearby': {
+        const query = String(params.query ?? params.q ?? 'restaurant').trim() || 'restaurant';
+        const china = isChinaHotelSearchScope({
+          countryCode:
+            typeof params.countryCode === 'string' ? params.countryCode : null,
+          destination:
+            typeof params.destination === 'string' ? params.destination : null,
+          placeHint: query,
+        }) ||
+          isChinaOtaMarketLoose({
+            countryCode:
+              typeof params.countryCode === 'string' ? params.countryCode : null,
+            destination:
+              typeof params.destination === 'string' ? params.destination : null,
+          }) ||
+          hasChinaFliggyHubHint(query, params.destination as string | undefined);
+        if (china && this.fliggyDirectService?.isServiceAvailable()) {
+          const city =
+            resolveFliggyDestName({
+              destination:
+                typeof params.destination === 'string' ? params.destination : null,
+              placeHint: query,
+              query,
+            }) || undefined;
+          const fliggy = await this.fliggyDirectService.searchRestaurants({
+            query,
+            cityHint: city,
+            limit:
+              typeof params.limit === 'number' ? params.limit : Number(params.limit) || 6,
+          });
+          if (fliggy.restaurants.length) {
+            return {
+              restaurants: fliggy.restaurants.map((r) => ({
+                ...r,
+                name: r.nameZh,
+                cta_zh: r.cta_zh,
+                source: 'fliggy',
+              })),
+              meta: {
+                source: 'fliggy',
+                mode: 'fliggy_keyword',
+                latency_ms: fliggy.latency_ms,
+              },
+            };
+          }
+        }
+        if (!this.restaurantDirectService?.isServiceAvailable?.()) {
+          throw new Error('RestaurantDirectService 不可用');
+        }
+        const location =
+          params.location && typeof params.location === 'object'
+            ? (params.location as { lat?: number; lng?: number })
+            : undefined;
+        return this.restaurantDirectService.searchRestaurants({
+          query,
+          ...(location?.lat != null && location?.lng != null
+            ? { location: { lat: Number(location.lat), lng: Number(location.lng) } }
+            : {}),
+          radius: typeof params.radius === 'number' ? params.radius : Number(params.radius) || 8000,
+          minRating:
+            typeof params.minRating === 'number' ? params.minRating : Number(params.minRating) || undefined,
+          language: String(params.language ?? (china ? 'zh' : 'en')),
+          type: String(params.type ?? 'restaurant'),
+        });
+      }
+      default:
+        throw new Error(`未知的 Restaurant 工具: ${toolName}`);
     }
   }
 
@@ -904,13 +1656,122 @@ export class McpToolDispatcherService implements OnModuleInit {
    * 工具名：`car_rental.search`（复合）、`car_rental.searchLocation`。
    */
   private async executeBookingComTool(toolName: string, params: Record<string, any>): Promise<any> {
-    if (!this.bookingComService?.isAvailable()) {
-      throw new Error('Booking.com 租车不可用：请配置 RAPIDAPI_BOOKING_COM_API_KEY');
+    const stripPrefix = (t: string) => (t.startsWith('car_rental.') ? t.slice('car_rental.'.length) : t);
+    const op = stripPrefix(toolName);
+
+    const pickupQuery = String(
+      params.pickupQuery ?? params.pick_up_query ?? params.query ?? '',
+    ).trim();
+    const userQuery = String(params.query ?? params.naturalLanguage ?? pickupQuery).trim();
+    const destParam =
+      typeof params.destination === 'string' ? params.destination : null;
+    const countryParam =
+      typeof params.countryCode === 'string' ? params.countryCode : null;
+    const chinaCar =
+      isChinaHotelSearchScope({
+        countryCode: countryParam,
+        destination: destParam,
+        placeHint: userQuery || pickupQuery,
+      }) ||
+      isChinaOtaMarketLoose({
+        countryCode: countryParam,
+        destination: destParam,
+      }) ||
+      // pickupQuery/location 被误填成国家码 CN 时也要识别为国内
+      isChinaOtaMarketLoose({
+        countryCode: /^[A-Za-z]{2}$/.test(pickupQuery) ? pickupQuery : null,
+        destination: pickupQuery,
+      }) ||
+      isChinaOtaMarketLoose({
+        countryCode:
+          typeof params.location === 'string' && /^[A-Za-z]{2}$/.test(params.location)
+            ? params.location
+            : null,
+        destination: typeof params.location === 'string' ? params.location : null,
+      }) ||
+      hasChinaFliggyHubHint(userQuery, pickupQuery, destParam);
+
+    if (
+      chinaCar &&
+      this.fliggyDirectService?.isServiceAvailable() &&
+      (op === 'search' || op === 'searchCarRentals')
+    ) {
+      const cleanQuery = stripClientContextAppendix(userQuery || pickupQuery);
+      const pickupMatch = cleanQuery.match(
+        /([\u4e00-\u9fff]{2,8})\s*租车|(?:在|从)\s*([\u4e00-\u9fff]{2,8})\s*(?:取车|租)/,
+      );
+      const city =
+        pickupMatch?.[1] ||
+        pickupMatch?.[2] ||
+        resolveFliggyDestName({
+          destination:
+            destParam && !/^(CN|CHN|China|中国)$/i.test(destParam) ? destParam : null,
+          placeHint: cleanQuery || pickupQuery,
+          query: cleanQuery || pickupQuery,
+        }) ||
+        undefined;
+      const fliggyQuery = city
+        ? `${city} 租车`
+        : /租车/.test(cleanQuery)
+          ? cleanQuery
+          : cleanQuery || '租车';
+      const fliggy = await this.fliggyDirectService.searchCarRentals({
+        query: fliggyQuery,
+        cityHint: city,
+        limit: typeof params.limit === 'number' ? params.limit : 6,
+      });
+      if (fliggy.carRentals.length) {
+        this.logger.log(`[car_rental] 国内优先飞猪 keyword-search city=${city ?? '—'}`);
+        return {
+          car_rentals: fliggy.carRentals.map((c) => ({
+            ...c,
+            name: c.nameZh,
+            nameZh: c.nameZh,
+            cta_zh: c.cta_zh,
+            source: 'fliggy',
+          })),
+          carRentals: fliggy.carRentals,
+          meta: {
+            source: 'fliggy',
+            mode: 'fliggy_keyword',
+            latency_ms: fliggy.latency_ms,
+          },
+        };
+      }
+      // 国内市场勿回落 Browserbase/海外 Booking（慢且易触发客户端 ~10s 断连）
+      this.logger.warn(
+        `[car_rental] 国内飞猪无结果，跳过海外回落 city=${city ?? '—'} err=${fliggy.error ?? 'empty'}`,
+      );
+      return {
+        car_rentals: [],
+        carRentals: [],
+        meta: {
+          source: 'fliggy',
+          mode: 'fliggy_keyword_empty',
+          latency_ms: fliggy.latency_ms,
+          ...(fliggy.error ? { error: fliggy.error } : {}),
+        },
+      };
     }
 
-    const stripPrefix = (t: string) => (t.startsWith('car_rental.') ? t.slice('car_rental.'.length) : t);
+    /** 无 Booking Key：Browserbase 探车行官网 + 静态目录（与活动预订同款） */
+    if (!this.bookingComService?.isAvailable()) {
+      if (this.carRentalDirectService?.isAvailable() && (op === 'search' || op === 'searchCarRentals')) {
+        this.logger.log(
+          '[car_rental] Booking.com 未配置 → CarRentalDirect（Browserbase/目录）',
+        );
+        return await this.carRentalDirectService.searchCarRentals({
+          query: String(params.query ?? params.pickupQuery ?? params.pick_up_query ?? '').trim(),
+          pickupQuery: String(params.pickupQuery ?? params.pick_up_query ?? 'Reykjavik').trim(),
+          limit: typeof params.limit === 'number' ? params.limit : 4,
+        });
+      }
+      throw new Error(
+        'Booking.com 租车不可用：请配置 RAPIDAPI_BOOKING_COM_API_KEY（或启用 CarRentalDirect）',
+      );
+    }
 
-    switch (stripPrefix(toolName)) {
+    switch (op) {
       case 'search':
       case 'searchCarRentals': {
         const pickupQuery = String(params.pickupQuery ?? params.pick_up_query ?? 'Reykjavik').trim();
@@ -1072,6 +1933,9 @@ export class McpToolDispatcherService implements OnModuleInit {
         return !!this.weatherDirectService;
       case 'exa':
         return !!this.exaService;
+      case 'xiaohongshu':
+      case 'xhs':
+        return this.xiaohongshuDirectService?.isServiceAvailable() === true;
       case 'google-calendar':
         return !!this.googleCalendarService;
       default:
@@ -1310,6 +2174,195 @@ export class McpToolDispatcherService implements OnModuleInit {
       if (lat == null || lng == null) return true; // 无坐标则保留
       return lat >= latMin && lat <= latMax && lng >= lngMin && lng <= lngMax;
     });
+  }
+
+  /** Haversine km；无坐标的 listing 保留 */
+  private filterListingsNearAnchor(
+    listings: any[],
+    anchor: { lat: number; lng: number },
+    maxKm: number,
+  ): any[] {
+    const R = 6371;
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    return listings.filter((l) => {
+      const lat = Number(
+        l.demandStayListing?.location?.coordinate?.latitude ?? l.location?.lat ?? l.listing_lat,
+      );
+      const lng = Number(
+        l.demandStayListing?.location?.coordinate?.longitude ?? l.location?.lng ?? l.listing_lng,
+      );
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return true;
+      const dLat = toRad(lat - anchor.lat);
+      const dLng = toRad(lng - anchor.lng);
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(anchor.lat)) * Math.cos(toRad(lat)) * Math.sin(dLng / 2) ** 2;
+      const km = 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return km <= maxKm;
+    });
+  }
+
+  /**
+   * Airbnb：有入住窗时优先带价结果。
+   * 房源页粗探默认关闭（避免拖垮 LIVE_TOOL）；设 HOTEL_INVENTORY_VERIFY=1 才开启。
+   */
+  private async verifyAirbnbStayInventory(
+    listings: any[],
+    opts: {
+      checkIn?: string;
+      checkOut?: string;
+      adults?: number;
+    },
+  ): Promise<{ results: any[]; inventory_meta: HotelInventoryMeta }> {
+    const hasStayDates = Boolean(opts.checkIn && opts.checkOut);
+    const preferPriced =
+      process.env.HOTEL_INVENTORY_REQUIRE_PRICE !== '0' &&
+      process.env.HOTEL_INVENTORY_REQUIRE_PRICE !== 'false';
+    let pool = preferPriced
+      ? preferStayPricedAirbnbListings(listings, hasStayDates)
+      : [...listings];
+    /** 单晚场景尽快返回，最多保留 8 条 */
+    pool = pool.slice(0, 8);
+
+    const topNRaw = parseInt(process.env.HOTEL_INVENTORY_VERIFY_TOP_N ?? '', 10);
+    const topN = Number.isFinite(topNRaw) && topNRaw > 0 ? Math.min(topNRaw, 5) : 3;
+    const budgetRaw = parseInt(process.env.HOTEL_INVENTORY_VERIFY_MS ?? '', 10);
+    const budgetMs =
+      Number.isFinite(budgetRaw) && budgetRaw > 0 ? Math.min(budgetRaw, 8_000) : 4_000;
+    const perProbeMs = Math.max(
+      1_500,
+      Math.floor(budgetMs / Math.max(1, Math.min(topN, pool.length))),
+    );
+
+    /** 默认关闭页探：搜索成功 + 价签过滤已够用；显式 HOTEL_INVENTORY_VERIFY=1 才开 */
+    const enableProbe =
+      process.env.HOTEL_INVENTORY_VERIFY === '1' ||
+      process.env.HOTEL_INVENTORY_VERIFY === 'true';
+    const disableProbe = !enableProbe || !hasStayDates || !this.airbnbService;
+
+    let dropped = 0;
+    let probed = 0;
+    let verifiedCount = 0;
+    const kept: any[] = [];
+
+    const toProbe = disableProbe ? [] : pool.slice(0, topN);
+    const rest = disableProbe ? pool : pool.slice(topN);
+
+    if (toProbe.length > 0 && this.airbnbService) {
+      const probePromise = Promise.all(
+        toProbe.map(async (listing) => {
+          const id = String(listing?.id || listing?.listingId || '').trim();
+          if (!id) {
+            return { listing, available: 'unknown' as const };
+          }
+          const hit = await this.airbnbService!.probeListingStayAvailability({
+            listingId: id,
+            checkin: opts.checkIn,
+            checkout: opts.checkOut,
+            adults: opts.adults ?? 1,
+            timeoutMs: perProbeMs,
+          });
+          return { listing, available: hit.available };
+        }),
+      );
+      const raced = await Promise.race([
+        probePromise,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), budgetMs)),
+      ]);
+
+      if (raced) {
+        probed = raced.length;
+        for (const row of raced) {
+          if (row.available === false) {
+            dropped += 1;
+            continue;
+          }
+          if (row.available === true) {
+            verifiedCount += 1;
+            kept.push(
+              tagAirbnbInventoryFields(
+                row.listing as Record<string, unknown>,
+                'detail_verified',
+                true,
+              ),
+            );
+            continue;
+          }
+          const priced = listingHasStayPriceHint(row.listing);
+          kept.push(
+            tagAirbnbInventoryFields(
+              row.listing as Record<string, unknown>,
+              priced && hasStayDates ? 'stay_priced' : 'unverified',
+              false,
+            ),
+          );
+        }
+      } else {
+        this.logger.debug(`Airbnb 库存核验超时(${budgetMs}ms)，回退价签过滤结果`);
+        for (const listing of toProbe) {
+          const priced = listingHasStayPriceHint(listing);
+          if (preferPriced && hasStayDates && !priced) {
+            dropped += 1;
+            continue;
+          }
+          kept.push(
+            tagAirbnbInventoryFields(
+              listing as Record<string, unknown>,
+              priced && hasStayDates ? 'stay_priced' : 'unverified',
+              false,
+            ),
+          );
+        }
+      }
+    }
+
+    for (const listing of rest) {
+      const priced = listingHasStayPriceHint(listing);
+      if (preferPriced && hasStayDates && !priced) {
+        dropped += 1;
+        continue;
+      }
+      kept.push(
+        tagAirbnbInventoryFields(
+          listing as Record<string, unknown>,
+          priced && hasStayDates ? 'stay_priced' : 'unverified',
+          false,
+        ),
+      );
+    }
+
+    /** 价签全空时勿清空结果：标 unverified 并降级给下游 */
+    if (kept.length === 0 && listings.length > 0) {
+      for (const listing of listings.slice(0, 8)) {
+        kept.push(
+          tagAirbnbInventoryFields(listing as Record<string, unknown>, 'unverified', false),
+        );
+      }
+    }
+
+    const inventory_verified = verifiedCount > 0;
+    const inventory_mode = inventory_verified
+      ? 'detail_verified'
+      : hasStayDates && kept.some((r) => listingHasStayPriceHint(r))
+        ? 'stay_priced'
+        : 'unverified';
+    const disclaimer_zh = inventory_verified
+      ? `已对前 ${probed} 条做日期可订粗探，剔除 ${dropped} 条明确不可订；下单前仍请以平台实时为准。`
+      : hasStayDates
+        ? `已按入住窗优先保留带价房源（剔除 ${dropped} 条弱信号）；未完成逐条核验时下单前请确认可订性。`
+        : '未指定入住日期，以下房源未做可订核验。';
+
+    return {
+      results: kept.slice(0, 12),
+      inventory_meta: {
+        inventory_verified,
+        inventory_mode,
+        verified_count: verifiedCount,
+        dropped_unavailable: dropped,
+        probed_count: probed,
+        disclaimer_zh,
+      },
+    };
   }
 
   /**

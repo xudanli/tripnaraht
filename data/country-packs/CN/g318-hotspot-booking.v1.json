@@ -1,0 +1,384 @@
+{
+  "metadata": {
+    "version": "1.1.0",
+    "updatedAt": "2026-08-09",
+    "corridor": "cn.route.g318",
+    "disclaimer": "规则与票价区间为公开攻略/OTA 抽样综合的示意值，须以景区当日通告与飞猪实时商品为准。",
+    "sources": [
+      "public OTA/travel guides (Mugecuo ticket+shuttle bundling)",
+      "Fliggy live sample via scripts/sample-g318-fliggy-audit.ts"
+    ],
+    "lastFliggyAudit": "data/country-packs/CN/audits/g318-fliggy-sample.2026-08-09.json",
+    "lastFliggyAuditSummary": {
+      "sampledAt": "2026-08-09T06:27:27Z",
+      "okCount": 4,
+      "priceMinCNY": 157,
+      "priceMaxCNY": 661,
+      "notesCN": "木格措 keyword 可命中「大门票+观光车」SKU；酒店有标题与部分报价，价以飞猪页为准"
+    }
+  },
+  "hotspots": [
+    {
+      "id": "cn.poi.mugecuo",
+      "nameCN": "木格措",
+      "nameEN": "Mugecuo",
+      "aliases": [
+        "康定木格措",
+        "康定情歌木格措",
+        "情歌(木格措)",
+        "木格措景区"
+      ],
+      "hubCityCN": "康定",
+      "category": "scenic",
+      "altitudeMetersHint": 3700,
+      "openSeason": {
+        "peak": {
+          "start": "--04-01",
+          "end": "--11-30",
+          "hoursHint": "约 07:30/08:00–16:30 止入园（示意）"
+        },
+        "offPeak": {
+          "start": "--12-01",
+          "end": "--03-31",
+          "hoursHint": "约 08:30–16:30（示意）"
+        },
+        "bestVisitMonthsHint": [
+          4,
+          5,
+          6,
+          9,
+          10
+        ]
+      },
+      "booking": {
+        "realNameRequired": true,
+        "advanceBookingDaysHint": {
+          "min": 0,
+          "recommended": 1,
+          "peakHoliday": 3
+        },
+        "channelsHintCN": [
+          "飞猪/主流 OTA",
+          "景区官方公众号现场或线上"
+        ],
+        "sameDayValid": true,
+        "mustHintsCN": [
+          "门票常与往返观光车捆绑售卖，报价勿与「纯门票」混比",
+          "旺季/节假日建议至少提前 1 天实名预订",
+          "高原景区：心肺不适、孕妇等需自行评估；游船/温泉另计"
+        ]
+      },
+      "priceBandsCNY": {
+        "gateListAdultTicketPlusShuttle": {
+          "peak": 195,
+          "offPeak": 165,
+          "note": "门市常见挂牌（票+观光车）"
+        },
+        "otaAdultTicketPlusShuttle": {
+          "low": 175,
+          "high": 220,
+          "note": "OTA 抽样常见区间，实时以飞猪为准"
+        },
+        "extrasHint": [
+          {
+            "nameCN": "药池沸泉",
+            "from": 35
+          },
+          {
+            "nameCN": "圣湖游船",
+            "from": 66
+          }
+        ]
+      },
+      "consultBlurbCN": "木格措多为「门票+观光车」套餐；旺季约 195 元门市、OTA 常略低。建议实名提前订，入园截止多在下午，飞猪价以当日商品为准。"
+    },
+    {
+      "id": "cn.poi.potala",
+      "nameCN": "布达拉宫",
+      "nameEN": "Potala Palace",
+      "aliases": [
+        "布达拉",
+        "布达拉宫门票"
+      ],
+      "hubCityCN": "拉萨",
+      "category": "scenic",
+      "altitudeMetersHint": 3700,
+      "openSeason": {
+        "peak": {
+          "start": "--04-01",
+          "end": "--10-31",
+          "hoursHint": "约 09:00–15:00 止入（示意，以当日通告为准）"
+        },
+        "offPeak": {
+          "start": "--11-01",
+          "end": "--03-31",
+          "hoursHint": "约 09:30–15:00（示意）"
+        },
+        "bestVisitMonthsHint": [
+          5,
+          6,
+          9,
+          10
+        ]
+      },
+      "booking": {
+        "realNameRequired": true,
+        "advanceBookingDaysHint": {
+          "min": 1,
+          "recommended": 3,
+          "peakHoliday": 7
+        },
+        "channelsHintCN": [
+          "布达拉宫官方预约渠道",
+          "飞猪/主流 OTA（若有）"
+        ],
+        "sameDayValid": false,
+        "mustHintsCN": [
+          "旺季几乎必须提前实名预约，当日票极不稳定",
+          "安检与参观动线长，预留半日并控量行走（高反）",
+          "部分区域有闭馆/预约名额调整，以官方当日通告为准"
+        ]
+      },
+      "priceBandsCNY": {
+        "gateListAdult": {
+          "peak": 200,
+          "offPeak": 100,
+          "note": "门市常见挂牌示意（旺淡季）"
+        },
+        "otaAdult": {
+          "low": 100,
+          "high": 220,
+          "note": "OTA/官方实时为准"
+        }
+      },
+      "consultBlurbCN": "布达拉宫需实名预约，旺季建议提前 3–7 天；参观强度大且海拔高，抵达拉萨后勿首日硬闯。票价与名额以官方/飞猪当日为准。"
+    },
+    {
+      "id": "cn.poi.jokhang",
+      "nameCN": "大昭寺",
+      "nameEN": "Jokhang Temple",
+      "aliases": [
+        "大昭寺广场",
+        "大昭"
+      ],
+      "hubCityCN": "拉萨",
+      "category": "scenic",
+      "altitudeMetersHint": 3650,
+      "openSeason": {
+        "peak": {
+          "start": "--01-01",
+          "end": "--12-31",
+          "hoursHint": "约 08:00–18:00（示意）"
+        },
+        "bestVisitMonthsHint": [
+          5,
+          6,
+          9,
+          10
+        ]
+      },
+      "booking": {
+        "realNameRequired": true,
+        "advanceBookingDaysHint": {
+          "min": 0,
+          "recommended": 1,
+          "peakHoliday": 3
+        },
+        "channelsHintCN": [
+          "官方/现场与主流 OTA"
+        ],
+        "sameDayValid": true,
+        "mustHintsCN": [
+          "可与八廓街同日串联，注意礼仪与拍照限制",
+          "节假日人流大，建议早进"
+        ]
+      },
+      "priceBandsCNY": {
+        "gateListAdult": {
+          "peak": 85,
+          "offPeak": 85,
+          "note": "门市常见挂牌示意"
+        },
+        "otaAdult": {
+          "low": 70,
+          "high": 95,
+          "note": "以实时商品为准"
+        }
+      },
+      "consultBlurbCN": "大昭寺可与八廓街同日；建议提前或当日早约，注意宗教场所礼仪。价以官方/OTA 为准。"
+    },
+    {
+      "id": "cn.poi.basongtso",
+      "nameCN": "巴松措",
+      "nameEN": "Basong Tso",
+      "aliases": [
+        "巴松错",
+        "措高湖",
+        "巴松措景区"
+      ],
+      "hubCityCN": "林芝",
+      "category": "scenic",
+      "altitudeMetersHint": 3700,
+      "openSeason": {
+        "peak": {
+          "start": "--04-01",
+          "end": "--10-31",
+          "hoursHint": "约 08:00–18:00（示意）"
+        },
+        "offPeak": {
+          "start": "--11-01",
+          "end": "--03-31",
+          "hoursHint": "缩短（以通告为准）"
+        },
+        "bestVisitMonthsHint": [
+          4,
+          5,
+          6,
+          9,
+          10
+        ]
+      },
+      "booking": {
+        "realNameRequired": true,
+        "advanceBookingDaysHint": {
+          "min": 0,
+          "recommended": 1,
+          "peakHoliday": 2
+        },
+        "channelsHintCN": [
+          "飞猪/主流 OTA",
+          "景区窗口"
+        ],
+        "sameDayValid": true,
+        "mustHintsCN": [
+          "林芝缓冲日轻游优选；船票/环湖另计",
+          "雨季关注林芝—波密廊道路况后再安排往返"
+        ]
+      },
+      "priceBandsCNY": {
+        "gateListAdult": {
+          "peak": 120,
+          "offPeak": 100,
+          "note": "门市常见挂牌示意"
+        },
+        "otaAdult": {
+          "low": 90,
+          "high": 140,
+          "note": "以实时商品为准"
+        }
+      },
+      "consultBlurbCN": "巴松措适合林芝缓冲日；门票常见百元级，船票另计。建议关注雨季路况，飞猪价以当日为准。"
+    },
+    {
+      "id": "cn.poi.ranwu",
+      "nameCN": "然乌湖",
+      "nameEN": "Rawok Lake",
+      "aliases": [
+        "然乌",
+        "然乌湖景区"
+      ],
+      "hubCityCN": "波密",
+      "category": "scenic",
+      "altitudeMetersHint": 3850,
+      "openSeason": {
+        "peak": {
+          "start": "--05-01",
+          "end": "--10-31",
+          "hoursHint": "全天观景为主（示意）"
+        },
+        "bestVisitMonthsHint": [
+          5,
+          6,
+          9,
+          10
+        ]
+      },
+      "booking": {
+        "realNameRequired": false,
+        "advanceBookingDaysHint": {
+          "min": 0,
+          "recommended": 0,
+          "peakHoliday": 1
+        },
+        "channelsHintCN": [
+          "多为观景/环湖，部分游船或牧场收费点"
+        ],
+        "sameDayValid": true,
+        "mustHintsCN": [
+          "以观景与环湖为主，勿占用过长驾驶日窗口",
+          "雨季塌方窗口优先核验波密—林芝路况"
+        ]
+      },
+      "priceBandsCNY": {
+        "notes": "多数路段免费观景；局部体验项目另计"
+      },
+      "consultBlurbCN": "然乌湖多为路过观景，勿恋战挤占雨季驾驶窗口；路况优先于门票。"
+    }
+  ],
+  "lodgingNotes": [
+    {
+      "hubCityCN": "康定",
+      "role": "acclimatize_overnight",
+      "altitudeMetersHint": 2560,
+      "mustHintsCN": [
+        "成都当日勿直冲更高海拔过夜；优先康定适应",
+        "旺季周末市区房源紧张，建议提前订"
+      ],
+      "priceBandCNYHint": {
+        "mid": [
+          200,
+          450
+        ],
+        "note": "飞猪抽样示意，非承诺"
+      }
+    },
+    {
+      "hubCityCN": "理塘",
+      "role": "high_plateau_overnight",
+      "altitudeMetersHint": 4014,
+      "mustHintsCN": [
+        "海拔约 4000m，注意高反与供氧",
+        "补给与医疗相对稀疏，过夜优先县城"
+      ],
+      "priceBandCNYHint": {
+        "mid": [
+          180,
+          400
+        ],
+        "note": "飞猪抽样示意，非承诺"
+      }
+    },
+    {
+      "hubCityCN": "林芝",
+      "role": "buffer_overnight",
+      "altitudeMetersHint": 3000,
+      "mustHintsCN": [
+        "相对川藏南线中段较低，适合缓冲与巴松措轻游",
+        "雨季关注通麦方向路况"
+      ],
+      "priceBandCNYHint": {
+        "mid": [
+          200,
+          500
+        ],
+        "note": "飞猪抽样示意，非承诺"
+      }
+    },
+    {
+      "hubCityCN": "拉萨",
+      "role": "terminus_overnight",
+      "altitudeMetersHint": 3650,
+      "mustHintsCN": [
+        "抵达首日轻活动；布达拉宫勿首日硬闯",
+        "旺季市区房源紧张，建议提前订"
+      ],
+      "priceBandCNYHint": {
+        "mid": [
+          250,
+          650
+        ],
+        "note": "飞猪抽样示意，非承诺"
+      }
+    }
+  ]
+}

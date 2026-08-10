@@ -55,6 +55,12 @@ export class ScheduleTimelineTripMetaDto {
 
   @ApiPropertyOptional({ description: 'pipeline / planning 状态（metadata 投影）' })
   pipelineStatus?: string | null;
+
+  @ApiPropertyOptional({
+    description: '目的地墙钟时区（IANA），用于展示 startTimeLocal / offset ISO',
+    example: 'Asia/Shanghai',
+  })
+  timezone?: string | null;
 }
 
 export class ScheduleTimelineDayDto {

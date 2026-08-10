@@ -220,9 +220,64 @@ export const ROUTE_AND_RUN_ENTRY_POINTS = [
   'trip_list_page',
   'dashboard',
   'planning_workbench',
+  /** iOS / Web AI 对话抽屉（agent/chat 或直调 route_and_run） */
+  'agent_chat',
+  /** 行程日编辑页对话 / Copilot */
+  'itinerary_day_editor',
+  /** Arrange 编排页 */
+  'arrange_itinerary',
 ] as const;
 
 export type RouteAndRunEntryPoint = (typeof ROUTE_AND_RUN_ENTRY_POINTS)[number];
+
+const ENTRY_POINT_SET = new Set<string>(ROUTE_AND_RUN_ENTRY_POINTS);
+
+/** Client aliases → canonical entry_point (iOS often sends page enum / camelCase). */
+const ENTRY_POINT_ALIASES: Record<string, RouteAndRunEntryPoint> = {
+  trip_detail_page: 'trip_detail_page',
+  tripdetailpage: 'trip_detail_page',
+  trip_detail: 'trip_detail_page',
+  tripdetail: 'trip_detail_page',
+  trip_list_page: 'trip_list_page',
+  triplistpage: 'trip_list_page',
+  dashboard: 'dashboard',
+  planning_workbench: 'planning_workbench',
+  planningworkbench: 'planning_workbench',
+  agent_chat: 'agent_chat',
+  agentchat: 'agent_chat',
+  chat: 'agent_chat',
+  ai_chat: 'agent_chat',
+  aichat: 'agent_chat',
+  conversation: 'agent_chat',
+  itinerary_day_editor: 'itinerary_day_editor',
+  itinerarydayeditor: 'itinerary_day_editor',
+  itinerary_day: 'itinerary_day_editor',
+  day_editor: 'itinerary_day_editor',
+  arrange_itinerary: 'arrange_itinerary',
+  arrangeitinerary: 'arrange_itinerary',
+  arrange: 'arrange_itinerary',
+};
+
+/**
+ * Normalize client entry_point (case / camelCase / page enum) to whitelist.
+ * Unknown → `trip_detail_page` (avoid hard 400 for new iOS surfaces).
+ */
+export function normalizeRouteAndRunEntryPoint(
+  raw: unknown,
+): RouteAndRunEntryPoint | undefined {
+  if (raw == null || raw === '') return undefined;
+  const s = String(raw).trim();
+  if (!s) return undefined;
+  if (ENTRY_POINT_SET.has(s)) return s as RouteAndRunEntryPoint;
+  const key = s
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/-/g, '_')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '');
+  if (ENTRY_POINT_ALIASES[key]) return ENTRY_POINT_ALIASES[key];
+  if (ENTRY_POINT_SET.has(key)) return key as RouteAndRunEntryPoint;
+  return 'trip_detail_page';
+}
 
 export class AgentOptionsDto {
   @ApiPropertyOptional({ 
@@ -242,6 +297,17 @@ export class AgentOptionsDto {
   @IsOptional()
   @IsBoolean()
   allow_webbrowse?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      '显式决策授权（consent）：用户确认推荐方案/风险放宽后置 true，编排器打 DECISION_AUTHORIZED。' +
+      '可与 clarification_answers 并用；单独提交时表示对上一轮 NEED_CONFIRM 的授权。',
+    example: true,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  decision_consent?: boolean;
 
   @ApiPropertyOptional({ 
     description: 'System 2 最大执行时间（秒）',
@@ -422,11 +488,13 @@ export class AgentOptionsDto {
   persona_hint?: PersonaHintDto;
 
   @ApiPropertyOptional({ 
-    description: '入口来源标识（用于权限控制和操作限制）',
+    description:
+      '入口来源标识（用于权限控制和操作限制）。支持别名/大小写归一；未知值回落 trip_detail_page。',
     example: 'trip_detail_page',
     enum: [...ROUTE_AND_RUN_ENTRY_POINTS],
   })
   @IsOptional()
+  @Transform(({ value }) => normalizeRouteAndRunEntryPoint(value))
   @IsIn([...ROUTE_AND_RUN_ENTRY_POINTS])
   entry_point?: RouteAndRunEntryPoint;
 
@@ -698,7 +766,7 @@ export class AgentOptionsDto {
 
   @ApiPropertyOptional({
     description:
-      '意图档位：AUTO=服务端推断；TRIP_PLANNING / DATA_LOOKUP / GENERIC_QA=显式覆盖 task_type（与 observability.trace.route_decision 对齐）',
+      '意图档位（routing hint）：AUTO=服务端推断；TRIP_PLANNING / DATA_LOOKUP / GENERIC_QA 仅作提示，不得单独覆盖当前用户语义。Full Planning 由 Planning Admission Gate 裁定（需明确 mutation/replan/escalation）。',
     enum: INTENT_MODE_VALUES,
     example: 'AUTO',
     default: 'AUTO',
@@ -706,6 +774,25 @@ export class AgentOptionsDto {
   @IsOptional()
   @IsIn([...INTENT_MODE_VALUES])
   intent_mode?: IntentMode;
+
+  @ApiPropertyOptional({
+    description:
+      '局部 Repair 无法解决后的显式升级：true 时 Planning Admission Gate 允许进入 Full Planning（CLAUDE_SM）。',
+    example: false,
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  explicit_planning_escalation?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      '未完成规划 operation id。ModeLock 仅按此绑定，不按 trip session 粘模式；澄清续答应回传同一 id。',
+    example: 'planop:ios-xxxx',
+  })
+  @IsOptional()
+  @IsString()
+  planning_operation_id?: string;
 
   @ApiPropertyOptional({
     description:
@@ -717,6 +804,13 @@ export class AgentOptionsDto {
   @IsOptional()
   @IsIn(['OFF', 'AUTO', 'FORCE'])
   async_mode?: 'OFF' | 'AUTO' | 'FORCE';
+
+  @ApiPropertyOptional({
+    description:
+      '内部：Durable Task worker 执行时置 true，禁止再次 async 委托（避免 AUTO 死循环）。客户端勿传。',
+  })
+  @IsOptional()
+  skip_async_delegation?: boolean;
 
   @ApiPropertyOptional({
     description:
@@ -2473,6 +2567,27 @@ export class DecisionUiDisplayDto {
   @IsOptional()
   @IsObject()
   relaxation_suggestions_context?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description:
+      '认知主链 UI 卡片（schema tripnara.cognition_ui_cards@v1）：焦点问题 / 预演 / 授权里程碑，供 Decision Cockpit 渲染',
+  })
+  @IsOptional()
+  @IsObject()
+  cognition_cards?: {
+    schema: 'tripnara.cognition_ui_cards@v1';
+    decision_depth?: string;
+    markers: string[];
+    cards: Array<{
+      id: string;
+      kind: string;
+      title_zh: string;
+      body_zh: string;
+      severity?: 'info' | 'warn' | 'critical';
+      ref?: string;
+      cta_zh?: string;
+    }>;
+  };
 }
 
 export class DecisionCandidateScoreDimensionsDto {
@@ -3278,6 +3393,11 @@ export class RouteAndRunResponseDto {
        * 轻量路径：Booking.com 租车 MCP 返回列表（与 `live_sensor_audit` 中 car_rental 成功项对应；用于前端卡片）。
        */
       car_rentals?: Array<Record<string, unknown>>;
+      /**
+       * 聊天租车推荐卡片（`tripnara/chat_car_rental_cards@v1`）：
+       * Booking 结果 / iceland.rentalGuidance / 静态目录回落。
+       */
+      car_rental_cards?: Array<Record<string, unknown>>;
       /** 租车检索元信息：是否使用系统默认日期窗口（行程未带起止日时） */
       car_rental_search_meta?: {
         fallback_dates_used?: boolean;
@@ -3334,9 +3454,16 @@ export class RouteAndRunResponseDto {
         payload?: Record<string, unknown>;
       }>;
       /**
-       * 前端渲染面：`planning` 行程工作台；`consultation` 轻量咨询 Dashboard。
+       * 前端渲染面：`planning` 行程工作台；`consultation` 轻量咨询 Dashboard；
+       * `car_rental_cards` 租车推荐卡片（Booking / Browserbase / 目录）。
        */
-      ui_surface?: 'planning' | 'consultation';
+      ui_surface?:
+        | 'planning'
+        | 'consultation'
+        | 'car_rental_cards'
+        | 'accommodation_cards'
+        | 'flight_cards'
+        | 'activity_booking_cards';
       /**
        * 咨询类可视化 Dashboard（与 `ui_surface === consultation` 联用）：Hero、评分条、摘要卡、风险、简版每日时间轴、预算、预订提醒、地图线索。
        * 来源：轻量咨询 LLM 的 <<<CONSULTATION_UI_JSON>>>；若模型未输出，可能由后端根据 `suggested_operations`、`live_sensor_audit`、`data_lookup_rag_citations`、`hotel_search_meta` 拼装兜底（见 `dashboard_origin`）。
@@ -3568,6 +3695,46 @@ export class RouteAndRunResponseDto {
       decision_metadata?: DecisionMetadataDto;
       /** 展示层：开箱即用的 UI 块（与 decision_metadata 并行，不参与 DPO 逻辑链） */
       ui_display?: DecisionUiDisplayDto;
+      /**
+       * 认知主链 echo（`tripnara/cognition_echo@v1`）：depth / markers / focus / future 摘要。
+       * 卡片渲染优先用 `ui_display.cognition_cards`；本字段供 Cockpit / 观测。
+       * @see delivery/DECISION_COGNITION_IOS_HANDOFF.md
+       */
+      cognition?: {
+        schema: 'tripnara/cognition_echo@v1';
+        decision_depth?: string;
+        markers: string[];
+        reality?: {
+          snapshotId: string;
+          confidence: number;
+          freshness: string;
+          unknownCount: number;
+        };
+        relations?: {
+          nodeCount: number;
+          edgeCount: number;
+          impactChainCount: number;
+        };
+        focused_problem?: {
+          problemId: string;
+          type: string;
+          question: string;
+          urgency: string;
+          gateDisposition?: string;
+          whyThisProblem: string;
+          suppressedSecondaryProblems: string[];
+        };
+        future?: {
+          status: string;
+          recommendedAlternativeId?: string;
+          alternativeCount: number;
+        };
+        admission_audit?: Array<{
+          phase: string;
+          ok: boolean;
+          missing: string[];
+        }>;
+      };
       /** Human-centric negotiation payload when trade-offs exceed thresholds */
       negotiation_payload?: NegotiationPayloadDto;
       /** 瑕疵草案契约：`tripnara.flawed_draft@v1` — SUCCESS 但未完全收敛时必显式标注 */
@@ -3590,6 +3757,14 @@ export class RouteAndRunResponseDto {
        * @see FRONTEND_TRUSTED_DELIVERY.md
        */
       trusted_delivery_v1?: import('../delivery/types/trusted-delivery-v1.type').TrustedDeliveryV1;
+      /**
+       * 统一对话领域输出：`tripnara.conversation_turn_result@v1`
+       * Chat / iOS 渲染 SSOT；旧字段双写保留。
+       * @see FRONTEND_CONVERSATION_TURN_RESULT.md
+       */
+      conversation_turn_result?: import('../delivery/conversation').ConversationTurnResultV1;
+      /** Phase 2：行程对话上下文快照（亦可嵌在 conversation_turn_result.context） */
+      trip_conversation_context?: import('../delivery/conversation').TripConversationContextSnapshotV1;
     };
   };
 

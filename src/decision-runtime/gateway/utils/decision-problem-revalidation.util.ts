@@ -4,6 +4,7 @@
 
 import type { OutcomeValidationVerdict } from '../../../trips/decision-semantics/types/decision-semantics.types';
 import type { InternalUnifiedProblemRow } from './unified-decision-problem-projection.util';
+import { isTerminalDecisionWorkflowStatus } from './decision-queue-admission.util';
 
 export type RevalidationStatus = 'PENDING' | 'PASSED' | 'FAILED';
 
@@ -25,7 +26,7 @@ export function isProblemStillOpenInRows(
         row.semanticKey.startsWith(`${match.semanticKey}:`));
     const instanceMatch = Boolean(match.instanceKey) && row.instanceKey === match.instanceKey;
     if (!idMatch && !semanticMatch && !instanceMatch) return false;
-    return !['RESOLVED', 'DISMISSED'].includes(row.workflowStatus);
+    return !isTerminalDecisionWorkflowStatus(row.workflowStatus);
   });
 }
 

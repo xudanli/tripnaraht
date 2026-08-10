@@ -64,6 +64,18 @@ export class HarnessDiagnosticsAdminController {
     this.assertDiagnosticsAuthorized(req, headerToken);
     const costHistory = (await this.harnessCostDiagnostics?.buildCostHistorySnapshot(7)) ?? null;
     const llmRouting = (await this.harnessLlmRouting?.buildAdminSnapshot?.(7)) ?? null;
+    let decisionStateDivergence: {
+      counters: Record<string, number>;
+      prometheus_text: string;
+    } | null = null;
+    try {
+      const { buildDecisionStateDivergenceAdminSnapshot } = await import(
+        '../../agent/decision-state/decision-state-divergence.util'
+      );
+      decisionStateDivergence = buildDecisionStateDivergenceAdminSnapshot();
+    } catch {
+      decisionStateDivergence = null;
+    }
     return buildHarnessAdminDiagnosticsSnapshot({
       harness: this.harnessShadowMetrics.getSnapshot(),
       shadowGrader: this.harnessShadowGrader?.buildAdminDiagnosticsSnapshot?.() ?? null,
@@ -74,6 +86,7 @@ export class HarnessDiagnosticsAdminController {
         metrics: this.harnessShadowMetrics.getSnapshot(),
       }),
       llmRouting,
+      decisionStateDivergence,
     });
   }
 

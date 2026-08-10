@@ -72,11 +72,12 @@ export function buildFlawedDraftDescriptorV1(input: {
   }
 
   const verification = input.decisionState?.verification;
-  const openIssues = verification?.issues?.filter((i) => i.class !== 'FATAL') ?? [];
+  // 仅 CONFLICT 抬升为瑕疵草案；ADVISORY（缺开放时间、规则过期提示等）走 VERIFIED_WITH_WARNINGS
+  const openIssues = verification?.issues?.filter((i) => i.class === 'CONFLICT') ?? [];
   if (openIssues.length > 0) {
     reasons.push({
       code: 'UNRESOLVED_VERIFICATION',
-      detail_zh: `VERIFY 仍剩 ${openIssues.length} 项未完全消解。`,
+      detail_zh: `VERIFY 仍剩 ${openIssues.length} 项冲突未完全消解。`,
     });
   }
 

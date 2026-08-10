@@ -50,6 +50,8 @@ import { AmadeusModule } from './mcp/amadeus.module';
 import { ExaModule } from './mcp/exa.module';
 import { GoogleCalendarModule } from './mcp/google-calendar.module';
 import { BookingComModule } from './mcp/booking-com.module';
+import { FliggyDirectModule } from './mcp/fliggy-direct.module';
+import { XiaohongshuDirectModule } from './mcp/xiaohongshu-direct.module';
 import { PostgreSQLMcpModule } from './mcp/postgresql-mcp.module';
 import { BrowserbaseMcpModule } from './mcp/browserbase-mcp.module';
 import { GoogleMapsDirectModule } from './mcp/google-maps-direct.module';
@@ -170,6 +172,8 @@ import { MobileModule } from './mobile/mobile.module';
     ExaModule, // Exa MCP 模块（Web 搜索、代码搜索、公司研究）
     GoogleCalendarModule, // Google Calendar MCP 模块（行程同步、事件管理）
     BookingComModule, // Booking.com MCP 模块（租车搜索，通过 RapidAPI）
+    FliggyDirectModule, // 飞猪 FlyAI（国内 OTA）
+    XiaohongshuDirectModule, // 小红书 MCP（社区体验）
     PostgreSQLMcpModule, // PostgreSQL MCP 模块（数据库查询和执行）
     BrowserbaseMcpModule, // Browserbase MCP 模块（浏览器自动化）
     GoogleMapsDirectModule, // Google Maps 直接 API 模块（路线规划、地理编码等）

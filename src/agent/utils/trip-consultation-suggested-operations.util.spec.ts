@@ -67,6 +67,20 @@ describe('trip-consultation-suggested-operations.util', () => {
     expect(buildSilentVoteCreateSuggestedOperation('t')?.label).toBe('发起投票');
   });
 
+  it('matches team poll asks like 问一下大家谁愿意开车 (with optional [日程] suffix)', () => {
+    expect(isSilentVoteCreateIntentMessage('问一下大家，谁愿意开车？')).toBe(true);
+    expect(
+      isSilentVoteCreateIntentMessage(
+        '问一下大家，谁愿意开车？\n\n[日程] Day1 Day 1 · 抵达雷克雅未克',
+      ),
+    ).toBe(true);
+    expect(isSilentVoteCreateIntentMessage('大家谁愿意轮流开？')).toBe(true);
+    expect(isSilentVoteCreateIntentMessage('谁愿意开车')).toBe(true);
+    expect(isSilentVoteCreateIntentMessage('who wants to drive today')).toBe(true);
+    expect(isSilentVoteCreateIntentMessage('帮我找附近的午餐')).toBe(false);
+    expect(isSilentVoteCreateIntentMessage('推荐今天的隐藏景点')).toBe(false);
+  });
+
   it('merge keeps parsed first then defaults', () => {
     const d = buildDefaultTripConsultationSuggestedOperations('t1');
     const merged = mergeSuggestedOperations([], d);

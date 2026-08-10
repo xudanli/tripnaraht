@@ -3,6 +3,7 @@
  */
 
 import { extractConsultationDraftDayRows } from './trip-dining-consultation.util';
+import { stripUiInjectedDayScheduleContext } from './ui-day-schedule-context.util';
 
 export type TripConsultationSuggestedOperationKind =
   | 'route_and_run_message'
@@ -42,12 +43,22 @@ const ALLOWED_NAV_ACTIONS = new Set([
   'team.start_vote',
 ]);
 
-/** 用户显式要发起投票 / 匿名投票 / 团队投票 */
+/**
+ * 用户显式要发起投票 / 匿名投票 / 团队投票，
+ * 或向队友征询意愿（如「问一下大家谁愿意开车」）——走 SilentVote CTA，勿进全量规划。
+ */
 export function isSilentVoteCreateIntentMessage(message: string): boolean {
-  const m = message.trim();
+  const m = stripUiInjectedDayScheduleContext(String(message ?? '')).trim();
   if (!m) return false;
-  return /(?:发起|创建|开启)(?:一次|一个)?(?:匿名)?(?:投票|表决)|团队投票|silent\s*vote|start\s+(?:a\s+)?vote/i.test(
-    m,
+  return (
+    /(?:发起|创建|开启)(?:一次|一个)?(?:匿名)?(?:投票|表决)|团队投票|silent\s*vote|start\s+(?:a\s+)?vote/i.test(
+      m,
+    ) ||
+    /(?:问一下|问问|询问)(?:一下)?(?:大家|队友|成员|同伴)/.test(m) ||
+    /(?:大家|队友|成员).{0,16}(?:谁愿意|谁想|有没有人愿意)/.test(m) ||
+    /(?:谁愿意|谁想).{0,8}(?:开车|驾驶|当司机|轮流开)/.test(m) ||
+    /ask\s+(?:everyone|the\s+team|the\s+group).{0,40}(?:driv|vote|willing)/i.test(m) ||
+    /who\s+(?:wants|is\s+willing)\s+to\s+drive/i.test(m)
   );
 }
 

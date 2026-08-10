@@ -62,6 +62,8 @@ export interface PlanProposalChange {
   insertMode?: 'append' | 'before' | 'after';
   anchorItemId?: string;
   removeFromCandidates?: boolean;
+  /** Same-day REORDER target sequence position (dense 1..n when omitted at UWC open). */
+  order?: number;
 }
 
 export interface PlanProposalBenefits {
@@ -138,6 +140,13 @@ export interface PlanProposal {
    * Never merges into `changes` / apply path.
    */
   ortoolsShadow?: import('../../../decision-runtime/solver/bridge/ortools-planning-orchestrator-shadow.bridge').OrtToolsPlanningShadowAttachment;
+  /**
+   * UWC-1e Preview open hint (optional).
+   * When `open: true` with timeUpdates or decisionId/planVersionId/expectedPlanVersionId,
+   * clients may open UWC Preview→Confirm→Apply.
+   * When absent or `open: false`, behavior stays legacy (unchanged).
+   */
+  uwcPreview?: import('../utils/plan-proposal-uwc-preview.util').PlanProposalUwcPreview;
 }
 
 export interface OrchestrationStateView {

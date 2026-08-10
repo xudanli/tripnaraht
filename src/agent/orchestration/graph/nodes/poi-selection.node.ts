@@ -50,6 +50,20 @@ export async function runPoiSelectionPrePlanSegment(
   const poiSelectionResult = await host.executePoiSelectionStep(state, decisionState);
   host.maybeSnapshot(state, 'AUTO');
 
+  if ((state.metadata as Record<string, unknown>)?.itinerary_adjust_empty_target_optimize === true) {
+    host.logger.log(
+      '[Claude Orchestrator] POI_SELECTION empty-day optimize → honest halt (skip FALLBACK/PLAN_GEN)',
+    );
+    state.current_step = 'DONE';
+    state.metadata.last_updated_at = new Date().toISOString();
+    state.metadata.total_duration_ms = Date.now() - startTime;
+    host.maybeSnapshot(state, 'CHECKPOINT');
+    return prePlan.prePlanTerminal(
+      'terminal_done',
+      host.buildSuccessResult(state, startTime, decisionState, context),
+    );
+  }
+
   if (poiSelectionResult.allowWithFallback) {
     host.logger.debug('[Claude Orchestrator] POI_SELECTION 无数据，触发 FALLBACK');
     host.applyFallbackPlan(state);

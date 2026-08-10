@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 2,
+  "isoCode": "CN",
+  "nameCN": "中国",
+  "nameEN": "People's Republic of China",
+  "currencyCode": "CNY",
+  "currencyName": "人民币",
+  "exchangeRateToCNY": 1,
+  "exchangeRateToUSD": 0.14,
+  "paymentType": "HYBRID_DIGITAL_PREFER",
+  "paymentInfo": {
+    "contactlessUbiquitous": true,
+    "cashRarelyNeeded": true,
+    "notes": "一线与主要旅游城市以微信/支付宝为主；偏远景区与部分小店仍可能需现金。",
+    "tipping": "一般无需小费。",
+    "wallet_apps": ["WeChat Pay", "Alipay", "UnionPay"],
+    "cash_preparation": "大城市可不备现金；自驾/乡镇建议少量备用现金。"
+  },
+  "powerInfo": {
+    "plugs": ["A", "C", "I"],
+    "plugTypes": ["A", "C", "I"],
+    "voltage": 220,
+    "voltageUnit": "V",
+    "frequency": 50,
+    "frequencyUnit": "Hz"
+  },
+  "emergency": {
+    "fire": "119",
+    "police": "110",
+    "ambulance": "120",
+    "rescue": "119",
+    "unifiedNumber": "110/119/120"
+  },
+  "entryRequirements": {
+    "officialLink": "https://www.nia.gov.cn/",
+    "byNationality": {
+      "CN": {
+        "status": "CITIZEN",
+        "statusLabel": "Citizen / domestic travel",
+        "statusLabelCN": "中国公民境内旅行",
+        "requirementSummary": "Domestic travel; no visa required.",
+        "requirementSummaryCN": "中国公民境内旅行无需签证；部分边境/口岸地区可能有边防检查。"
+      },
+      "US": {
+        "status": "VISA_REQUIRED",
+        "statusLabel": "Tourist visa (L) or visa-free transit where applicable",
+        "statusLabelCN": "需签证（部分口岸过境免签另计）",
+        "requirementSummaryCN": "美国公民通常需申请旅游签证；部分城市过境免签政策以最新官方为准。",
+        "visaApplicationLeadTimeDays": 30
+      },
+      "JP": {
+        "status": "VISA_REQUIRED",
+        "statusLabel": "Tourist visa or visa-free where applicable",
+        "statusLabelCN": "需签证（政策更新时以官方为准）",
+        "requirementSummaryCN": "日本公民入境政策以国家移民管理局最新公布为准。"
+      },
+      "AU": {
+        "status": "VISA_REQUIRED",
+        "statusLabel": "Tourist visa",
+        "statusLabelCN": "需旅游签证",
+        "requirementSummaryCN": "澳大利亚公民通常需申请中国旅游签证。"
+      },
+      "GB": {
+        "status": "VISA_REQUIRED",
+        "statusLabel": "Tourist visa or visa-free where applicable",
+        "statusLabelCN": "需签证（政策更新时以官方为准）",
+        "requirementSummaryCN": "英国公民入境政策以国家移民管理局最新公布为准。"
+      }
+    }
+  },
+  "complianceInfo": {
+    "drivingRules": {
+      "minAge": 18,
+      "drivingSide": "RIGHT",
+      "requiresInternationalLicense": true,
+      "gravelRoadPresent": true,
+      "acceptedLicenseTypes": ["CN_DL", "IDP_1968_WITH_HOME_LICENSE"],
+      "speedLimits": {
+        "urban": 60,
+        "gravelRoad": 40,
+        "asphaltHighway": 120,
+        "algorithmEtaPenaltyCoefficients": {
+          "gravelRoad": 1.25,
+          "mountainPassRoad": 1.35,
+          "winterBlackIceRoad": 1.4
+        }
+      },
+      "specialRules": [
+        "右侧通行；高速公路需合规使用ETC或按出口缴费",
+        "节假日高峰（春节/国庆/暑期）热门路段拥堵与门票预约压力显著",
+        "高原地区（青藏、川西等）需关注高反与天气；专项阈值见 CN_XIZANG / CN_SICHUAN pack",
+        "部分城市有尾号限行/环保限行，进城前核验当地交规",
+        "冬季北方与高海拔山口可能要求防滑链或封闭通行"
+      ],
+      "infrastructure": {
+        "selfServiceGasStation": true,
+        "tollRoads": ["NATIONAL_EXPRESSWAY_NETWORK"]
+      }
+    }
+  },
+  "timeBoundaries": {
+    "daylightFluctuation": true,
+    "seasons": [
+      {
+        "name": "GOLDEN_WEEK_NATIONAL_DAY",
+        "months": [10],
+        "avgDaylightHours": 11,
+        "outdoorRoutingWindow": { "start": "08:00", "end": "18:00" },
+        "recommendedCarType": "ANY"
+      },
+      {
+        "name": "SUMMER_PEAK",
+        "months": [7, 8],
+        "avgDaylightHours": 14,
+        "outdoorRoutingWindow": { "start": "07:00", "end": "19:00" },
+        "recommendedCarType": "ANY"
+      },
+      {
+        "name": "WINTER_NORTH_AND_PLATEAU",
+        "months": [12, 1, 2],
+        "avgDaylightHours": 10,
+        "outdoorRoutingWindow": { "start": "09:00", "end": "17:00" },
+        "recommendedCarType": "2WD_WITH_SNOW_CHAINS_OR_4WD"
+      }
+    ],
+    "environmentalTriggers": {
+      "weatherAlertSource": "https://weather.cma.cn/",
+      "roadStatusSource": "https://www.12328.cn/",
+      "autoRerouteTriggers": [
+        "TYPHOON_RAIN",
+        "HEAVY_SNOW_OR_ICE",
+        "EXPRESSWAY_CLOSURE",
+        "MOUNTAIN_PASS_CLOSED",
+        "AIR_QUALITY_SEVERE"
+      ]
+    }
+  },
+  "travelCulture": {
+    "tippingHabits": { "level": "NONE", "description": "中国大陆一般无小费文化" },
+    "experienceRules": [
+      "热门景区（故宫、九寨沟、张家界等）建议提前预约门票与分时入园",
+      "城市内优先地铁/网约车；城际高铁覆盖广，可与自驾组合",
+      "微信支付/支付宝为默认支付方式；外卡在部分场景仍不便"
+    ]
+  }
+}

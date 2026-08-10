@@ -1,0 +1,490 @@
+{
+  "metadata": {
+    "mode": "classic-seed",
+    "dryRun": false,
+    "model": "deepseek-chat",
+    "candidates": 68,
+    "ok": 68,
+    "fail": 0,
+    "skipped": 0,
+    "sampledAt": "2026-08-09T09:38:25.220Z"
+  },
+  "results": [
+    {
+      "id": 6211,
+      "nameCN": "布达拉宫",
+      "ok": true,
+      "chars": 128,
+      "nameEN": "Potala Palace"
+    },
+    {
+      "id": 6212,
+      "nameCN": "大昭寺",
+      "ok": true,
+      "chars": 138,
+      "nameEN": "Jokhang Temple"
+    },
+    {
+      "id": 12955,
+      "nameCN": "库车王府",
+      "ok": true,
+      "chars": 110,
+      "nameEN": "Kuqa Royal Palace"
+    },
+    {
+      "id": 18173,
+      "nameCN": "叶城",
+      "ok": true,
+      "chars": 129,
+      "nameEN": "Yecheng"
+    },
+    {
+      "id": 391784,
+      "nameCN": "理塘",
+      "ok": true,
+      "chars": 138,
+      "nameEN": "Litang"
+    },
+    {
+      "id": 391785,
+      "nameCN": "长青春科尔寺",
+      "ok": true,
+      "chars": 149,
+      "nameEN": "Litang Monastery"
+    },
+    {
+      "id": 391786,
+      "nameCN": "新都桥",
+      "ok": true,
+      "chars": 129,
+      "nameEN": "Xinduqiao"
+    },
+    {
+      "id": 391787,
+      "nameCN": "芒康",
+      "ok": true,
+      "chars": 139,
+      "nameEN": "Markam"
+    },
+    {
+      "id": 391788,
+      "nameCN": "盐井古盐田",
+      "ok": true,
+      "chars": 162,
+      "nameEN": "Yanjing Ancient Salt Fields"
+    },
+    {
+      "id": 391789,
+      "nameCN": "左贡",
+      "ok": true,
+      "chars": 120,
+      "nameEN": "Zogang County"
+    },
+    {
+      "id": 391790,
+      "nameCN": "东达山垭口",
+      "ok": true,
+      "chars": 109,
+      "nameEN": "Dongda Pass"
+    },
+    {
+      "id": 391791,
+      "nameCN": "巴塘",
+      "ok": true,
+      "chars": 149,
+      "nameEN": "Batang"
+    },
+    {
+      "id": 391792,
+      "nameCN": "大柴旦",
+      "ok": true,
+      "chars": 157,
+      "nameEN": "Da Qaidam Emerald Lake"
+    },
+    {
+      "id": 391793,
+      "nameCN": "大柴旦翡翠湖",
+      "ok": true,
+      "chars": 137,
+      "nameEN": "Da Qaidam Emerald Lake"
+    },
+    {
+      "id": 391794,
+      "nameCN": "茶卡镇",
+      "ok": true,
+      "chars": 129,
+      "nameEN": "Chaka Town"
+    },
+    {
+      "id": 391795,
+      "nameCN": "青海湖景区",
+      "ok": true,
+      "chars": 135,
+      "nameEN": "Qinghai Lake"
+    },
+    {
+      "id": 391796,
+      "nameCN": "德钦",
+      "ok": true,
+      "chars": 130,
+      "nameEN": "Deqin"
+    },
+    {
+      "id": 391797,
+      "nameCN": "飞来寺观景台",
+      "ok": true,
+      "chars": 132,
+      "nameEN": "Feilai Temple Viewpoint"
+    },
+    {
+      "id": 391798,
+      "nameCN": "狮泉河",
+      "ok": true,
+      "chars": 121,
+      "nameEN": "Shiquanhe River"
+    },
+    {
+      "id": 391799,
+      "nameCN": "改则",
+      "ok": true,
+      "chars": 117,
+      "nameEN": "Gerze"
+    },
+    {
+      "id": 391800,
+      "nameCN": "措勤",
+      "ok": true,
+      "chars": 149,
+      "nameEN": "Coqen"
+    },
+    {
+      "id": 391801,
+      "nameCN": "萨嘎",
+      "ok": true,
+      "chars": 137,
+      "nameEN": "Saga"
+    },
+    {
+      "id": 391802,
+      "nameCN": "仲巴",
+      "ok": true,
+      "chars": 147,
+      "nameEN": "Zhongba"
+    },
+    {
+      "id": 391803,
+      "nameCN": "札达",
+      "ok": true,
+      "chars": 106,
+      "nameEN": "Zanda"
+    },
+    {
+      "id": 391804,
+      "nameCN": "古格王国遗址",
+      "ok": true,
+      "chars": 172,
+      "nameEN": "Guge Kingdom Ruins"
+    },
+    {
+      "id": 391805,
+      "nameCN": "麻扎达坂",
+      "ok": true,
+      "chars": 167,
+      "nameEN": "Mazar Pass"
+    },
+    {
+      "id": 391806,
+      "nameCN": "界山达坂",
+      "ok": true,
+      "chars": 126,
+      "nameEN": "Jieshan Pass"
+    },
+    {
+      "id": 391807,
+      "nameCN": "甜水海",
+      "ok": true,
+      "chars": 125,
+      "nameEN": "Tianshuihai"
+    },
+    {
+      "id": 391808,
+      "nameCN": "德格印经院",
+      "ok": true,
+      "chars": 130,
+      "nameEN": "Derge Parkhang"
+    },
+    {
+      "id": 391809,
+      "nameCN": "德格",
+      "ok": true,
+      "chars": 167,
+      "nameEN": "Derge"
+    },
+    {
+      "id": 391810,
+      "nameCN": "江达",
+      "ok": true,
+      "chars": 157,
+      "nameEN": "Jomda River"
+    },
+    {
+      "id": 391811,
+      "nameCN": "炉霍",
+      "ok": true,
+      "chars": 152,
+      "nameEN": "Luhuo"
+    },
+    {
+      "id": 391812,
+      "nameCN": "道孚",
+      "ok": true,
+      "chars": 122,
+      "nameEN": "Dawu"
+    },
+    {
+      "id": 391813,
+      "nameCN": "马尔康",
+      "ok": true,
+      "chars": 124,
+      "nameEN": "Barkam"
+    },
+    {
+      "id": 391814,
+      "nameCN": "乔尔玛",
+      "ok": true,
+      "chars": 144,
+      "nameEN": "Qiaoerma"
+    },
+    {
+      "id": 391815,
+      "nameCN": "莫高窟",
+      "ok": true,
+      "chars": 179,
+      "nameEN": "Mogao Caves"
+    },
+    {
+      "id": 391816,
+      "nameCN": "比如",
+      "ok": true,
+      "chars": 150,
+      "nameEN": "Biru"
+    },
+    {
+      "id": 391817,
+      "nameCN": "聂荣",
+      "ok": true,
+      "chars": 148,
+      "nameEN": "Nyainrong County"
+    },
+    {
+      "id": 391818,
+      "nameCN": "旬邑",
+      "ok": true,
+      "chars": 92,
+      "nameEN": "Xunyi"
+    },
+    {
+      "id": 391819,
+      "nameCN": "淳化",
+      "ok": true,
+      "chars": 126,
+      "nameEN": "Chunhua County"
+    },
+    {
+      "id": 391820,
+      "nameCN": "思南",
+      "ok": true,
+      "chars": 133,
+      "nameEN": "Sinan"
+    },
+    {
+      "id": 391821,
+      "nameCN": "石阡",
+      "ok": true,
+      "chars": 120,
+      "nameEN": "Shiqian"
+    },
+    {
+      "id": 391822,
+      "nameCN": "镇远古镇",
+      "ok": true,
+      "chars": 144,
+      "nameEN": "Zhenyuan Ancient Town"
+    },
+    {
+      "id": 391823,
+      "nameCN": "台江",
+      "ok": true,
+      "chars": 133,
+      "nameEN": "Taijiang County"
+    },
+    {
+      "id": 391824,
+      "nameCN": "榕江",
+      "ok": true,
+      "chars": 133,
+      "nameEN": "Rongjiang"
+    },
+    {
+      "id": 391827,
+      "nameCN": "扎什伦布寺",
+      "ok": true,
+      "chars": 122,
+      "nameEN": "Tashilhunpo Monastery"
+    },
+    {
+      "id": 391844,
+      "nameCN": "木格措",
+      "ok": true,
+      "chars": 97,
+      "nameEN": "Mugecuo"
+    },
+    {
+      "id": 391845,
+      "nameCN": "折多山垭口",
+      "ok": true,
+      "chars": 127,
+      "nameEN": "Zheduo Pass"
+    },
+    {
+      "id": 391847,
+      "nameCN": "鲁朗",
+      "ok": true,
+      "chars": 161,
+      "nameEN": "Lulang International Tourism Town"
+    },
+    {
+      "id": 391849,
+      "nameCN": "然乌湖",
+      "ok": true,
+      "chars": 139,
+      "nameEN": "Rawok Lake"
+    },
+    {
+      "id": 391850,
+      "nameCN": "巴松措",
+      "ok": true,
+      "chars": 116,
+      "nameEN": "Basong Tso"
+    },
+    {
+      "id": 391851,
+      "nameCN": "八廓街",
+      "ok": true,
+      "chars": 147,
+      "nameEN": "Barkhor Street"
+    },
+    {
+      "id": 391852,
+      "nameCN": "米拉山口",
+      "ok": true,
+      "chars": 139,
+      "nameEN": "Mila Pass"
+    },
+    {
+      "id": 391854,
+      "nameCN": "卡子拉山垭口",
+      "ok": true,
+      "chars": 112,
+      "nameEN": "Kazila Pass"
+    },
+    {
+      "id": 391855,
+      "nameCN": "海子山垭口",
+      "ok": true,
+      "chars": 107,
+      "nameEN": "Haizi Shan Pass"
+    },
+    {
+      "id": 391856,
+      "nameCN": "业拉山垭口",
+      "ok": true,
+      "chars": 136,
+      "nameEN": "Yela Pass"
+    },
+    {
+      "id": 391858,
+      "nameCN": "塔尔寺",
+      "ok": true,
+      "chars": 132,
+      "nameEN": "Kumbum Monastery"
+    },
+    {
+      "id": 391859,
+      "nameCN": "茶卡盐湖",
+      "ok": true,
+      "chars": 149,
+      "nameEN": "Chaka Salt Lake"
+    },
+    {
+      "id": 391860,
+      "nameCN": "鸣沙山月牙泉",
+      "ok": true,
+      "chars": 158,
+      "nameEN": "Mingsha Mountain & Crescent Spring"
+    },
+    {
+      "id": 391861,
+      "nameCN": "雅丹国家地质公园",
+      "ok": true,
+      "chars": 120,
+      "nameEN": "Yardang National Geopark"
+    },
+    {
+      "id": 391862,
+      "nameCN": "嘉峪关关城",
+      "ok": true,
+      "chars": 172,
+      "nameEN": "Jiayuguan Fort"
+    },
+    {
+      "id": 391863,
+      "nameCN": "七彩丹霞",
+      "ok": true,
+      "chars": 147,
+      "nameEN": "Zhangye Danxia"
+    },
+    {
+      "id": 391865,
+      "nameCN": "扁都口",
+      "ok": true,
+      "chars": 125,
+      "nameEN": "Biandukou"
+    },
+    {
+      "id": 391866,
+      "nameCN": "祁连草原",
+      "ok": true,
+      "chars": 144,
+      "nameEN": "Qilian Grassland"
+    },
+    {
+      "id": 391868,
+      "nameCN": "门源油菜花海",
+      "ok": true,
+      "chars": 143,
+      "nameEN": "Menyuan Rapeseed Fields"
+    },
+    {
+      "id": 391870,
+      "nameCN": "巴音布鲁克",
+      "ok": true,
+      "chars": 132,
+      "nameEN": "Bayanbulak"
+    },
+    {
+      "id": 391871,
+      "nameCN": "九曲十八弯",
+      "ok": true,
+      "chars": 129,
+      "nameEN": "Jiuqu Shibawan"
+    },
+    {
+      "id": 391875,
+      "nameCN": "普达措",
+      "ok": true,
+      "chars": 123,
+      "nameEN": "Pudacuo National Park"
+    }
+  ]
+}

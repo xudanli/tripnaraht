@@ -1,0 +1,105 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "TripNara UWC-1e Client Write Protocol",
+    "version": "1.0.0",
+    "description": "Shared Web/iOS Preview → Confirm → Apply. Source of truth: client-write-protocol.openapi.freeze.ts. Nest: GET/POST under /api + /uwc/v1."
+  },
+  "servers": [
+    {
+      "url": "/uwc/v1",
+      "description": "Relative to Nest globalPrefix /api → full path /api/uwc/v1"
+    }
+  ],
+  "paths": {
+    "/write/preview": {
+      "post": {
+        "operationId": "uwc1ePreview",
+        "summary": "Generate write draft only (no Apply pipeline)",
+        "x-uwc-stage": "PREVIEW",
+        "x-uwc-apply-pipeline": false
+      }
+    },
+    "/write/confirm": {
+      "post": {
+        "operationId": "uwc1eConfirm",
+        "summary": "Record explicit confirmation only (no Apply pipeline)",
+        "x-uwc-stage": "CONFIRM",
+        "x-uwc-apply-pipeline": false,
+        "x-uwc-requires-explicit-confirm": true
+      }
+    },
+    "/write/apply": {
+      "post": {
+        "operationId": "uwc1eApply",
+        "summary": "Authority → Verification → Idempotency → OCC → Handler → Transaction → Audit",
+        "x-uwc-stage": "APPLY",
+        "x-uwc-apply-pipeline": true,
+        "x-uwc-pipeline-stages": [
+          "AUTHORITY",
+          "VERIFICATION",
+          "IDEMPOTENCY",
+          "OCC",
+          "HANDLER",
+          "TRANSACTION",
+          "AUDIT"
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Uwc1eProductSurface": { "type": "string", "enum": ["web", "ios"] },
+      "Uwc1eProtocolStage": {
+        "type": "string",
+        "enum": ["PREVIEW", "CONFIRM", "APPLY"]
+      },
+      "Uwc1eFirstBatchSlice": {
+        "type": "string",
+        "enum": [
+          "actions_commit",
+          "itinerary_same_day_time_adjust",
+          "itinerary_same_day_add_item",
+          "itinerary_same_day_add_from_candidates",
+          "itinerary_multi_day_add_from_candidates",
+          "itinerary_same_day_remove_item",
+          "itinerary_same_day_reorder_items",
+          "itinerary_same_day_move_and_add",
+          "itinerary_same_day_reduce_intensity",
+          "unified_plan_version_only"
+        ]
+      },
+      "Uwc1eClientOutcome": {
+        "type": "string",
+        "enum": [
+          "APPLIED",
+          "CONFLICT",
+          "VERIFICATION_REQUIRED",
+          "REJECTED",
+          "IDEMPOTENT_REPLAY"
+        ]
+      }
+    }
+  },
+  "x-uwc-locks": {
+    "globalOccUnlock": true,
+    "compensationExec": true,
+    "corridorAuthoritativeExpansion": false
+  },
+  "x-uwc-client-rules": {
+    "conflictMustRePreview": true,
+    "verificationRequiredNoBypass": true,
+    "rejectedNoBypass": true,
+    "webIosSameContract": true
+  },
+  "x-uwc-http": {
+    "nestController": "ClientWriteProtocolController",
+    "fullPaths": [
+      "POST /api/uwc/v1/write/preview",
+      "POST /api/uwc/v1/write/confirm",
+      "POST /api/uwc/v1/write/apply",
+      "GET /api/uwc/v1/openapi-freeze"
+    ],
+    "sharedClient": "createUwc1eClient"
+  }
+}

@@ -1,6 +1,6 @@
 # CLIENT_CONTRACT_INDEX (BFF-1)
 
-**Index SSOT:** `src/agent/contracts/bff-client-contract.index.ts` **v1.1.0**
+**Index SSOT:** `src/agent/contracts/bff-client-contract.index.ts` **v1.2.0**
 
 ## Dual pins
 

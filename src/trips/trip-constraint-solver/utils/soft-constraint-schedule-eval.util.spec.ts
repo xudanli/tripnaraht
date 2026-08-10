@@ -79,4 +79,35 @@ describe('soft-constraint-schedule-eval.util', () => {
     );
     expect(violations.length).toBeGreaterThanOrEqual(1);
   });
+
+  it('does not treat China 09:00 (stored as 01:00Z) as 凌晨出发', () => {
+    const ctx = buildSoftScheduleEvalContext({
+      destination: 'CN',
+      metadata: { timezone: 'Asia/Shanghai' },
+      TripDay: [
+        {
+          date: new Date('2026-08-21T00:00:00.000Z'),
+          ItineraryItem: [
+            {
+              id: 'a',
+              type: 'ACTIVITY',
+              // 上海 09:00 = UTC 01:00
+              startTime: new Date('2026-08-21T01:00:00.000Z'),
+              endTime: new Date('2026-08-21T02:30:00.000Z'),
+            },
+          ],
+        },
+      ],
+    });
+    expect(ctx.timezone).toBe('Asia/Shanghai');
+    const violations = evaluateSoftConstraintsOnSchedule(
+      [
+        softConstraint('avoid_early', {
+          value: { templateId: 'avoid_early', earliestTime: '08:30' },
+        }),
+      ],
+      ctx,
+    );
+    expect(violations).toHaveLength(0);
+  });
 });

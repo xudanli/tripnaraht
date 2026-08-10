@@ -72,6 +72,11 @@ export interface StabilityContext {
   /** P1：与 AgentMemoryContext 对齐，供 ModeLock / 日志 / replay 绑定 */
   snapshotId?: string;
   snapshotVersion?: number;
+  /**
+   * 未完成规划 operation id。
+   * ModeLock 只按 operation 粘模式，不再按 trip session 粘 CLAUDE_SM。
+   */
+  modeLockOperationId?: string;
 }
 
 type CacheKey = string;
@@ -98,6 +103,9 @@ class SimpleLruCache<V> {
       if (!oldest) break;
       this.map.delete(oldest);
     }
+  }
+  delete(key: CacheKey): void {
+    this.map.delete(key);
   }
 }
 
@@ -155,17 +163,29 @@ export class CircuitBreaker {
 
 export class ModeLock {
   private cache = new SimpleLruCache<OrchestrationMode>(512, 10 * 60 * 1000);
-  keyFor(ctx: StabilityContext): string {
-    // Prefer tripId > userId > requestHash
-    if (ctx.tripId) return `trip:${ctx.tripId}`;
-    if (ctx.userId) return `user:${ctx.userId}`;
-    return `req:${ctx.requestHash}`;
+  keyFor(ctx: StabilityContext): string | null {
+    /**
+     * 仅绑定未完成 planning operation。
+     * 禁止 `trip:{id}` 会话级粘性，避免咨询请求被历史 Full Planning 锁回 CLAUDE_SM。
+     */
+    const op = ctx.modeLockOperationId?.trim();
+    if (op) return `op:${op}`;
+    return null;
   }
   get(ctx: StabilityContext): OrchestrationMode | undefined {
-    return this.cache.get(this.keyFor(ctx));
+    const key = this.keyFor(ctx);
+    if (!key) return undefined;
+    return this.cache.get(key);
   }
   set(ctx: StabilityContext, mode: OrchestrationMode): void {
-    this.cache.set(this.keyFor(ctx), mode);
+    const key = this.keyFor(ctx);
+    if (!key) return;
+    this.cache.set(key, mode);
+  }
+  clear(ctx: StabilityContext): void {
+    const key = this.keyFor(ctx);
+    if (!key) return;
+    this.cache.delete(key);
   }
 }
 

@@ -28,7 +28,13 @@ export function messageHasDiningLocationAnchor(message: string): boolean {
 
   const dayRef =
     /第[一二三四五六七八九十1-7]+天|第\s*\d\s*天|首日|次日|当天|这天|那一天|行程里.{0,8}天|日程.{0,8}天/i.test(m) ||
-    /\bday\s*[1-7]\b/i.test(lower);
+    /\bday\s*[1-7]\b/i.test(lower) ||
+    // 编排页 chat 注入：`[日程] Day2 Day 2 · 黄金圈`
+    /\[日程\]\s*Day\s*\d+/i.test(m) ||
+    // 「8.16」「8月16」「8.16的」日历日锚点（与住宿口语一致）
+    /\d{1,2}\s*月\s*\d{1,2}\s*[日号]?/.test(m) ||
+    /(?:^|[^\d])\d{1,2}\s*[.．/]\s*\d{1,2}(?:\s*[日号])?(?:的|$|[^\d.])/.test(m) ||
+    /\b\d{4}-\d{2}-\d{2}\b/.test(m);
 
   const coarseNear =
     /附近|周边|沿线|那一带|这一块|这块区域/i.test(m) && (regionOrLandmark || goldenCirclePois || dayRef);

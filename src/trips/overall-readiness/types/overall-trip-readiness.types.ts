@@ -32,6 +32,11 @@ export type ReadinessWeightTemplateId =
   | 'DEFAULT'
   | 'ICELAND_SELF_DRIVE_SOLO'
   | 'ICELAND_SELF_DRIVE_GROUP'
+  | 'CHINA_SELF_DRIVE_SOLO'
+  | 'CHINA_SELF_DRIVE_GROUP'
+  /** 非 IS/CN 的自驾通用权重（去冰岛默认） */
+  | 'SELF_DRIVE_SOLO'
+  | 'SELF_DRIVE_GROUP'
   | 'CITY_TRANSIT'
   | 'FAMILY_MULTI_GEN';
 

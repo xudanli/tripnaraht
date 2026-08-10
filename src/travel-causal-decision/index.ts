@@ -85,6 +85,14 @@ export {
   evaluateWindPilotSuite,
   DEFAULT_WIND_PILOT_PASS_CRITERIA,
 } from './pilot/iceland-wind/evaluate-wind-pilot.util';
+export { buildIcelandWindPilotShowcaseCase } from './pilot/iceland-wind/build-wind-pilot-showcase';
+export {
+  buildWindPilotMetricsReport,
+  renderWindPilotReportMarkdown,
+  ICELAND_WIND_PILOT_METRICS_SCHEMA,
+  type WindPilotMetricsReport,
+  type WindPilotCaseMetricsRow,
+} from './pilot/iceland-wind/build-wind-pilot-report';
 
 export {
   STANDARD_CAUSAL_CASE_IDS,

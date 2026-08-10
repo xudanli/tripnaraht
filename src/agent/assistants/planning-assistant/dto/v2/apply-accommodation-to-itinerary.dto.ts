@@ -4,9 +4,13 @@ import { Type } from 'class-transformer';
 import { AccommodationItemDto } from './shared/accommodation-item.dto';
 
 export class ApplyAccommodationToItineraryRequestDto {
-  @ApiProperty({ description: '规划助手会话 ID（用于读取最近一次住宿搜索结果）' })
+  @ApiPropertyOptional({
+    description:
+      '规划助手会话 ID（用于读取最近一次住宿搜索结果）。若已传 accommodation / accommodationCard 可省略',
+  })
+  @IsOptional()
   @IsString()
-  sessionId!: string;
+  sessionId?: string;
 
   @ApiProperty({
     description: '住宿在 accommodations 列表中的下标（与卡片 actions.params.accommodationIndex 一致）',

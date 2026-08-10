@@ -13,7 +13,8 @@ function stripRolePrefix(line: string): string {
 }
 
 /**
- * 过滤对话历史：去掉助手/System 行；保留「用户:」行（去前缀）与无角色前缀的用户原话。
+ * 过滤对话历史：去掉助手/System/系统注入行；保留「用户:」行（去前缀）与无角色前缀的用户原话。
+ * ContextEnricher 的 `[系统注入·用户长期偏好摘要]` / `[系统注入·当前行程摘要]` 不得参与目的地/日期抽取。
  */
 export function filterUserAuthoredIntakeLines(messages: readonly string[]): string[] {
   const out: string[] = [];
@@ -22,6 +23,7 @@ export function filterUserAuthoredIntakeLines(messages: readonly string[]): stri
     if (!line) continue;
     if (ASSISTANT_LINE.test(line)) continue;
     if (/^\s*\[SYSTEM_MESSAGE\]/i.test(line)) continue;
+    if (/^\s*\[系统注入/i.test(line)) continue;
     out.push(USER_LINE.test(line) ? stripRolePrefix(line) : line);
   }
   return out;
@@ -64,10 +66,14 @@ export function extractVehicleTypeFromIntakeInputs(
   return parseVehicleTypeFromUserIntakeText(buildUserAuthoredIntakeTextBundle(message, recentMessages));
 }
 
-/** 去掉 INTAKE 注入的 [SYSTEM_MESSAGE] 块，避免体能画像等干扰 NL 抽取。 */
+/**
+ * 去掉 INTAKE 注入块，避免体能画像 / 长期偏好 / 行程摘要等干扰 NL 目的地·日期抽取。
+ * 例：偏好「从杭州自驾出发」不得把绑定冰岛行程误写成目的地杭州。
+ */
 export function stripSystemMessageBlocksForIntakeNl(text: string): string {
   return String(text ?? '')
     .replace(/\[SYSTEM_MESSAGE\][\s\S]*?(?:\n\n|$)/gi, '')
+    .replace(/\[系统注入[^\]]*\][\s\S]*?(?=\n\[|\n\n(?![-•*])|$)/gi, '')
     .trim();
 }
 
@@ -95,7 +101,10 @@ export function isVehicleTypeUserSpecifiedInNl(
 }
 
 /**
- * 去掉误写入的 constraints.vehicle_type（仅当用户 NL 未明示车型时）。
+ * 去掉误写入的 constraints.vehicle_type。
+ * - 用户本轮明示车型 → 以 NL 为准
+ * - 未明示时：仅清除可疑的 stale **2WD**（助手合议/偏好污染常见）；**保留 4WD**
+ *   （行程 metadata / 决策写回的已确认四驱不得被静默丢掉，否则 VERIFY 会回退到画像「冬季冰岛2WD」假冲突）
  */
 export function reconcileTripPlanVehicleConstraints(
   trip: TripPlanRequest,
@@ -111,7 +120,7 @@ export function reconcileTripPlanVehicleConstraints(
       constraints: { ...(trip.constraints ?? {}), vehicle_type: fromNl },
     };
   }
-  if (!trip.constraints?.vehicle_type) return trip;
+  if (trip.constraints?.vehicle_type !== '2WD') return trip;
   const { vehicle_type: _omit, ...rest } = trip.constraints;
   const next = { ...trip };
   if (Object.keys(rest).length > 0) {

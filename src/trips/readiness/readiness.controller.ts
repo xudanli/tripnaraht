@@ -66,6 +66,7 @@ import { TripReadinessWeatherForecastService } from './services/trip-readiness-w
 import { TripDependencyImpactService } from './services/trip-dependency-impact.service';
 import { ReadinessCausalPreanalysisService } from './services/readiness-causal-preanalysis.service';
 import { buildReadinessCascadeUiHints } from './utils/readiness-causal-preanalysis.util';
+import { collectTripPlaceNameHints } from './utils/collect-trip-place-hints.util';
 import { CascadeUiHintDto } from '../../travel-cognition/dto/travel-runtime-api.dto';
 import { CoverageMapService } from './services/coverage-map.service';
 import { ReadinessAutoRepairService } from './services/readiness-auto-repair.service';
@@ -479,7 +480,7 @@ export class ReadinessController {
             include: {
               ItineraryItem: {
                 include: {
-                  Place: true,
+                  Place: { include: { City: true } },
                 },
               },
             },
@@ -495,6 +496,7 @@ export class ReadinessController {
       // 从行程提取上下文信息
       const startDate = DateTime.fromJSDate(trip.startDate).toISODate();
       const endDate = DateTime.fromJSDate(trip.endDate).toISODate();
+      const placeNames = collectTripPlaceNameHints(trip.TripDay);
 
       // 提取活动类型和 POI 标准类型
       const activitySet = new Set<string>();
@@ -659,6 +661,7 @@ export class ReadinessController {
           geoLat,
           geoLng,
           lang: lang || 'en',
+          placeNames,
         }
       );
 

@@ -66,4 +66,18 @@ describe('effective-plan-write-chain-blocked.util', () => {
       }
     }
   });
+
+  it('assertDirect allows nested writers under runWithAuthority', async () => {
+    process.env.EFFECTIVE_PLAN_WRITE_CHAIN = '1';
+    const {
+      assertDirectEffectivePlanWriteBlocked,
+    } = require('./effective-plan-write-chain-blocked.util') as typeof import('./effective-plan-write-chain-blocked.util');
+    const guard = new EffectivePlanWriteGuardService();
+    expect(() => assertDirectEffectivePlanWriteBlocked('itinerary-items.remove')).toThrow(
+      BadRequestException,
+    );
+    await guard.runWithAuthority('execute', async () => {
+      expect(() => assertDirectEffectivePlanWriteBlocked('itinerary-items.remove')).not.toThrow();
+    });
+  });
 });

@@ -18,6 +18,7 @@ import { hydrateGovernanceAndDosContext } from './decision-runtime-kernel.govern
 import { buildDosTickAuditV1, emitDosTickAudit } from './decision-os-tick-audit.util';
 import type { RouteAndRunTaskProgressReporter } from './route-and-run-task-progress.reporter';
 import type { DecisionTriggerGatewayService } from '../../decision-runtime/trigger/decision-trigger.gateway.service';
+import { TravelContextAssemblerService } from '../../travel-memory/context-assembly/travel-context-assembler.service';
 import type {
   DecisionRuntimeTickBody,
   DecisionRuntimeTickBundle,
@@ -55,6 +56,8 @@ export class DecisionRuntimeKernelService {
     @Optional() private readonly llmIntentCompiler?: LlmIntentCompilerService,
     @Optional() private readonly routeAndRunTaskProgressReporter?: RouteAndRunTaskProgressReporter,
     @Optional() private readonly decisionTriggerGateway?: DecisionTriggerGatewayService,
+    /** TMR Context Assembly Shadow — 不替换旧 Memory OS */
+    @Optional() private readonly travelContextAssembler?: TravelContextAssemblerService,
   ) {}
 
   /**
@@ -195,6 +198,7 @@ export class DecisionRuntimeKernelService {
       getEntryResponses: () => $.getEntryResponses(),
       logger: $.logger,
       decisionTriggerGateway: this.decisionTriggerGateway,
+      travelContextAssembler: this.travelContextAssembler,
     };
   }
 }

@@ -66,6 +66,8 @@ export interface TravelLeg {
   source?: string;           // 'google_routes' | 'osrm' | 'heuristic'
   /** L1 travel-time ontology — provenance + factors; align with durationMin when present */
   timeEstimate?: import('./travel-time-ontology/travel-time-ontology.types').TravelTimeEstimateV1;
+  /** Optional encoded route geometry for corridor / fuel projection */
+  geometry?: import('../../transport/contracts/travel-eta.contract').TravelRouteGeometryV1;
 }
 
 export interface ActivityCandidate {
@@ -314,6 +316,10 @@ export interface ExternalSignalsState {
   icelandCausalCalibration?: import('../causal-runtime/domains/iceland-causal-calibration.types').IcelandCausalCalibration;
   /** P5: Latest counterfactual closure report (observe → revise seed) */
   causalCounterfactualSnapshot?: import('../causal-runtime/counterfactual/causal-counterfactual.types').CausalCounterfactualSnapshot;
+  /** Knowledge-pack demo: hydrated Iceland self-drive situation */
+  icelandSelfDriveSituation?: import('../../decision-runtime/packs/knowledge/demo/iceland-self-drive-situation.types').IcelandSelfDriveSituationResult;
+  /** Knowledge-pack demo: route facts used by fuel/plow/daylight enrichers */
+  icelandSelfDriveRouteFacts?: import('../../decision-runtime/packs/knowledge/demo/iceland-self-drive-route-facts.types').IcelandSelfDriveRouteFacts;
   alerts?: Array<{ code: string; severity: 'info'|'warn'|'critical'; message: string }>;
   lastUpdatedAt: ISODatetime;
 }

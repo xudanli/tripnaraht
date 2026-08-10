@@ -7,7 +7,13 @@ import { bumpConstraintsVersion } from './trip-constraint-solver/utils/constrain
 import { mergeSeededTripConstraints, ensureSegmentDistanceConstraints } from './trip-constraint-solver/utils/segment-distance-threshold.util';
 import { UserAutomationTemplateStore } from '../decision-runtime/authorization/user-automation-template.store';
 import { bootstrapTripMetadataWithUserAutomationTemplate } from '../decision-runtime/authorization/automation-user-template-bootstrap.util';
-import { CreateTripDto, MobilityTag, TripPace } from './dto/create-trip.dto';
+import {
+  CreateTripDto,
+  MobilityTag,
+  TripPace,
+  TRIP_SUPPORTED_CURRENCIES,
+  type TripSupportedCurrency,
+} from './dto/create-trip.dto';
 import { TripStatus, normalizeTripStatus } from './dto/trip-status.dto';
 import { DateTime } from 'luxon';
 import { PacingCalculator } from './utils/pacing-calculator.util';
@@ -17,6 +23,7 @@ import { ActionHistoryService } from './services/action-history.service';
 import { TripRevisionBumpService } from './services/trip-revision-bump.service';
 import { DayScheduleResult } from '../planning-policy/interfaces/scheduler.interface';
 import { randomUUID } from 'crypto';
+import { assertDirectEffectivePlanWriteBlocked } from '../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { ProjectMembershipService } from '../identity-governance/services/project-membership.service';
 import { PersonaAlertDto, GetPersonaAlertsQueryDto, PersonaType, AlertSeverity } from './dto/persona-alerts.dto';
 import { DecisionLogEntryDto, DecisionLogResponseDto, DecisionSource } from './dto/decision-log.dto';
@@ -55,6 +62,7 @@ import { EvidenceCompletenessChecker, EvidenceCompletenessResult } from './servi
 import { EvidenceTriggerService, EvidenceTriggerResult } from './services/evidence-trigger.service';
 import { EvidencePriorityFilter, EvidenceGroupBy, EvidenceSortBy } from './dto/evidence.dto';
 import { OpeningHoursUtil } from '../common/utils/opening-hours.util';
+import { resolveTripTimezone } from '../common/utils/destination-timezone.util';
 import {
   CONSULTATION_DAY_SKELETON_FOOTER_ZH,
   CONSULTATION_NAMED_DRAFT_APPENDIX_FOOTER_ZH,
@@ -63,6 +71,10 @@ import {
   formatConsultationTripDaySkeletonLines,
   formatTripPromptSummaryForConsultation,
 } from './utils/trip-prompt-summary.util';
+import {
+  resolveActivityFocusWorldState,
+  resolveTripDayWorldState,
+} from './utils/resolve-trip-day-world-state.util';
 import {
   buildNarrativeThemeBanner,
   isNarrativeThemeBannerEnabled,
@@ -758,7 +770,13 @@ export class TripsService {
   async getTripPromptSummaryForConsultation(
     id: string,
     _userId?: string,
-    opts?: { include_day_skeleton?: boolean; include_named_draft_appendix?: boolean },
+    opts?: {
+      include_day_skeleton?: boolean;
+      include_named_draft_appendix?: boolean;
+      /** 1-based DayN；注入日焦点 World State，对齐 UI theme 与入库 items */
+      focus_day_index?: number | null;
+      activity_hint?: string | null;
+    },
   ): Promise<string | null> {
     if (!id || typeof id !== 'string' || !id.trim()) {
       return null;
@@ -775,6 +793,7 @@ export class TripsService {
         startDate: true,
         endDate: true,
         status: true,
+        metadata: true,
         ...(includeDaySkeleton
           ? {
               TripDay: {
@@ -799,7 +818,8 @@ export class TripsService {
       return null;
     }
 
-    const { TripDay: tripDays, ...tripMeta } = trip as typeof trip & {
+    const { TripDay: tripDays, metadata, ...tripMeta } = trip as typeof trip & {
+      metadata?: unknown;
       TripDay?: Array<{
         date: Date;
         ItineraryItem: Array<{
@@ -809,15 +829,56 @@ export class TripsService {
         }>;
       }>;
     };
+    const metaObj =
+      metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+        ? (metadata as Record<string, unknown>)
+        : {};
+    const dayThemesRaw = metaObj.dayThemes;
+    const dayThemes =
+      dayThemesRaw && typeof dayThemesRaw === 'object' && !Array.isArray(dayThemesRaw)
+        ? Object.fromEntries(
+            Object.entries(dayThemesRaw as Record<string, unknown>).filter(
+              (e): e is [string, string] => typeof e[1] === 'string',
+            ),
+          )
+        : null;
     const base = formatTripPromptSummaryForConsultation(trimmed, tripMeta);
     if (!includeDaySkeleton) {
       return `${base}${CONSULTATION_TRIP_METADATA_ONLY_FOOTER_ZH}`;
     }
-    const skeleton = formatConsultationTripDaySkeletonLines(tripDays ?? []);
+    const skeleton = formatConsultationTripDaySkeletonLines(tripDays ?? [], {
+      startDate: tripMeta.startDate,
+      dayThemes,
+    });
     let body = `${base}\n\n【按日骨架（仅日程项类型与数量，不含景点库名称/坐标）】\n${skeleton}${CONSULTATION_DAY_SKELETON_FOOTER_ZH}`;
     if (includeNamedDraft) {
-      const brief = buildBriefItineraryLinesFromTripDays(tripDays ?? []).join('\n');
+      const brief = buildBriefItineraryLinesFromTripDays(tripDays ?? [], {
+        startDate: tripMeta.startDate,
+        dayThemes,
+      }).join('\n');
       body += `\n\n【草案地点速览（Place 登记名或备注；供你对照用户所述路段）】\n${brief}${CONSULTATION_NAMED_DRAFT_APPENDIX_FOOTER_ZH}`;
+    }
+    const focusDay =
+      opts?.focus_day_index != null && Number(opts.focus_day_index) > 0
+        ? Number(opts.focus_day_index)
+        : undefined;
+    if (focusDay && tripDays) {
+      const resolution = resolveTripDayWorldState({
+        requestedDay: focusDay,
+        startDate: tripMeta.startDate,
+        days: tripDays,
+        dayThemes,
+        activityHint: opts?.activity_hint,
+      });
+      body += `\n\n${resolution.promptBlockZh}`;
+    } else if (opts?.activity_hint && tripDays) {
+      const activityFocus = resolveActivityFocusWorldState({
+        startDate: tripMeta.startDate,
+        days: tripDays,
+        dayThemes,
+        activityHint: opts.activity_hint,
+      });
+      if (activityFocus) body += `\n\n${activityFocus.promptBlockZh}`;
     }
     return body;
   }
@@ -879,13 +940,31 @@ export class TripsService {
       updateData.endDate = new Date(dto.endDate);
     }
 
-    if (dto.totalBudget !== undefined) {
-      // 更新预算配置（存储在 budgetConfig 中）
-      const existingBudgetConfig = (existingTrip.budgetConfig as any) || {};
-      updateData.budgetConfig = {
-        ...existingBudgetConfig,
-        totalBudget: dto.totalBudget,
-      };
+    // totalBudget / currency → budgetConfig 对称 merge（只改其一不清除另一项）
+    if (dto.totalBudget !== undefined || dto.currency !== undefined) {
+      const existingBudgetConfig =
+        existingTrip.budgetConfig && typeof existingTrip.budgetConfig === 'object'
+          ? { ...(existingTrip.budgetConfig as Record<string, unknown>) }
+          : {};
+      const budgetPatch: Record<string, unknown> = { ...existingBudgetConfig };
+
+      if (dto.totalBudget !== undefined) {
+        budgetPatch.totalBudget = dto.totalBudget;
+      }
+
+      if (dto.currency !== undefined) {
+        const currency = String(dto.currency).trim().toUpperCase();
+        if (
+          !(TRIP_SUPPORTED_CURRENCIES as readonly string[]).includes(currency)
+        ) {
+          throw new BadRequestException(
+            `currency 必须是有效的 ISO 4217 货币代码（支持: ${TRIP_SUPPORTED_CURRENCIES.join(', ')}）`,
+          );
+        }
+        budgetPatch.currency = currency as TripSupportedCurrency;
+      }
+
+      updateData.budgetConfig = budgetPatch;
     }
 
     // 合并 metadata：支持 travelers 与任意 metadata 字段（如 teamId）
@@ -915,6 +994,7 @@ export class TripsService {
       dto.startDate !== undefined ||
       dto.endDate !== undefined ||
       dto.totalBudget !== undefined ||
+      dto.currency !== undefined ||
       hasTravelers;
     if (constraintsTouched) {
       const base = (updateData.metadata ?? existingTrip.metadata ?? {}) as Record<string, unknown>;
@@ -1778,7 +1858,8 @@ export class TripsService {
 
     const schedule = await this.scheduleConverter.loadScheduleFromDatabase(
       tripDay.id,
-      dateISO
+      dateISO,
+      resolveTripTimezone({ destination: trip.destination, metadata: trip.metadata }),
     );
 
     return {
@@ -1796,6 +1877,9 @@ export class TripsService {
    * @param schedule DayScheduleResult
    */
   async saveSchedule(tripId: string, dateISO: string, scheduleOrBody: DayScheduleResult | unknown) {
+    // Agent Harness P0-1 W2 / C17：全日 rebuild 须走写链
+    assertDirectEffectivePlanWriteBlocked('trips.saveSchedule');
+
     const schedule = this.scheduleConverter.normalizeDaySchedulePayload(scheduleOrBody, dateISO);
 
     const trip = await this.prisma.trip.findUnique({

@@ -36,7 +36,6 @@ import {
 } from './execution-risk-idempotency.store';
 import { guardAutoExternalTransaction } from '../utils/execution-risk-automation-boundary.util';
 import { loadExecutionRiskKnowledgeFromPackage } from '../knowledge/execution-risk-knowledge.loader';
-import { materializeRecommendationPlanDiff } from '../utils/execution-risk-active-plan-materialize.util';
 import { executionRiskPlanAppliedBus } from '../ports/execution-risk-plan-applied.bus';
 
 export function parseEnvironmentRecommendationId(
@@ -70,7 +69,7 @@ export interface ConfirmRecommendationOptions {
 
 @Injectable()
 export class ExecutionRiskApplyService {
-  private readonly idempotency = new ExecutionRiskIdempotencyStore();
+  private readonly idempotency: ExecutionRiskIdempotencyStore;
 
   constructor(
     private readonly aggregation: ActiveRiskAggregationService,
@@ -82,9 +81,11 @@ export class ExecutionRiskApplyService {
     @Optional() private readonly advisoryApply?: ExecutionAdvisoryApplyService,
     @Optional() private readonly environmentRadar?: EnvironmentRadarService,
     @Optional() private readonly inTripAccess?: InTripAccessService,
-  ) {}
+  ) {
+    this.idempotency = new ExecutionRiskIdempotencyStore(this.prisma);
+  }
 
-  /** Test-only — reset idempotency between spec cases */
+  /** Test-only — reset L1 idempotency between spec cases */
   resetIdempotencyForTests(): void {
     this.idempotency.clear();
   }
@@ -114,7 +115,11 @@ export class ExecutionRiskApplyService {
         recommendationId,
         idempotencyKey,
       });
-      const cached = this.idempotency.lookup<ExecutionRiskApplyResponseDto>(storeKey, bodyHash);
+      const cached = await this.idempotency.lookupAsync<ExecutionRiskApplyResponseDto>(
+        tripId,
+        storeKey,
+        bodyHash,
+      );
       if (cached.hit && cached.response) {
         return { ...cached.response, idempotentReplay: true };
       }
@@ -145,13 +150,9 @@ export class ExecutionRiskApplyService {
       affectedMembersScope: resolveAffectedMembersScope({ risks: [risk] }),
     });
 
-    // Write-chain enforcement: keep preview-only (confirm via decision-queue).
-    // Otherwise write Active Plan immediately so mobile can drop hardcoded A/B/C.
-    const canWriteActivePlan =
-      !isEffectivePlanWriteChainEnabled() && Boolean(this.prisma);
-
-    let response: ExecutionRiskApplyResponseDto = {
-      executionStatus: canWriteActivePlan ? 'APPLIED' : 'PREVIEW',
+    // Agent Harness P0-1 W3 / C9：apply 仅 PREVIEW；落库仅 confirm → AE（禁止 materialize 旁路）
+    const response: ExecutionRiskApplyResponseDto = {
+      executionStatus: 'PREVIEW',
       riskId,
       recommendationId,
       decisionProblemId,
@@ -161,10 +162,8 @@ export class ExecutionRiskApplyService {
       idempotencyKey,
       expectedPlanVersionId: planDiff.beforePlanVersionId,
       projectedRisks,
-      requiresConfirmation: !canWriteActivePlan,
-      confirmHint: canWriteActivePlan
-        ? undefined
-        : this.buildConfirmHint(decisionProblemId, recommendationId),
+      requiresConfirmation: true,
+      confirmHint: this.buildConfirmHint(decisionProblemId, recommendationId),
       memberImpacts,
       validation: {
         gate: (risk.executionGate ?? 'AT_RISK') as ExecutionGate,
@@ -172,27 +171,6 @@ export class ExecutionRiskApplyService {
         resolvedRiskIds: [],
       },
     };
-
-    if (canWriteActivePlan && this.prisma) {
-      const written = await materializeRecommendationPlanDiff({
-        prisma: this.prisma,
-        tripId,
-        planDiff,
-      });
-      response = {
-        ...response,
-        executionStatus: 'APPLIED',
-        contextVersion: written.contextVersion,
-        planVersion: written.contextVersion,
-        requiresConfirmation: false,
-      };
-      executionRiskPlanAppliedBus.emitApplied({
-        tripId,
-        contextVersion: written.contextVersion,
-        changedSections: ['plan', 'itinerary', 'execution'],
-        planVersion: written.contextVersion,
-      });
-    }
 
     if (idempotencyKey) {
       const storeKey = buildIdempotencyStoreKey({
@@ -202,7 +180,7 @@ export class ExecutionRiskApplyService {
         recommendationId,
         idempotencyKey,
       });
-      this.idempotency.save(storeKey, bodyHash, response);
+      await this.idempotency.saveAsync(tripId, storeKey, bodyHash, response);
     }
 
     return response;
@@ -222,7 +200,7 @@ export class ExecutionRiskApplyService {
 
     const idempotencyKey = options.idempotencyKey;
     if (idempotencyKey) {
-      const hasPreview = this.idempotency.findApplyRecord({
+      const hasPreview = await this.idempotency.findApplyRecordAsync({
         tripId,
         riskId,
         recommendationId,
@@ -251,7 +229,11 @@ export class ExecutionRiskApplyService {
         recommendationId,
         idempotencyKey,
       });
-      const cached = this.idempotency.lookup<ConfirmExecutionRiskApplyResponseDto>(storeKey, bodyHash);
+      const cached = await this.idempotency.lookupAsync<ConfirmExecutionRiskApplyResponseDto>(
+        tripId,
+        storeKey,
+        bodyHash,
+      );
       if (cached.hit && cached.response) {
         return { ...cached.response, idempotentReplay: true };
       }
@@ -262,7 +244,7 @@ export class ExecutionRiskApplyService {
     });
     const { risk, rec } = await this.requireRiskAndRecommendation(tripId, riskId, recommendationId, userId);
 
-    // apply already wrote Active Plan (write-chain off) — treat confirm as idempotent success
+    // apply already wrote Active Plan (legacy chain-off) — treat confirm as idempotent success
     if (prepared.executionStatus === 'APPLIED' && prepared.contextVersion != null) {
       const confirmed: ConfirmExecutionRiskApplyResponseDto = {
         ...prepared,
@@ -270,7 +252,7 @@ export class ExecutionRiskApplyService {
         itineraryMaterialized: true,
         updatedRisks: await this.aggregation.listRisks(tripId, userId),
       };
-      this.cacheConfirmIfNeeded(confirmed, tripId, riskId, recommendationId, idempotencyKey, userId, options);
+      await this.cacheConfirmIfNeeded(confirmed, tripId, riskId, recommendationId, idempotencyKey, userId, options);
       return confirmed;
     }
 
@@ -287,6 +269,7 @@ export class ExecutionRiskApplyService {
       autoSwitch: false,
     });
 
+    // Agent Harness P0-1 W3 / C10：确认路径优先 AE（confirmWrite → Rfc001 activate）
     if (this.confirmWrite.isWriteEnabled() && prepared.planDiff && idempotencyKey) {
       const writeResult = await this.confirmWrite.commitConfirmedRecommendation({
         tripId,
@@ -341,7 +324,8 @@ export class ExecutionRiskApplyService {
           recommendationId,
           idempotencyKey,
         });
-        this.idempotency.save(
+        await this.idempotency.saveAsync(
+          tripId,
           storeKey,
           hashIdempotencyBody({
             tripId,
@@ -367,11 +351,17 @@ export class ExecutionRiskApplyService {
         decisionQueue: result,
         updatedRisks: await this.aggregation.listRisks(tripId, userId),
       };
-      this.cacheConfirmIfNeeded(confirmed, tripId, riskId, recommendationId, idempotencyKey, userId, options);
+      await this.cacheConfirmIfNeeded(confirmed, tripId, riskId, recommendationId, idempotencyKey, userId, options);
       return confirmed;
     }
 
-    if (this.advisoryApply && rec.id && !rec.id.startsWith('env-rec-')) {
+    // W3：写链开启时禁止 advisory 直写旁路（确认须 AE / 决策队列）
+    if (
+      !isEffectivePlanWriteChainEnabled() &&
+      this.advisoryApply &&
+      rec.id &&
+      !rec.id.startsWith('env-rec-')
+    ) {
       try {
         const applied = await this.advisoryApply.applyRecommendation(tripId, rec.id, userId, {
           confirm: true,
@@ -383,18 +373,9 @@ export class ExecutionRiskApplyService {
           advisoryApply: applied,
           updatedRisks: await this.aggregation.listRisks(tripId, userId),
         };
-        this.cacheConfirmIfNeeded(confirmed, tripId, riskId, recommendationId, idempotencyKey, userId, options);
+        await this.cacheConfirmIfNeeded(confirmed, tripId, riskId, recommendationId, idempotencyKey, userId, options);
         return confirmed;
       } catch (e) {
-        if (isEffectivePlanWriteChainEnabled()) {
-          return {
-            ...prepared,
-            executionStatus: 'REQUIRES_CONFIRMATION',
-            applied: false,
-            confirmHint:
-              '计划变更需通过决策空间确认。请调用 POST /api/trips/:tripId/decision-queue/:problemId/accept-recommended',
-          };
-        }
         throw e;
       }
     }
@@ -412,7 +393,7 @@ export class ExecutionRiskApplyService {
         environmentResolution: { eventId: envParsed.eventId, planId: envParsed.planId, resolved },
         updatedRisks: await this.aggregation.listRisks(tripId, userId),
       };
-      this.cacheConfirmIfNeeded(confirmed, tripId, riskId, recommendationId, idempotencyKey, userId, options);
+      await this.cacheConfirmIfNeeded(confirmed, tripId, riskId, recommendationId, idempotencyKey, userId, options);
       return confirmed;
     }
 
@@ -426,7 +407,7 @@ export class ExecutionRiskApplyService {
     };
   }
 
-  private cacheConfirmIfNeeded(
+  private async cacheConfirmIfNeeded(
     response: ConfirmExecutionRiskApplyResponseDto,
     tripId: string,
     riskId: string,
@@ -434,7 +415,7 @@ export class ExecutionRiskApplyService {
     idempotencyKey: string | undefined,
     userId: string,
     options: ConfirmRecommendationOptions,
-  ): void {
+  ): Promise<void> {
     if (!idempotencyKey) return;
     const storeKey = buildIdempotencyStoreKey({
       operation: 'confirm',
@@ -443,7 +424,8 @@ export class ExecutionRiskApplyService {
       recommendationId,
       idempotencyKey,
     });
-    this.idempotency.save(
+    await this.idempotency.saveAsync(
+      tripId,
       storeKey,
       hashIdempotencyBody({
         tripId,

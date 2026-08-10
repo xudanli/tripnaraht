@@ -5,7 +5,12 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { loadPlaceCoordinatesBatch } from '../../attraction-explore/utils/attraction-explore-place-coordinates.util';
 import { extractPlaceMeta } from '../../attraction-explore/utils/attraction-explore-place.util';
 import { AttractionExploreRouteDetourService } from '../../attraction-explore/services/attraction-explore-route-detour.service';
-import { resolveTripDayByIndex } from '../../utils/arrange-itinerary-day.util';
+import {
+  buildDayDateTime,
+  formatDayClockTime,
+  resolveTripDayByIndex,
+} from '../../utils/arrange-itinerary-day.util';
+import { resolveTripTimezone } from '../../../common/utils/destination-timezone.util';
 import { PlanProposalBuilderService } from './plan-proposal-builder.service';
 import { PlanProposalStoreService } from './plan-proposal-store.service';
 import type { PlanProposalMutationResponse } from '../types/plan-proposal.types';
@@ -46,7 +51,11 @@ export class ArrangeItineraryMapPlacementService {
 
     const trip = await this.prisma.trip.findUniqueOrThrow({
       where: { id: input.tripId },
-      select: { destination: true },
+      select: { destination: true, metadata: true },
+    });
+    const timezone = resolveTripTimezone({
+      destination: trip.destination,
+      metadata: trip.metadata,
     });
 
     const tripDays = await this.prisma.tripDay.findMany({
@@ -105,13 +114,17 @@ export class ArrangeItineraryMapPlacementService {
 
       const anchorItem = items[insertion.segmentIndex] ?? items[items.length - 1];
       const dwell = extractPlaceMeta(place).suggestedDwellMinutes ?? 90;
-      const start = this.suggestStartTime(anchorItem?.endTime ?? null, tripDay.date);
+      const start = this.suggestStartTime(
+        anchorItem?.endTime ?? null,
+        tripDay.date,
+        timezone,
+      );
       const end = DateTime.fromJSDate(start, { zone: 'utc' }).plus({ minutes: dwell }).toJSDate();
 
       suggestions.push({
         dayIndex,
-        startTime: this.formatTime(start),
-        endTime: this.formatTime(end),
+        startTime: formatDayClockTime(start, timezone),
+        endTime: formatDayClockTime(end, timezone),
         detourMinutes: insertion.detourMinutes,
         detourMethod: insertion.method,
         segmentIndex: insertion.segmentIndex,
@@ -186,14 +199,14 @@ export class ArrangeItineraryMapPlacementService {
     };
   }
 
-  private suggestStartTime(anchorEnd: Date | null, dayDate: Date): Date {
+  private suggestStartTime(
+    anchorEnd: Date | null,
+    dayDate: Date,
+    timezone: string,
+  ): Date {
     if (anchorEnd) {
       return DateTime.fromJSDate(anchorEnd, { zone: 'utc' }).plus({ minutes: 15 }).toJSDate();
     }
-    return DateTime.fromJSDate(dayDate, { zone: 'utc' }).set({ hour: 10, minute: 0 }).toJSDate();
-  }
-
-  private formatTime(value: Date): string {
-    return DateTime.fromJSDate(value, { zone: 'utc' }).toFormat('HH:mm');
+    return buildDayDateTime(dayDate, '10:00', timezone);
   }
 }

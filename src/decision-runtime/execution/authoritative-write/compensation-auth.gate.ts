@@ -7,9 +7,10 @@ export const UWC_1D_COMPENSATION_CONTRACT_COMPLETE = true as const;
 
 /**
  * Explicit authorization to *execute* compensating writes.
- * Remains false after UWC-1d — Shadow / dry-run only until ops unlock.
+ * UWC-COMP-UNLOCK-01 (2026-07-24): authorized after OCC unlock + explicit decision.
+ * Does **not** enable client auto-undo / mixedTargets / external refunds.
  */
-export const UWC_1D_COMPENSATION_EXEC_AUTHORIZED = false as const;
+export const UWC_1D_COMPENSATION_EXEC_AUTHORIZED = true as const;
 
 export const UWC_COMPENSATION_EXEC_HARD_BLOCK_REASON =
   'COMPENSATION_EXEC_HARD_BLOCKED_PENDING_AUTH_GATE' as const;

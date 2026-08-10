@@ -185,5 +185,39 @@ describe('planning-conflicts.util', () => {
       expect(summary.mustHandle).toBe(1);
       expect(summary.pendingConfirm).toBe(1);
     });
+    it('projects affectedDayNumbers for non-travel issues from affectedDays', () => {
+      const item = feasibilityIssueToPlanningItem(
+        makeIssue({
+          issueKind: 'daily_drive',
+          affectedDays: [3],
+        }),
+      );
+      expect(item.affectedDayNumbers).toEqual([3]);
+      expect(item.affectedDays).toEqual([3]);
+    });
+
+    it('keeps empty affectedDayNumbers for trip-level issues', () => {
+      const item = feasibilityIssueToPlanningItem(
+        makeIssue({
+          issueKind: 'budget',
+          affectedDays: [],
+        }),
+      );
+      expect(item.affectedDayNumbers).toEqual([]);
+      expect(item.affectedDays).toEqual([]);
+    });
+
+    it('does not treat ISO dates as day numbers', () => {
+      const item = scheduleConflictToPlanningItem(
+        makeConflict({
+          type: ConflictType.DUPLICATE_ITEM,
+          affectedDays: ['2026-07-19'],
+          fromDayNumber: undefined,
+          toDayNumber: undefined,
+          issueKind: undefined,
+        }),
+      );
+      expect(item.affectedDayNumbers).toEqual([]);
+    });
   });
 });

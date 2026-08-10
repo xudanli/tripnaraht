@@ -30,6 +30,7 @@ import { RagModule } from '../rag/rag.module';
 import { InterventionEngine } from './actuator/intervention-engine';
 import { DemModule } from '../trips/dem/dem.module';
 import { SharedMemoryModule } from '../agent/memory/shared-memory.module';
+import { TravelMemoryModule } from '../travel-memory/travel-memory.module';
 import { ObservationHarnessService, OBSERVATION_TOOL_EXECUTOR } from './kernel/observation/observation-harness.service';
 import { LlmModule } from '../llm/llm.module';
 import { ConfigService } from '@nestjs/config';
@@ -42,6 +43,7 @@ import { DefaultObservationToolExecutor } from './kernel/observation/observation
   imports: [
     DemModule,
     forwardRef(() => SharedMemoryModule),
+    TravelMemoryModule, // CGUS Outcome Loop → Episode → Memory Ledger
     HarnessModule,
     forwardRef(() => RagModule),
     ContextEngineModule,

@@ -47,6 +47,10 @@ export interface HarnessAdminDiagnosticsSnapshot extends HarnessShadowCheckSnaps
   quality_loop: HarnessQualityLoopSnapshotV1 | null;
   shadow_harness: HarnessShadowHarnessAdminSnapshotV1 | null;
   llm_routing: LlmRoutingAdminSnapshotV1 | null;
+  decision_state_divergence: {
+    counters: Record<string, number>;
+    prometheus_text: string;
+  } | null;
 }
 
 export function buildHarnessAdminDiagnosticsSnapshot(params: {
@@ -57,6 +61,7 @@ export function buildHarnessAdminDiagnosticsSnapshot(params: {
   qualityLoop?: HarnessAdminDiagnosticsSnapshot['quality_loop'];
   shadowHarness?: HarnessAdminDiagnosticsSnapshot['shadow_harness'];
   llmRouting?: HarnessAdminDiagnosticsSnapshot['llm_routing'];
+  decisionStateDivergence?: HarnessAdminDiagnosticsSnapshot['decision_state_divergence'];
 }): HarnessAdminDiagnosticsSnapshot {
   return {
     ...params.harness,
@@ -67,5 +72,6 @@ export function buildHarnessAdminDiagnosticsSnapshot(params: {
     quality_loop: params.qualityLoop ?? null,
     shadow_harness: params.shadowHarness ?? null,
     llm_routing: params.llmRouting ?? null,
+    decision_state_divergence: params.decisionStateDivergence ?? null,
   };
 }

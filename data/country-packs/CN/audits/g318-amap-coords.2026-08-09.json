@@ -1,0 +1,343 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "sampledAt": "2026-08-09T08:57:29.622Z",
+    "source": "restapi.amap.com/v3/place/text",
+    "disclaimer": "高德 POI 文本搜首条结果，非测绘院成果；垭口类可能偏差较大需人工确认。"
+  },
+  "summary": {
+    "targets": 18,
+    "ok": 18,
+    "miss": 0,
+    "maxDeltaKm": 9.78,
+    "appliedCount": 1,
+    "thresholdKm": 3,
+    "apply": true
+  },
+  "rows": [
+    {
+      "nameCN": "成都",
+      "ok": true,
+      "seed": {
+        "lat": 30.5728,
+        "lng": 104.0668,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 30.572961,
+        "lng": 104.066301,
+        "name": "成都市",
+        "address": "武侯区",
+        "id": "B001C8OIZM"
+      },
+      "deltaKm": 0.051,
+      "applied": false
+    },
+    {
+      "nameCN": "康定",
+      "ok": true,
+      "seed": {
+        "lat": 29.998544,
+        "lng": 101.95687,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 29.998544,
+        "lng": 101.95687,
+        "name": "康定市",
+        "address": "康定市",
+        "id": "B03440MKWX"
+      },
+      "deltaKm": 0,
+      "applied": false
+    },
+    {
+      "nameCN": "木格措",
+      "ok": true,
+      "seed": {
+        "lat": 30.170233,
+        "lng": 101.872437,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 30.170233,
+        "lng": 101.872437,
+        "name": "木格措景区",
+        "address": "雅拉乡王母村",
+        "id": "B03440MH5B"
+      },
+      "deltaKm": 0,
+      "applied": false
+    },
+    {
+      "nameCN": "折多山",
+      "ok": true,
+      "seed": {
+        "lat": 30.075,
+        "lng": 101.805,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 30.06726,
+        "lng": 101.805834,
+        "name": "折多山",
+        "address": "康定市",
+        "id": "B0FFLFG3ZA"
+      },
+      "deltaKm": 0.864,
+      "applied": false
+    },
+    {
+      "nameCN": "新都桥",
+      "ok": true,
+      "seed": {
+        "lat": 30.04,
+        "lng": 101.48,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 30.033269,
+        "lng": 101.509559,
+        "name": "甘孜州新都桥",
+        "address": "318国道2919处",
+        "id": "B03440MODQ"
+      },
+      "deltaKm": 2.942,
+      "applied": false
+    },
+    {
+      "nameCN": "理塘",
+      "ok": true,
+      "seed": {
+        "lat": 29.9942,
+        "lng": 100.2692,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 29.994228,
+        "lng": 100.269145,
+        "name": "理塘县",
+        "address": "理塘县",
+        "id": "B034400OIN"
+      },
+      "deltaKm": 0.006,
+      "applied": false
+    },
+    {
+      "nameCN": "芒康",
+      "ok": true,
+      "seed": {
+        "lat": 29.68,
+        "lng": 98.593,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 29.679957,
+        "lng": 98.593493,
+        "name": "芒康县",
+        "address": "芒康县",
+        "id": "B037F00LL6"
+      },
+      "deltaKm": 0.048,
+      "applied": false
+    },
+    {
+      "nameCN": "波密",
+      "ok": true,
+      "seed": {
+        "lat": 29.859,
+        "lng": 95.768,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 29.859751,
+        "lng": 95.768439,
+        "name": "波密县",
+        "address": "波密县",
+        "id": "B037E00BAK"
+      },
+      "deltaKm": 0.094,
+      "applied": false
+    },
+    {
+      "nameCN": "鲁朗",
+      "ok": true,
+      "seed": {
+        "lat": 29.729677,
+        "lng": 94.725708,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 29.729677,
+        "lng": 94.725708,
+        "name": "鲁朗国际旅游小镇",
+        "address": "沪聂线鲁朗珠江国际酒店西北侧约220米",
+        "id": "B0G254SZ38"
+      },
+      "deltaKm": 0,
+      "applied": false
+    },
+    {
+      "nameCN": "林芝",
+      "ok": true,
+      "seed": {
+        "lat": 29.6504,
+        "lng": 94.3619,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 29.64875,
+        "lng": 94.361436,
+        "name": "林芝市",
+        "address": "巴宜区",
+        "id": "B037E0M4JB"
+      },
+      "deltaKm": 0.189,
+      "applied": false
+    },
+    {
+      "nameCN": "拉萨",
+      "ok": true,
+      "seed": {
+        "lat": 29.652,
+        "lng": 91.172,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 29.653491,
+        "lng": 91.171924,
+        "name": "拉萨市",
+        "address": "城关区",
+        "id": "B037B0P4V8"
+      },
+      "deltaKm": 0.166,
+      "applied": false
+    },
+    {
+      "nameCN": "布达拉宫",
+      "ok": true,
+      "seed": {
+        "lat": 29.6555,
+        "lng": 91.1174,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 29.654471,
+        "lng": 91.118463,
+        "name": "布达拉宫",
+        "address": "北京中路35号",
+        "id": "B037B01F68"
+      },
+      "deltaKm": 0.154,
+      "applied": false
+    },
+    {
+      "nameCN": "东达山",
+      "ok": true,
+      "seed": {
+        "lat": 29.71,
+        "lng": 98.02,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 29.723183,
+        "lng": 98.018089,
+        "name": "东达山",
+        "address": "芒康县",
+        "id": "B037F00IAH"
+      },
+      "deltaKm": 1.477,
+      "applied": false
+    },
+    {
+      "nameCN": "然乌湖",
+      "ok": true,
+      "seed": {
+        "lat": 29.496,
+        "lng": 96.717,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 29.443242,
+        "lng": 96.797833,
+        "name": "然乌湖景区",
+        "address": "然乌镇查卡",
+        "id": "B037F003S9"
+      },
+      "deltaKm": 9.78,
+      "applied": true
+    },
+    {
+      "nameCN": "巴松措",
+      "ok": true,
+      "seed": {
+        "lat": 30.005,
+        "lng": 93.99,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 30.007874,
+        "lng": 93.967899,
+        "name": "巴松措",
+        "address": "靠近达切拉观光台",
+        "id": "B037E0M3PB"
+      },
+      "deltaKm": 2.152,
+      "applied": false
+    },
+    {
+      "nameCN": "大昭寺",
+      "ok": true,
+      "seed": {
+        "lat": 29.653,
+        "lng": 91.132,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 29.650209,
+        "lng": 91.132802,
+        "name": "大昭寺",
+        "address": "八廓西街2号",
+        "id": "B037B00F2D"
+      },
+      "deltaKm": 0.32,
+      "applied": false
+    },
+    {
+      "nameCN": "八廓街",
+      "ok": true,
+      "seed": {
+        "lat": 29.6525,
+        "lng": 91.1335,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 29.64999,
+        "lng": 91.133541,
+        "name": "西藏自治区拉萨市八廓街步行街",
+        "address": "宇拓路大昭寺",
+        "id": "B0FFF5QRT7"
+      },
+      "deltaKm": 0.279,
+      "applied": false
+    },
+    {
+      "nameCN": "米拉山口",
+      "ok": true,
+      "seed": {
+        "lat": 29.826,
+        "lng": 92.34,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 29.824731,
+        "lng": 92.344974,
+        "name": "米拉山口",
+        "address": "318国道",
+        "id": "B0FFF3LHCT"
+      },
+      "deltaKm": 0.5,
+      "applied": false
+    }
+  ]
+}

@@ -55,5 +55,6 @@ describe('harness-admin-diagnostics.util', () => {
     expect(snap.quality_loop).toBeNull();
     expect(snap.shadow_harness).toBeNull();
     expect(snap.llm_routing).toBeNull();
+    expect(snap.decision_state_divergence).toBeNull();
   });
 });

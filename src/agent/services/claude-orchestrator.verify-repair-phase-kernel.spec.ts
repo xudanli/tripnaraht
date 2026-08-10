@@ -182,7 +182,13 @@ describe('ClaudeOrchestratorService — executeVerifyPhase / executeRepairPhase 
     const decisionKernel = {
       executeVerify: jest.fn().mockResolvedValue({
         newState: dsoAfterVerify,
-        issues: ['kernel-verify-issue'],
+        issues: [
+          {
+            class: 'CONFLICT',
+            code: 'TIME_WINDOW_OVERLAP',
+            message: 'kernel-verify-issue',
+          },
+        ],
         confidenceDelta: -0.15,
       }),
       executeRepair: jest.fn().mockResolvedValue({

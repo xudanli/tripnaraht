@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import {
   assertExecutionAdvisoryDirectApplyAllowed,
 } from '../utils/execution-advisory-write-chain.util';
+import { EFFECTIVE_PLAN_WRITE_CHAIN_REQUIRED_CODE } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 
 describe('execution-advisory-write-chain.util', () => {
   const prev = process.env.EFFECTIVE_PLAN_WRITE_CHAIN;
@@ -16,7 +17,7 @@ describe('execution-advisory-write-chain.util', () => {
     expect(() => assertExecutionAdvisoryDirectApplyAllowed()).not.toThrow();
   });
 
-  it('blocks apply with WRITE_CHAIN_BLOCKED when write chain enabled', () => {
+  it('blocks apply with EFFECTIVE_PLAN_WRITE_CHAIN_REQUIRED when write chain enabled', () => {
     process.env.EFFECTIVE_PLAN_WRITE_CHAIN = '1';
     try {
       assertExecutionAdvisoryDirectApplyAllowed();
@@ -24,7 +25,7 @@ describe('execution-advisory-write-chain.util', () => {
     } catch (e) {
       expect(e).toBeInstanceOf(BadRequestException);
       const resp = (e as BadRequestException).getResponse() as { code?: string };
-      expect(resp.code).toBe('WRITE_CHAIN_BLOCKED');
+      expect(resp.code).toBe(EFFECTIVE_PLAN_WRITE_CHAIN_REQUIRED_CODE);
     }
   });
 });

@@ -30,13 +30,16 @@ export function isLegacyMutationWriteGuardEnforce(): boolean {
   return resolveLegacyMutationWriteGuardMode() === 'ENFORCE';
 }
 
-/** Effective plan pointer guard — production step 1: SHADOW, step 5: ENFORCE default in prod */
+/**
+ * Effective plan pointer guard.
+ * P0-1 W0: unset → ENFORCE in all environments (was: production-only ENFORCE / else OFF).
+ */
 export function resolveEffectivePlanWriteGuardMode(): EffectivePlanWriteGuardMode {
   const raw = process.env.EFFECTIVE_PLAN_WRITE_GUARD?.trim();
   if (!raw) {
-    return process.env.NODE_ENV === 'production' ? 'ENFORCE' : 'OFF';
+    return 'ENFORCE';
   }
-  return parseTriState(raw, 'OFF') as EffectivePlanWriteGuardMode;
+  return parseTriState(raw, 'ENFORCE') as EffectivePlanWriteGuardMode;
 }
 
 export function isEffectivePlanWriteGuardEnforce(): boolean {

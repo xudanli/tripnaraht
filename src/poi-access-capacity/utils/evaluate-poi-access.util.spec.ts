@@ -137,4 +137,14 @@ describe('evaluatePoiAccessCapacity', () => {
     expect(result.reason).toMatch(/基于预约库存预测/);
     expect(result.predictedWaitP50).toBe(25);
   });
+
+  it('arrivalTime 缺失时不抛错，返回 NEEDS_CONFIRMATION', () => {
+    const result = evaluatePoiAccessCapacity({
+      poiId: ICELAND_A_TIER_POI_SLUGS.BLUE_LAGOON,
+      dateISO: '2026-08-16',
+      rules: blueLagoonRules,
+    } as any);
+    expect(result.verdict).toBe('NEEDS_CONFIRMATION');
+    expect(result.reason).toMatch(/无法解析到达时刻/);
+  });
 });

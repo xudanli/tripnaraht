@@ -33,6 +33,28 @@ export interface CountryPack {
 }
 
 export const COUNTRY_PACKS: Record<string, CountryPack> = {
+  /** 中国国家级默认（城市/东部自驾等）；高原专项仍用 CN_XIZANG / CN_SICHUAN */
+  CN: {
+    countryCode: 'CN',
+    countryName: '中国',
+    riskThresholds: {
+      highAltitudeM: 2500,
+      rapidAscentM: 500,
+      steepSlopePct: 15,
+      bigAscentDayM: 1200,
+    },
+    effortLevelMapping: {
+      relaxMax: 30,
+      moderateMax: 60,
+      challengeMax: 85,
+      extremeMin: 85,
+    },
+    drivingSegmentThresholds: {
+      maxSegmentDistanceKm: 350,
+      warnSegmentDistanceKm: 220,
+      winterWarnSegmentDistanceKm: 180,
+    },
+  },
   CN_XIZANG: {
     countryCode: 'CN_XIZANG',
     countryName: '中国西藏',
@@ -47,6 +69,12 @@ export const COUNTRY_PACKS: Record<string, CountryPack> = {
       moderateMax: 60,
       challengeMax: 85,
       extremeMin: 85,
+    },
+    /** 高原廊道：垭口/高反，单段宜短于国家级 CN */
+    drivingSegmentThresholds: {
+      maxSegmentDistanceKm: 250,
+      warnSegmentDistanceKm: 160,
+      winterWarnSegmentDistanceKm: 120,
     },
   },
   CN_SICHUAN: {
@@ -63,6 +91,12 @@ export const COUNTRY_PACKS: Record<string, CountryPack> = {
       moderateMax: 60,
       challengeMax: 85,
       extremeMin: 85,
+    },
+    /** 川西山路：急升与雨季塌方，控程介于 CN 与藏区之间 */
+    drivingSegmentThresholds: {
+      maxSegmentDistanceKm: 280,
+      warnSegmentDistanceKm: 180,
+      winterWarnSegmentDistanceKm: 140,
     },
   },
   NP: {

@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { generateDefaultTripName } from '../../trips/utils/trip-name.util';
 import type { GuideItineraryDraft } from './guide-plan-builder.service';
 import type { GuideTravelContext } from '../types/guide-to-plan.types';
+import { assertDirectEffectivePlanWriteBlocked } from '../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 
 export interface GuideMaterializeParams {
   userId: string;
@@ -106,6 +107,9 @@ export class GuideTripMaterializerService {
     itineraryDraft: GuideItineraryDraft;
     travelContext: GuideTravelContext;
   }): Promise<number> {
+    // Agent Harness P1：legacy Item 物化禁止；正式路径 shell + Rfc001 AE
+    assertDirectEffectivePlanWriteBlocked('guide-trip.materializeItineraryIntoTrip');
+
     const { startDate } = this.resolveDates(
       input.travelContext,
       input.itineraryDraft.totalDays,

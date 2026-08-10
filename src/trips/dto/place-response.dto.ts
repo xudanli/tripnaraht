@@ -199,10 +199,13 @@ export function toPlaceResponseDto(place: any): PlaceResponseDto | null {
       normalizedMetadata.priceLevel = metadata.priceLevel;
     }
     // tags 可能在 rawTags 或直接在 tags 字段
-    if (metadata.rawTags && metadata.rawTags.length > 0) {
-      normalizedMetadata.tags = metadata.rawTags;
-    } else if (metadata.tags && metadata.tags.length > 0) {
-      normalizedMetadata.tags = metadata.tags;
+    const rawTagList = Array.isArray(metadata.rawTags)
+      ? metadata.rawTags
+      : Array.isArray(metadata.tags)
+        ? metadata.tags
+        : null;
+    if (rawTagList && rawTagList.length > 0) {
+      normalizedMetadata.tags = rawTagList;
     }
 
     // P2: 联系方式（可能在 contact 对象中或直接在 metadata 根级）

@@ -6,6 +6,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { TripOntologyFactsIngestService } from '../../../travel-ontology/services/trip-ontology-facts-ingest.service';
 import type { ExplorationInput } from '../types/exploration.types';
 import { bumpTripVersion } from '../utils/exploration-input.util';
+import { assertDirectEffectivePlanWriteBlocked } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 
 const REMOTE_HIGHLANDS_STRATEGY = 'remote-highlands-south';
 const F208_DRIVE_ITEM_KEY = 'exploration_f208_drive_item_id';
@@ -31,6 +32,9 @@ export class ExplorationItinerarySeederService {
    * for Iceland remote-highlands research path (2WD → road access BLOCK).
    */
   async seedForSelectedRoute(input: SeedRouteItineraryInput): Promise<{ itemCount: number }> {
+    // Agent Harness P1：既有 trip 上 seed 结构写须走写链
+    assertDirectEffectivePlanWriteBlocked('exploration.seedForSelectedRoute');
+
     const trip = await this.prisma.trip.findUniqueOrThrow({
       where: { id: input.tripId },
       include: { TripDay: { orderBy: { date: 'asc' } } },

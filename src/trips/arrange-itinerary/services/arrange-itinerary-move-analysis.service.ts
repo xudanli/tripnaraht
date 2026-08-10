@@ -12,8 +12,10 @@ import { isPlanningItemImmutable } from '../utils/planning-item-lock.util';
 import type { PlanProposal, PlanProposalMutationResponse } from '../types/plan-proposal.types';
 import {
   buildDayDateTime,
+  formatDayClockTime,
   resolveTripDayByIndex,
 } from '../../utils/arrange-itinerary-day.util';
+import { resolveTripTimezone } from '../../../common/utils/destination-timezone.util';
 
 @Injectable()
 export class ArrangeItineraryMoveAnalysisService {
@@ -56,19 +58,29 @@ export class ArrangeItineraryMoveAnalysisService {
       throw new BadRequestException(`该行程项已锁定（${lock.reason}），无法移动`);
     }
 
-    const tripDays = await this.prisma.tripDay.findMany({
-      where: { tripId: input.tripId },
-      orderBy: { date: 'asc' },
-      select: { id: true, date: true },
+    const [tripDays, trip] = await Promise.all([
+      this.prisma.tripDay.findMany({
+        where: { tripId: input.tripId },
+        orderBy: { date: 'asc' },
+        select: { id: true, date: true },
+      }),
+      this.prisma.trip.findUnique({
+        where: { id: input.tripId },
+        select: { destination: true, metadata: true },
+      }),
+    ]);
+    const timezone = resolveTripTimezone({
+      destination: trip?.destination,
+      metadata: trip?.metadata,
     });
     const targetDay = resolveTripDayByIndex(tripDays, input.dayIndex);
     const sourceDayIndex =
       tripDays.findIndex((d) => d.id === item.tripDayId) + 1;
 
-    const start = buildDayDateTime(targetDay.date, input.startTime);
+    const start = buildDayDateTime(targetDay.date, input.startTime, timezone);
     let end: Date;
     if (input.endTime) {
-      end = buildDayDateTime(targetDay.date, input.endTime);
+      end = buildDayDateTime(targetDay.date, input.endTime, timezone);
     } else if (item.startTime && item.endTime) {
       const duration = DateTime.fromJSDate(item.endTime, { zone: 'utc' }).diff(
         DateTime.fromJSDate(item.startTime, { zone: 'utc' }),
@@ -82,7 +94,7 @@ export class ArrangeItineraryMoveAnalysisService {
     const label = item.Place?.nameCN ?? item.note ?? '行程项';
     const fromLabel =
       item.startTime && sourceDayIndex > 0
-        ? `第 ${sourceDayIndex} 天 ${this.formatTime(item.startTime)}`
+        ? `第 ${sourceDayIndex} 天 ${formatDayClockTime(item.startTime, timezone)}`
         : `第 ${sourceDayIndex} 天`;
 
     const proposal = await this.builder.build({
@@ -104,9 +116,9 @@ export class ArrangeItineraryMoveAnalysisService {
           itemId: input.itemId,
           dayIndex: input.dayIndex,
           from: fromLabel,
-          to: `第 ${input.dayIndex} 天 ${this.formatTime(start)}`,
-          startTime: this.formatTime(start),
-          endTime: this.formatTime(end),
+          to: `第 ${input.dayIndex} 天 ${formatDayClockTime(start, timezone)}`,
+          startTime: formatDayClockTime(start, timezone),
+          endTime: formatDayClockTime(end, timezone),
           label,
         },
       ],
@@ -117,6 +129,7 @@ export class ArrangeItineraryMoveAnalysisService {
         itemId: input.itemId,
         sourceDayIndex,
         targetDayIndex: input.dayIndex,
+        timezone,
       }),
     });
 
@@ -145,6 +158,7 @@ export class ArrangeItineraryMoveAnalysisService {
     itemId: string;
     sourceDayIndex: number;
     targetDayIndex: number;
+    timezone: string;
   }): Promise<string[]> {
     const tradeoffs: string[] = [];
     if (input.sourceDayIndex !== input.targetDayIndex) {
@@ -164,14 +178,13 @@ export class ArrangeItineraryMoveAnalysisService {
       }
     }
 
-    if (input.end.getHours() >= 21) {
-      tradeoffs.push('预计结束时间偏晚，请留意营业与入住时间');
+    const endHour = DateTime.fromJSDate(input.end, { zone: 'utc' })
+      .setZone(input.timezone || 'utc')
+      .hour;
+    if (endHour >= 21) {
+      tradeoffs.push('预计结束时间偏晚，请留意营业与日落时间');
     }
 
     return tradeoffs;
-  }
-
-  private formatTime(value: Date): string {
-    return DateTime.fromJSDate(value, { zone: 'utc' }).toFormat('HH:mm');
   }
 }

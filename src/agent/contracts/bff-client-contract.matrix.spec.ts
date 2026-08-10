@@ -32,10 +32,15 @@ describe('bff-client-contract.matrix (EWP-07 / BFF-1)', () => {
       'arrange_ios',
       'page_ai_contracts',
       'trusted_delivery',
+      'conversation_turn_result',
       'tep_self_drive',
       'travel_context_http',
       'fact_pack_openapi',
       'route_and_run_options_freeze',
+      'uwc_1e_web_ios_handoff',
+      'uwc_1e_web_sample_client',
+      'uwc_1e_ios_sample_client',
+      'uwc_1e_client_contract_matrix',
     ];
     for (const id of requiredIds) {
       const row = BFF_CLIENT_CONTRACT_INDEX.find((r) => r.id === id);

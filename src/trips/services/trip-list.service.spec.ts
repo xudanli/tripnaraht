@@ -32,6 +32,7 @@ describe('TripListService', () => {
         startDate: new Date('2026-08-01T00:00:00.000Z'),
         endDate: new Date('2026-08-07T00:00:00.000Z'),
         status: 'PLANNING',
+        budgetConfig: { totalBudget: 500000, currency: 'ISK' },
         createdAt: new Date('2026-07-02T00:00:00.000Z'),
         updatedAt: new Date('2026-07-02T00:00:00.000Z'),
       },
@@ -51,7 +52,8 @@ describe('TripListService', () => {
     expect(result.trips[0]?.id).toBe('trip-a');
     expect(result.trips[0]?.destinationLabel).toBe('冰岛');
     expect(result.trips[0]?.days).toEqual([]);
-    expect(result.trips[0]?.totalBudget).toBe(0);
+    expect(result.trips[0]?.totalBudget).toBe(500000);
+    expect(result.trips[0]?.currency).toBe('ISK');
     expect(result.trips[0]?.listSummary).toEqual(
       expect.objectContaining({
         coverImageUrl: 'https://cdn.example.com/is.jpg',
@@ -76,6 +78,7 @@ describe('TripListService', () => {
           id: true,
           name: true,
           destination: true,
+          budgetConfig: true,
         }),
       }),
     );

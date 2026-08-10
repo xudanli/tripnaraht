@@ -1,0 +1,202 @@
+{
+  "schemaId": "tripnara.destination.ontology.road_types@v1",
+  "countryCode": "CN",
+  "version": "0.1.0-g318",
+  "nodes": [
+    {
+      "ontologyNodeId": "ontology:corridor:CN:G318",
+      "kind": "Corridor",
+      "labelZh": "G318 川藏南线走廊",
+      "labelEn": "G318 Sichuan–Tibet Southern Corridor",
+      "roadRefsZh": "国道 G318（成都→拉萨南线）为主轴；支线含进藏垭口与景区岔路，以交警通告为准",
+      "roadIsKeys": ["G318", "318"],
+      "roadIds": ["CN-G318"],
+      "regionCodes": ["CN_SICHUAN", "CN_XIZANG", "CN_G318"],
+      "segmentType": "HIGHWAY",
+      "messageTriggersLower": [
+        "318",
+        "g318",
+        "国道318",
+        "川藏",
+        "川藏线",
+        "川藏南线",
+        "川藏南"
+      ],
+      "tripDraftSignals": ["G318", "川藏", "成都到拉萨", "康定", "理塘", "芒康", "林芝", "拉萨"]
+    },
+    {
+      "ontologyNodeId": "ontology:region:CN:WEST_SICHUAN",
+      "kind": "Region",
+      "labelZh": "川西高原前段",
+      "labelEn": "West Sichuan Highlands (approach)",
+      "roadRefsZh": "G318 成都—康定—新都桥—理塘一带；急升与雨季塌方风险高",
+      "roadIsKeys": ["G318", "G318-WS"],
+      "roadIds": ["CN-G318-WEST-SICHUAN"],
+      "regionCodes": ["CN_SICHUAN", "CN_G318"],
+      "segmentType": "HIGHWAY",
+      "messageTriggersLower": [
+        "川西",
+        "康定",
+        "木格措",
+        "新都桥",
+        "理塘",
+        "折多山",
+        "海子山"
+      ],
+      "tripDraftSignals": ["康定", "木格措", "新都桥", "理塘", "川西"]
+    },
+    {
+      "ontologyNodeId": "ontology:region:CN:EAST_TIBET_G318",
+      "kind": "Region",
+      "labelZh": "藏东 G318 段",
+      "labelEn": "Eastern Tibet along G318",
+      "roadRefsZh": "G318 芒康—左贡—波密—林芝—拉萨；检查站、高反与补给稀疏",
+      "roadIsKeys": ["G318", "G318-ET"],
+      "roadIds": ["CN-G318-EAST-TIBET"],
+      "regionCodes": ["CN_XIZANG", "CN_G318"],
+      "segmentType": "HIGHWAY",
+      "messageTriggersLower": [
+        "芒康",
+        "左贡",
+        "波密",
+        "林芝",
+        "拉萨",
+        "通麦",
+        "鲁朗",
+        "米林"
+      ],
+      "tripDraftSignals": ["芒康", "林芝", "拉萨", "波密", "鲁朗"]
+    },
+    {
+      "ontologyNodeId": "ontology:road:CN:G318_KANGDING_PASS",
+      "kind": "Road",
+      "labelZh": "康定折多山方向",
+      "labelEn": "Kangding / Zheduo Pass approach",
+      "roadRefsZh": "折多山垭口及相关支线；冬季结冰与高反并存",
+      "roadIsKeys": ["G318", "Zheduo"],
+      "roadIds": ["CN-G318-Zheduo"],
+      "regionCodes": ["CN_SICHUAN", "CN_G318"],
+      "segmentType": "HIGHWAY",
+      "messageTriggersLower": ["折多山", "折多", "康定垭口"],
+      "tripDraftSignals": ["折多山", "康定"]
+    }
+  ],
+  "spatialSeed": {
+    "pois": [
+      {
+        "id": "cn.chengdu",
+        "name": "成都",
+        "coordinates": { "lat": 30.5728, "lng": 104.0668 }
+      },
+      {
+        "id": "cn.kangding",
+        "name": "康定",
+        "coordinates": { "lat": 29.998544, "lng": 101.95687 },
+        "coordSource": "amap_place_text_2026-08-09"
+      },
+      {
+        "id": "cn.mugecuo",
+        "name": "木格措",
+        "coordinates": { "lat": 30.170233, "lng": 101.872437 },
+        "altitudeMeters": 3700,
+        "coordSource": "amap_place_text_2026-08-09"
+      },
+      {
+        "id": "cn.zheduo-pass",
+        "name": "折多山垭口",
+        "coordinates": { "lat": 30.075, "lng": 101.805 },
+        "altitudeMeters": 4298
+      },
+      {
+        "id": "cn.litang",
+        "name": "理塘",
+        "coordinates": { "lat": 29.9942, "lng": 100.2692 },
+        "altitudeMeters": 4014
+      },
+      {
+        "id": "cn.mangkang",
+        "name": "芒康",
+        "coordinates": { "lat": 29.68, "lng": 98.593 }
+      },
+      {
+        "id": "cn.bomi",
+        "name": "波密",
+        "coordinates": { "lat": 29.859, "lng": 95.768 },
+        "altitudeMeters": 2750
+      },
+      {
+        "id": "cn.linzhi",
+        "name": "林芝",
+        "coordinates": { "lat": 29.6504, "lng": 94.3619 },
+        "altitudeMeters": 3000
+      },
+      {
+        "id": "cn.lulang",
+        "name": "鲁朗",
+        "coordinates": { "lat": 29.729677, "lng": 94.725708 },
+        "altitudeMeters": 3700,
+        "coordSource": "amap_place_text_2026-08-09"
+      },
+      {
+        "id": "cn.lhasa",
+        "name": "拉萨",
+        "coordinates": { "lat": 29.652, "lng": 91.172 },
+        "altitudeMeters": 3650
+      }
+    ],
+    "segments": [
+      {
+        "id": "CN-G318-CD-KD",
+        "from_poi_id": "cn.chengdu",
+        "to_poi_id": "cn.kangding",
+        "segment_type": "HIGHWAY",
+        "ontologyNodeId": "ontology:region:CN:WEST_SICHUAN",
+        "road_condition": { "surface": "paved", "status": "UNKNOWN" },
+        "rules": { "altitudeGate": true, "maxDailyKmHint": 180 }
+      },
+      {
+        "id": "CN-G318-KD-LT",
+        "from_poi_id": "cn.kangding",
+        "to_poi_id": "cn.litang",
+        "segment_type": "HIGHWAY",
+        "ontologyNodeId": "ontology:region:CN:WEST_SICHUAN",
+        "road_condition": { "surface": "paved", "status": "UNKNOWN" },
+        "seasonal_closures": [
+          {
+            "start": "--06-01",
+            "end": "--09-30",
+            "reason": "雨季塌方高发窗口（示意，非实时）"
+          }
+        ],
+        "rules": { "altitudeGate": true, "maxDailyKmHint": 180 }
+      },
+      {
+        "id": "CN-G318-LT-MK",
+        "from_poi_id": "cn.litang",
+        "to_poi_id": "cn.mangkang",
+        "segment_type": "HIGHWAY",
+        "ontologyNodeId": "ontology:corridor:CN:G318",
+        "road_condition": { "surface": "paved", "status": "UNKNOWN" },
+        "rules": { "fuelSparse": true, "maxDailyKmHint": 220 }
+      },
+      {
+        "id": "CN-G318-MK-LZ",
+        "from_poi_id": "cn.mangkang",
+        "to_poi_id": "cn.linzhi",
+        "segment_type": "HIGHWAY",
+        "ontologyNodeId": "ontology:region:CN:EAST_TIBET_G318",
+        "road_condition": { "surface": "paved", "status": "UNKNOWN" },
+        "rules": { "checkpointLikely": true, "maxDailyKmHint": 220 }
+      },
+      {
+        "id": "CN-G318-LZ-LS",
+        "from_poi_id": "cn.linzhi",
+        "to_poi_id": "cn.lhasa",
+        "segment_type": "HIGHWAY",
+        "ontologyNodeId": "ontology:region:CN:EAST_TIBET_G318",
+        "road_condition": { "surface": "paved", "status": "UNKNOWN" },
+        "rules": { "altitudeGate": true, "maxDailyKmHint": 280 }
+      }
+    ]
+  }
+}

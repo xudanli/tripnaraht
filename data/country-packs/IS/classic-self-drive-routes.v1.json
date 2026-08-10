@@ -1,0 +1,99 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "updatedAt": "2026-08-08",
+    "note": "Maps existing IS_* RouteDirection names to classicRouteId for bootstrap."
+  },
+  "routes": [
+    {
+      "id": "is.route.golden_circle",
+      "directionName": "IS_GOLDEN_CIRCLE",
+      "aliases": ["黄金圈", "Golden Circle", "golden_circle"],
+      "nameCN": "黄金圈经典环线",
+      "nameEN": "Golden Circle Classic Route",
+      "tier": "classic",
+      "typicalDays": [1, 2],
+      "taxonomySubScopeId": "golden_circle"
+    },
+    {
+      "id": "is.route.ring_road_south",
+      "directionName": "IS_RING_ROAD_SOUTH",
+      "aliases": ["南线精华", "环岛南线", "south coast ring"],
+      "nameCN": "冰岛环岛公路南线精华",
+      "nameEN": "Ring Road South Highlights",
+      "tier": "classic",
+      "typicalDays": [2, 4],
+      "taxonomySubScopeId": "south_coast"
+    },
+    {
+      "id": "is.route.ring_road",
+      "directionName": "IS_RING_ROAD_FULL",
+      "aliases": ["环岛", "Ring Road", "完整环岛", "ring_road"],
+      "nameCN": "冰岛完整环岛公路",
+      "nameEN": "Full Ring Road",
+      "tier": "classic",
+      "typicalDays": [7, 14],
+      "taxonomySubScopeId": "ring_road"
+    },
+    {
+      "id": "is.route.snaefellsnes",
+      "directionName": "IS_SNAEFELLSNES",
+      "aliases": ["斯奈山", "Snæfellsnes", "snaefellsnes"],
+      "nameCN": "斯奈山半岛环线",
+      "nameEN": "Snæfellsnes Peninsula",
+      "tier": "classic",
+      "typicalDays": [1, 2],
+      "taxonomySubScopeId": "snaefellsnes"
+    },
+    {
+      "id": "is.route.south_coast",
+      "directionName": "IS_SELF_DRIVE_COAST",
+      "aliases": ["南海岸", "South Coast", "south_coast"],
+      "nameCN": "南海岸自驾探险",
+      "nameEN": "South Coast Self-Drive",
+      "tier": "classic",
+      "typicalDays": [3, 5],
+      "taxonomySubScopeId": "south_coast"
+    },
+    {
+      "id": "is.route.westfjords",
+      "directionName": "IS_WESTFJORDS",
+      "aliases": ["西峡湾", "Westfjords", "westfjords"],
+      "nameCN": "冰岛西峡湾",
+      "nameEN": "Westfjords",
+      "tier": "niche",
+      "typicalDays": [4, 7],
+      "taxonomySubScopeId": "westfjords"
+    },
+    {
+      "id": "is.route.highlands",
+      "directionName": "IS_HIGHLANDS",
+      "aliases": ["高地", "F路", "Highlands", "highlands"],
+      "nameCN": "冰岛内陆高地F路",
+      "nameEN": "Highlands F-Roads",
+      "tier": "niche",
+      "typicalDays": [4, 6],
+      "taxonomySubScopeId": "highlands"
+    },
+    {
+      "id": "is.route.laugavegur",
+      "directionName": "IS_LAUGAVEGUR",
+      "aliases": ["朗格维格", "Laugavegur", "laugavegur"],
+      "nameCN": "朗格迈维卢尔步道",
+      "nameEN": "Laugavegur Trail",
+      "tier": "niche",
+      "typicalDays": [3, 4],
+      "taxonomySubScopeId": "iceland"
+    },
+    {
+      "id": "is.route.trekking_wilderness",
+      "directionName": "IS_TREKKING_WILDERNESS",
+      "aliases": ["荒野徒步", "trekking wilderness"],
+      "nameCN": "荒野徒步探险",
+      "nameEN": "Wilderness Trekking",
+      "tier": "niche",
+      "typicalDays": [5, 7],
+      "taxonomySubScopeId": "iceland"
+    }
+  ]
+}

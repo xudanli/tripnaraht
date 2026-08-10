@@ -1,0 +1,35 @@
+{
+  "metadata": {
+    "mode": "classic-seed",
+    "dryRun": true,
+    "model": "deepseek-chat",
+    "candidates": 3,
+    "ok": 3,
+    "fail": 0,
+    "skipped": 0,
+    "sampledAt": "2026-08-09T09:33:43.390Z"
+  },
+  "results": [
+    {
+      "id": 6211,
+      "nameCN": "布达拉宫",
+      "ok": true,
+      "chars": 139,
+      "nameEN": "Potala Palace"
+    },
+    {
+      "id": 6212,
+      "nameCN": "大昭寺",
+      "ok": true,
+      "chars": 116,
+      "nameEN": "Jokhang Temple"
+    },
+    {
+      "id": 12955,
+      "nameCN": "库车王府",
+      "ok": true,
+      "chars": 124,
+      "nameEN": "Kuqa Royal Palace"
+    }
+  ]
+}

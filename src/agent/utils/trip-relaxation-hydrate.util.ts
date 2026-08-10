@@ -37,7 +37,16 @@ export function hydrateRelaxationConstraintsFromTripRecord(
     ...(tripPlanRequest.constraints ?? {}),
   } as Record<string, unknown>;
 
-  const vehicleType = agentPlan.vehicle_type ?? pacing.vehicleType;
+  // 行程已确认车型：metadata.constraints（决策写回）优先于 agent_plan / pacing
+  const metaConstraints =
+    meta.constraints && typeof meta.constraints === 'object'
+      ? (meta.constraints as Record<string, unknown>)
+      : {};
+  const vehicleType =
+    agentPlan.vehicle_type ??
+    metaConstraints.vehicle_type ??
+    metaConstraints.vehicleType ??
+    pacing.vehicleType;
   if (
     (vehicleType === '2WD' || vehicleType === '4WD') &&
     constraints.vehicle_type == null

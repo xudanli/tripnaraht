@@ -107,11 +107,13 @@ export const IcelandCanonicalType = {
   FUEL_ORKAN: 'FUEL_ORKAN',                                         // Orkan 加油站
   FUEL_OB: 'FUEL_OB',                                               // ÓB 加油站
   EV_CHARGING: 'EV_CHARGING',                                       // 电动车充电站
+  HIGHWAY_SERVICES: 'HIGHWAY_SERVICES',                             // 高速服务区
   SUPERMARKET: 'SUPERMARKET',                                       // 超市
   SUPERMARKET_BONUS: 'SUPERMARKET_BONUS',                           // Bonus 超市
   SUPERMARKET_KRONAN: 'SUPERMARKET_KRONAN',                         // Krónan 超市
   SUPERMARKET_HAGKAUP: 'SUPERMARKET_HAGKAUP',                       // Hagkaup 超市
   CONVENIENCE_STORE: 'CONVENIENCE_STORE',                           // 便利店
+  SANITARY_DUMP: 'SANITARY_DUMP',                                   // 房车排污站
   
   // ========== 餐饮 (RESTAURANT) ==========
   RESTAURANT: 'RESTAURANT',                                         // 餐厅
@@ -143,6 +145,10 @@ export const IcelandCanonicalType = {
   INFORMATION_CENTER: 'INFORMATION_CENTER',                         // 游客中心
   TOUR_OPERATOR: 'TOUR_OPERATOR',                                   // 旅行社/活动运营商
   CAR_RENTAL: 'CAR_RENTAL',                                         // 租车点
+  CAR_REPAIR: 'CAR_REPAIR',                                         // 汽修/轮胎
+  ROAD_ASSISTANCE: 'ROAD_ASSISTANCE',                               // 道路救援
+  TOLL_BOOTH: 'TOLL_BOOTH',                                         // 收费站
+  CHECKPOINT: 'CHECKPOINT',                                         // 检查站（涉藏等）
   BANK_ATM: 'BANK_ATM',                                             // 银行/ATM
   POST_OFFICE: 'POST_OFFICE',                                       // 邮局
   WIFI_HOTSPOT: 'WIFI_HOTSPOT',                                     // WiFi 热点
@@ -251,6 +257,7 @@ export const canonicalToCategory: Record<IcelandCanonicalTypeValue, PlaceCategor
   [IcelandCanonicalType.FUEL_ORKAN]: 'SUPPLY',
   [IcelandCanonicalType.FUEL_OB]: 'SUPPLY',
   [IcelandCanonicalType.EV_CHARGING]: 'SUPPLY',
+  [IcelandCanonicalType.HIGHWAY_SERVICES]: 'SUPPLY',
   [IcelandCanonicalType.SUPERMARKET]: 'SUPPLY',
   [IcelandCanonicalType.SUPERMARKET_BONUS]: 'SUPPLY',
   [IcelandCanonicalType.SUPERMARKET_KRONAN]: 'SUPPLY',
@@ -287,11 +294,16 @@ export const canonicalToCategory: Record<IcelandCanonicalTypeValue, PlaceCategor
   [IcelandCanonicalType.INFORMATION_CENTER]: 'SERVICE',
   [IcelandCanonicalType.TOUR_OPERATOR]: 'SERVICE',
   [IcelandCanonicalType.CAR_RENTAL]: 'SERVICE',
+  [IcelandCanonicalType.CAR_REPAIR]: 'SERVICE',
+  [IcelandCanonicalType.ROAD_ASSISTANCE]: 'SERVICE',
+  [IcelandCanonicalType.CHECKPOINT]: 'SERVICE',
   [IcelandCanonicalType.BANK_ATM]: 'SERVICE',
   [IcelandCanonicalType.POST_OFFICE]: 'SERVICE',
   [IcelandCanonicalType.WIFI_HOTSPOT]: 'SERVICE',
   
-  // 基础设施 -> INFRASTRUCTURE
+  // 基础设施 -> INFRASTRUCTURE（入库时压到 Prisma，见 toPrismaPlaceCategory）
+  [IcelandCanonicalType.TOLL_BOOTH]: 'INFRASTRUCTURE',
+  [IcelandCanonicalType.SANITARY_DUMP]: 'INFRASTRUCTURE',
   [IcelandCanonicalType.TOILETS]: 'INFRASTRUCTURE',
   [IcelandCanonicalType.SHOWER]: 'INFRASTRUCTURE',
   [IcelandCanonicalType.WATER_POINT]: 'INFRASTRUCTURE',
@@ -395,16 +407,18 @@ export const canonicalToActivities: Record<IcelandCanonicalTypeValue, string[]> 
   [IcelandCanonicalType.PARKING_FREE]: [],
   [IcelandCanonicalType.PARKING_PAID]: [],
   [IcelandCanonicalType.REST_STOP]: [],
-  [IcelandCanonicalType.FUEL_STATION]: [],
-  [IcelandCanonicalType.FUEL_N1]: [],
-  [IcelandCanonicalType.FUEL_ORKAN]: [],
-  [IcelandCanonicalType.FUEL_OB]: [],
-  [IcelandCanonicalType.EV_CHARGING]: [],
+  [IcelandCanonicalType.FUEL_STATION]: ['self_drive'],
+  [IcelandCanonicalType.FUEL_N1]: ['self_drive'],
+  [IcelandCanonicalType.FUEL_ORKAN]: ['self_drive'],
+  [IcelandCanonicalType.FUEL_OB]: ['self_drive'],
+  [IcelandCanonicalType.EV_CHARGING]: ['self_drive'],
+  [IcelandCanonicalType.HIGHWAY_SERVICES]: ['self_drive'],
   [IcelandCanonicalType.SUPERMARKET]: [],
   [IcelandCanonicalType.SUPERMARKET_BONUS]: [],
   [IcelandCanonicalType.SUPERMARKET_KRONAN]: [],
   [IcelandCanonicalType.SUPERMARKET_HAGKAUP]: [],
   [IcelandCanonicalType.CONVENIENCE_STORE]: [],
+  [IcelandCanonicalType.SANITARY_DUMP]: ['camping', 'self_drive'],
   [IcelandCanonicalType.RESTAURANT]: [],
   [IcelandCanonicalType.CAFE]: [],
   [IcelandCanonicalType.FAST_FOOD]: [],
@@ -427,6 +441,10 @@ export const canonicalToActivities: Record<IcelandCanonicalTypeValue, string[]> 
   [IcelandCanonicalType.EMERGENCY_SHELTER]: [],
   [IcelandCanonicalType.INFORMATION_CENTER]: [],
   [IcelandCanonicalType.TOUR_OPERATOR]: [],
+  [IcelandCanonicalType.CAR_REPAIR]: ['self_drive'],
+  [IcelandCanonicalType.ROAD_ASSISTANCE]: ['self_drive'],
+  [IcelandCanonicalType.TOLL_BOOTH]: ['self_drive'],
+  [IcelandCanonicalType.CHECKPOINT]: ['self_drive'],
   [IcelandCanonicalType.BANK_ATM]: [],
   [IcelandCanonicalType.POST_OFFICE]: [],
   [IcelandCanonicalType.WIFI_HOTSPOT]: [],
@@ -491,11 +509,13 @@ export const canonicalTypeDisplayNames: Record<IcelandCanonicalTypeValue, { zh: 
   [IcelandCanonicalType.FUEL_ORKAN]: { zh: 'Orkan 加油站', en: 'Orkan Fuel Station' },
   [IcelandCanonicalType.FUEL_OB]: { zh: 'ÓB 加油站', en: 'ÓB Fuel Station' },
   [IcelandCanonicalType.EV_CHARGING]: { zh: '电动车充电站', en: 'EV Charging Station' },
+  [IcelandCanonicalType.HIGHWAY_SERVICES]: { zh: '高速服务区', en: 'Highway Services' },
   [IcelandCanonicalType.SUPERMARKET]: { zh: '超市', en: 'Supermarket' },
   [IcelandCanonicalType.SUPERMARKET_BONUS]: { zh: 'Bonus 超市', en: 'Bonus Supermarket' },
   [IcelandCanonicalType.SUPERMARKET_KRONAN]: { zh: 'Krónan 超市', en: 'Krónan Supermarket' },
   [IcelandCanonicalType.SUPERMARKET_HAGKAUP]: { zh: 'Hagkaup 超市', en: 'Hagkaup Supermarket' },
   [IcelandCanonicalType.CONVENIENCE_STORE]: { zh: '便利店', en: 'Convenience Store' },
+  [IcelandCanonicalType.SANITARY_DUMP]: { zh: '房车排污站', en: 'Sanitary Dump Station' },
   [IcelandCanonicalType.RESTAURANT]: { zh: '餐厅', en: 'Restaurant' },
   [IcelandCanonicalType.CAFE]: { zh: '咖啡馆', en: 'Café' },
   [IcelandCanonicalType.FAST_FOOD]: { zh: '快餐', en: 'Fast Food' },
@@ -519,6 +539,10 @@ export const canonicalTypeDisplayNames: Record<IcelandCanonicalTypeValue, { zh: 
   [IcelandCanonicalType.INFORMATION_CENTER]: { zh: '游客中心', en: 'Information Center' },
   [IcelandCanonicalType.TOUR_OPERATOR]: { zh: '旅行社', en: 'Tour Operator' },
   [IcelandCanonicalType.CAR_RENTAL]: { zh: '租车点', en: 'Car Rental' },
+  [IcelandCanonicalType.CAR_REPAIR]: { zh: '汽修', en: 'Car Repair' },
+  [IcelandCanonicalType.ROAD_ASSISTANCE]: { zh: '道路救援', en: 'Road Assistance' },
+  [IcelandCanonicalType.TOLL_BOOTH]: { zh: '收费站', en: 'Toll Booth' },
+  [IcelandCanonicalType.CHECKPOINT]: { zh: '检查站', en: 'Checkpoint' },
   [IcelandCanonicalType.BANK_ATM]: { zh: '银行/ATM', en: 'Bank/ATM' },
   [IcelandCanonicalType.POST_OFFICE]: { zh: '邮局', en: 'Post Office' },
   [IcelandCanonicalType.WIFI_HOTSPOT]: { zh: 'WiFi 热点', en: 'WiFi Hotspot' },
@@ -543,3 +567,259 @@ export const canonicalTypeDisplayNames: Record<IcelandCanonicalTypeValue, { zh: 
   [IcelandCanonicalType.KAYAKING]: { zh: '皮划艇', en: 'Kayaking' },
   [IcelandCanonicalType.OTHER]: { zh: '其他', en: 'Other' },
 };
+
+/** Place.canonicalType values treated as fuel stations */
+export const ICELAND_FUEL_CANONICAL_TYPES = [
+  IcelandCanonicalType.FUEL_STATION,
+  IcelandCanonicalType.FUEL_N1,
+  IcelandCanonicalType.FUEL_ORKAN,
+  IcelandCanonicalType.FUEL_OB,
+] as const;
+
+/** 自驾硬补给（续航 / 停车 / 过夜营地 / 日用补给） */
+export const SELF_DRIVE_SUPPLY_CANONICAL_TYPES = [
+  IcelandCanonicalType.FUEL_STATION,
+  IcelandCanonicalType.FUEL_N1,
+  IcelandCanonicalType.FUEL_ORKAN,
+  IcelandCanonicalType.FUEL_OB,
+  IcelandCanonicalType.EV_CHARGING,
+  IcelandCanonicalType.HIGHWAY_SERVICES,
+  IcelandCanonicalType.PARKING,
+  IcelandCanonicalType.PARKING_FREE,
+  IcelandCanonicalType.PARKING_PAID,
+  IcelandCanonicalType.REST_STOP,
+  IcelandCanonicalType.SUPERMARKET,
+  IcelandCanonicalType.CONVENIENCE_STORE,
+  IcelandCanonicalType.TOILETS,
+  IcelandCanonicalType.CAMPING,
+  IcelandCanonicalType.CAMPING_EQUIPPED,
+  IcelandCanonicalType.CAMPING_WILD,
+  IcelandCanonicalType.SANITARY_DUMP,
+] as const;
+
+/** 自驾 recovery（故障 / 医疗） */
+export const SELF_DRIVE_RECOVERY_CANONICAL_TYPES = [
+  IcelandCanonicalType.CAR_REPAIR,
+  IcelandCanonicalType.ROAD_ASSISTANCE,
+  IcelandCanonicalType.HOSPITAL,
+  IcelandCanonicalType.CLINIC,
+] as const;
+
+/**
+ * Prisma PlaceCategory 合法值（无 INFRASTRUCTURE / SAFETY）。
+ * 自驾补给入库：停车/厕所/休息站压到 SUPPLY；医院压到 HOSPITAL。
+ */
+export type PrismaPlaceCategory =
+  | 'ATTRACTION'
+  | 'RESTAURANT'
+  | 'SHOPPING'
+  | 'HOTEL'
+  | 'TRANSIT_HUB'
+  | 'HOSPITAL'
+  | 'SUPPLY'
+  | 'SERVICE';
+
+export function toPrismaPlaceCategory(
+  canonical: IcelandCanonicalTypeValue,
+): PrismaPlaceCategory {
+  if (
+    canonical === IcelandCanonicalType.PARKING ||
+    canonical === IcelandCanonicalType.PARKING_FREE ||
+    canonical === IcelandCanonicalType.PARKING_PAID ||
+    canonical === IcelandCanonicalType.REST_STOP ||
+    canonical === IcelandCanonicalType.TOILETS ||
+    canonical === IcelandCanonicalType.SHOWER ||
+    canonical === IcelandCanonicalType.WATER_POINT ||
+    canonical === IcelandCanonicalType.PICNIC_AREA ||
+    canonical === IcelandCanonicalType.SANITARY_DUMP
+  ) {
+    return 'SUPPLY';
+  }
+  if (
+    canonical === IcelandCanonicalType.HOSPITAL ||
+    canonical === IcelandCanonicalType.CLINIC ||
+    canonical === IcelandCanonicalType.PHARMACY
+  ) {
+    return 'HOSPITAL';
+  }
+  if (
+    canonical === IcelandCanonicalType.TOLL_BOOTH ||
+    canonical === IcelandCanonicalType.CHECKPOINT ||
+    canonical === IcelandCanonicalType.CAR_REPAIR ||
+    canonical === IcelandCanonicalType.ROAD_ASSISTANCE
+  ) {
+    return 'SERVICE';
+  }
+  const bucket = canonicalToCategory[canonical];
+  if (
+    bucket === 'SUPPLY' ||
+    bucket === 'HOTEL' ||
+    bucket === 'SERVICE' ||
+    bucket === 'RESTAURANT' ||
+    bucket === 'ATTRACTION' ||
+    bucket === 'TRANSIT_HUB' ||
+    bucket === 'SHOPPING'
+  ) {
+    return bucket;
+  }
+  if (bucket === 'SAFETY') return 'HOSPITAL';
+  if (bucket === 'INFRASTRUCTURE') return 'SUPPLY';
+  return 'SUPPLY';
+}
+
+/**
+ * 高德 typecode（及前缀）→ canonicalType。
+ * 前缀匹配按最长优先；未命中时由导入脚本用 keywords 兜底。
+ */
+export const AMAP_TYPECODE_TO_CANONICAL: Array<{
+  prefix: string;
+  canonical: IcelandCanonicalTypeValue;
+}> = [
+  { prefix: '0101', canonical: IcelandCanonicalType.FUEL_STATION },
+  { prefix: '0111', canonical: IcelandCanonicalType.EV_CHARGING },
+  { prefix: '1509', canonical: IcelandCanonicalType.PARKING },
+  { prefix: '1803', canonical: IcelandCanonicalType.HIGHWAY_SERVICES },
+  { prefix: '0604', canonical: IcelandCanonicalType.SUPERMARKET },
+  { prefix: '0602', canonical: IcelandCanonicalType.CONVENIENCE_STORE },
+  { prefix: '2003', canonical: IcelandCanonicalType.TOILETS },
+  { prefix: '0300', canonical: IcelandCanonicalType.CAR_REPAIR },
+  { prefix: '0301', canonical: IcelandCanonicalType.CAR_REPAIR },
+  { prefix: '0901', canonical: IcelandCanonicalType.HOSPITAL },
+  { prefix: '1802', canonical: IcelandCanonicalType.TOLL_BOOTH },
+];
+
+export function resolveCanonicalFromAmapTypecode(
+  typecode: string | undefined | null,
+): IcelandCanonicalTypeValue | null {
+  const code = String(typecode || '').trim();
+  if (!code) return null;
+  const sorted = [...AMAP_TYPECODE_TO_CANONICAL].sort(
+    (a, b) => b.prefix.length - a.prefix.length,
+  );
+  for (const row of sorted) {
+    if (code.startsWith(row.prefix)) return row.canonical;
+  }
+  return null;
+}
+
+/**
+ * OSM tag → canonicalType（自驾补给冷启动主映射）。
+ * 按数组顺序优先匹配。
+ */
+export const OSM_SUPPLY_TAG_RULES: Array<{
+  key: string;
+  /** 查询/过滤用短名，对应 --types= */
+  queryKey: string;
+  osmKey: string;
+  osmValue: string;
+  canonical: IcelandCanonicalTypeValue;
+}> = [
+  {
+    key: 'fuel',
+    queryKey: 'fuel',
+    osmKey: 'amenity',
+    osmValue: 'fuel',
+    canonical: IcelandCanonicalType.FUEL_STATION,
+  },
+  {
+    key: 'charging',
+    queryKey: 'charging',
+    osmKey: 'amenity',
+    osmValue: 'charging_station',
+    canonical: IcelandCanonicalType.EV_CHARGING,
+  },
+  {
+    key: 'parking',
+    queryKey: 'parking',
+    osmKey: 'amenity',
+    osmValue: 'parking',
+    canonical: IcelandCanonicalType.PARKING,
+  },
+  {
+    key: 'highway_services',
+    queryKey: 'highway_services',
+    osmKey: 'highway',
+    osmValue: 'services',
+    canonical: IcelandCanonicalType.HIGHWAY_SERVICES,
+  },
+  {
+    key: 'rest_area',
+    queryKey: 'highway_services',
+    osmKey: 'highway',
+    osmValue: 'rest_area',
+    canonical: IcelandCanonicalType.REST_STOP,
+  },
+  {
+    key: 'supermarket',
+    queryKey: 'supermarket',
+    osmKey: 'shop',
+    osmValue: 'supermarket',
+    canonical: IcelandCanonicalType.SUPERMARKET,
+  },
+  {
+    key: 'convenience',
+    queryKey: 'convenience',
+    osmKey: 'shop',
+    osmValue: 'convenience',
+    canonical: IcelandCanonicalType.CONVENIENCE_STORE,
+  },
+  {
+    key: 'toilets',
+    queryKey: 'toilets',
+    osmKey: 'amenity',
+    osmValue: 'toilets',
+    canonical: IcelandCanonicalType.TOILETS,
+  },
+  {
+    key: 'car_repair',
+    queryKey: 'car_repair',
+    osmKey: 'shop',
+    osmValue: 'car_repair',
+    canonical: IcelandCanonicalType.CAR_REPAIR,
+  },
+  {
+    key: 'camping',
+    queryKey: 'camping',
+    osmKey: 'tourism',
+    osmValue: 'camp_site',
+    canonical: IcelandCanonicalType.CAMPING,
+  },
+  {
+    key: 'caravan',
+    queryKey: 'camping',
+    osmKey: 'tourism',
+    osmValue: 'caravan_site',
+    canonical: IcelandCanonicalType.CAMPING_EQUIPPED,
+  },
+  {
+    key: 'hospital',
+    queryKey: 'hospital',
+    osmKey: 'amenity',
+    osmValue: 'hospital',
+    canonical: IcelandCanonicalType.HOSPITAL,
+  },
+  {
+    key: 'toll',
+    queryKey: 'toll',
+    osmKey: 'barrier',
+    osmValue: 'toll_booth',
+    canonical: IcelandCanonicalType.TOLL_BOOTH,
+  },
+  {
+    key: 'sanitary_dump',
+    queryKey: 'sanitary_dump',
+    osmKey: 'amenity',
+    osmValue: 'sanitary_dump_station',
+    canonical: IcelandCanonicalType.SANITARY_DUMP,
+  },
+];
+
+export function resolveCanonicalFromOsmTags(
+  tags: Record<string, string> | undefined | null,
+): IcelandCanonicalTypeValue | null {
+  if (!tags) return null;
+  for (const rule of OSM_SUPPLY_TAG_RULES) {
+    if (tags[rule.osmKey] === rule.osmValue) return rule.canonical;
+  }
+  return null;
+}

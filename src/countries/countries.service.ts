@@ -8,6 +8,12 @@ import { assembleCountryProfileResponse } from './country-profile-v2.mapper';
 import type { CountryProfileV2Data } from './types/country-profile-v2.types';
 import { CurrencyMathUtil } from '../common/utils/currency-math.util';
 import { getCountryPack, COUNTRY_PACKS } from '../trips/readiness/config/country-pack.config';
+import {
+  getCnClassicRouteCatalogDetail,
+  listCnClassicRouteCatalog,
+} from '../trips/readiness/utils/cn-classic-self-drive-catalog.util';
+import type { CnClassicRouteTier } from '../trips/readiness/utils/cn-classic-routes.util';
+import { buildCnDrivingContext } from '../trips/readiness/utils/cn-driving-context.util';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
@@ -312,6 +318,75 @@ export class CountriesService {
       `Country Pack 配置目前通过配置文件管理。请修改 src/trips/readiness/config/country-pack.config.ts 中的 COUNTRY_PACKS 配置。` +
       `国家代码: ${countryCode}`
     );
+  }
+
+  /**
+   * 中国经典自驾线 catalog（选线 → bootstrap.classicRouteId）。
+   * 非 CN 返回空列表（不 404），便于客户端统一拉取。
+   */
+  getClassicSelfDriveRouteCatalog(
+    countryCode: string,
+    options?: { tier?: string },
+  ) {
+    const code = countryCode.toUpperCase().trim();
+    if (code !== 'CN') {
+      return {
+        countryCode: code,
+        disclaimer: '',
+        routes: [] as ReturnType<typeof listCnClassicRouteCatalog>['routes'],
+      };
+    }
+    const tierRaw = (options?.tier ?? '').trim().toLowerCase();
+    const tier = (
+      ['classic', 'niche', 'seasonal_classic'] as CnClassicRouteTier[]
+    ).includes(tierRaw as CnClassicRouteTier)
+      ? (tierRaw as CnClassicRouteTier)
+      : undefined;
+    return listCnClassicRouteCatalog({ tier });
+  }
+
+  getClassicSelfDriveRouteDetail(countryCode: string, routeId: string) {
+    const code = countryCode.toUpperCase().trim();
+    if (code !== 'CN') {
+      throw new NotFoundException(
+        `Classic self-drive catalog is only available for CN (got ${code})`,
+      );
+    }
+    const detail = getCnClassicRouteCatalogDetail(routeId);
+    if (!detail) {
+      throw new NotFoundException(`Classic self-drive route not found: ${routeId}`);
+    }
+    return detail;
+  }
+
+  /**
+   * 中国自驾上下文：限行城市 / 涉藏高原 / 季节窗 / 段距离阈值 pack。
+   */
+  getDrivingContext(
+    countryCode: string,
+    query: {
+      classicRouteId?: string;
+      startDate?: string;
+      endDate?: string;
+      cities?: string;
+    },
+  ) {
+    const code = countryCode.toUpperCase().trim();
+    if (code !== 'CN') {
+      throw new NotFoundException(
+        `Driving context is only available for CN (got ${code})`,
+      );
+    }
+    const cityHints = (query.cities ?? '')
+      .split(/[,，]/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return buildCnDrivingContext({
+      classicRouteId: query.classicRouteId,
+      startDate: query.startDate,
+      endDate: query.endDate,
+      cityHints,
+    });
   }
 
   /**

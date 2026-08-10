@@ -38,6 +38,7 @@ import { isPlanObjectGatewayEvaluationEnabled } from '../../decision-runtime/pla
 import { isEffectivePlanWriteChainEnabled } from '../../decision-runtime/execution/effective-plan-write-chain.config';
 import { assertPlanMutationAllowedOrThrow } from '../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { EffectivePlanWriteGuardService } from '../../decision-runtime/execution/effective-plan-write-guard.service';
+import { participatesInScheduleConflict } from '../utils/schedule-conflict-item.util';
 import {
   accumulateDailyDrivingMinutes,
   buildDailyDriveExceededConflicts,
@@ -222,6 +223,18 @@ export class TripConflictsService {
       }
     }
     const reportedCrossDay = new Set<string>();
+    const dateToDayNumber = new Map<string, number>();
+    trip.TripDay.forEach((d, i) => {
+      const iso = DateTime.fromJSDate(d.date).toISODate();
+      if (iso) dateToDayNumber.set(iso, i + 1);
+    });
+    const dayNumbersFromIsoDates = (dates: Set<string>): string[] =>
+      [...dates]
+        .map((iso) => dateToDayNumber.get(iso))
+        .filter((n): n is number => typeof n === 'number' && n > 0)
+        .sort((a, b) => a - b)
+        .map(String);
+
     for (const [placeId, entries] of placeIdToItemsCrossDay) {
       // 🆕 对齐排产策略：跨日重访 2 次（跨 2 天）允许，不作为冲突提示；>2 才提示
       if (entries.length <= 2) continue;
@@ -231,13 +244,14 @@ export class TripConflictsService {
       const key = `place-${placeId}`;
       if (reportedCrossDay.has(key)) continue;
       reportedCrossDay.add(key);
+      const dayNums = dayNumbersFromIsoDates(uniqueDays);
       conflicts.push({
         id: `duplicate-item-cross-day-place-${placeId}`,
         type: ConflictType.DUPLICATE_ITEM,
         severity: ConflictSeverity.LOW,
         title: '行程项重复',
         description: `「${placeName}」在行程中被安排了 ${entries.length} 次（跨 ${uniqueDays.size} 天）`,
-        affectedDays: Array.from(uniqueDays),
+        affectedDays: dayNums.length ? dayNums : Array.from(uniqueDays),
         affectedItemIds: entries.map(e => e.item.id),
         suggestions: [
           {
@@ -258,13 +272,14 @@ export class TripConflictsService {
       const key = `name-${placeName}`;
       if (reportedCrossDay.has(key)) continue;
       reportedCrossDay.add(key);
+      const dayNums = dayNumbersFromIsoDates(uniqueDays);
       conflicts.push({
         id: `duplicate-item-cross-day-name-${placeName.replace(/\s/g, '-')}`,
         type: ConflictType.DUPLICATE_ITEM,
         severity: ConflictSeverity.LOW,
         title: '行程项重复',
         description: `「${placeName}」在行程中被安排了 ${entries.length} 次（跨 ${uniqueDays.size} 天）`,
-        affectedDays: Array.from(uniqueDays),
+        affectedDays: dayNums.length ? dayNums : Array.from(uniqueDays),
         affectedItemIds: entries.map(e => e.item.id),
         suggestions: [
           {
@@ -368,7 +383,9 @@ export class TripConflictsService {
         severity: ConflictSeverity.MEDIUM,
         title: '行程项重复',
         description: `「${placeName}」在同一天被安排了 ${dupItems.length} 次`,
-        affectedDays: [date],
+        affectedDays: [String(_dayIndex)],
+        fromDayNumber: _dayIndex,
+        toDayNumber: _dayIndex,
         affectedItemIds: dupItems.map((i: any) => i.id),
         suggestions: [
           {
@@ -402,7 +419,9 @@ export class TripConflictsService {
         severity: ConflictSeverity.MEDIUM,
         title: '行程项重复',
         description: `「${placeName}」在同一天被安排了 ${dupItems.length} 次（可能对应不同地点记录）`,
-        affectedDays: [date],
+        affectedDays: [String(_dayIndex)],
+        fromDayNumber: _dayIndex,
+        toDayNumber: _dayIndex,
         affectedItemIds: dupItems.map((i: any) => i.id),
         suggestions: [
           {
@@ -414,18 +433,15 @@ export class TripConflictsService {
       });
     }
 
-    // 1. 检测时间冲突（排除 REST 类型的住宿项，因为酒店可以与其他活动时间重叠）
-    for (let i = 0; i < items.length - 1; i++) {
-      const current = items[i];
-      const next = items[i + 1];
+    // Visit-slot sequence: skip REST / SUPPLY so gas stations don't fake TIME/TRANSPORT conflicts.
+    const scheduleItems = items.filter((item: any) => participatesInScheduleConflict(item));
+
+    // 1. 检测时间冲突（排除 REST / SUPPLY）
+    for (let i = 0; i < scheduleItems.length - 1; i++) {
+      const current = scheduleItems[i];
+      const next = scheduleItems[i + 1];
 
       if (!current.endTime || !next.startTime) {
-        continue;
-      }
-
-      // 🆕 如果其中一个是 REST 类型（酒店），跳过时间冲突检测
-      // 因为酒店是跨天的住宿，可以与其他活动时间重叠
-      if (current.type === 'REST' || next.type === 'REST') {
         continue;
       }
 
@@ -443,7 +459,9 @@ export class TripConflictsService {
           severity: ConflictSeverity.HIGH,
           title: '时间冲突',
           description: `活动 "${current.Place?.nameCN || current.Place?.nameEN || '未知'}" 与 "${next.Place?.nameCN || next.Place?.nameEN || '未知'}" 时间重叠 ${overlapMinutes} 分钟`,
-          affectedDays: [date],
+          affectedDays: [String(_dayIndex)],
+          fromDayNumber: _dayIndex,
+          toDayNumber: _dayIndex,
           affectedItemIds: [current.id, next.id],
           overlapMinutes: overlapMinutes, // 添加重叠时间信息
           suggestions: [
@@ -458,13 +476,9 @@ export class TripConflictsService {
     }
 
     // 1.5 检测交通衔接：按 A→B 路段耗时验算抵达时刻，不使用日程空档冒充交通时长。
-    for (let i = 0; i < items.length - 1; i++) {
-      const current = items[i];
-      const next = items[i + 1];
-
-      if (current.type === 'REST' || next.type === 'REST') {
-        continue;
-      }
+    for (let i = 0; i < scheduleItems.length - 1; i++) {
+      const current = scheduleItems[i];
+      const next = scheduleItems[i + 1];
 
       const fromCoords = current.placeId ? coordsMap.get(current.placeId) : null;
       const toCoords = next.placeId ? coordsMap.get(next.placeId) : null;
@@ -610,7 +624,9 @@ export class TripConflictsService {
           severity: lunchStrategy === 'rigid' ? ConflictSeverity.HIGH : ConflictSeverity.MEDIUM,
           title: copy.title,
           description: copy.description,
-          affectedDays: [date],
+          affectedDays: [String(_dayIndex)],
+          fromDayNumber: _dayIndex,
+          toDayNumber: _dayIndex,
           affectedItemIds: lunchWindow.itemIds,
           suggestions: copy.suggestions,
           lunchStrategy,
@@ -635,7 +651,9 @@ export class TripConflictsService {
           severity: ConflictSeverity.HIGH,
           title: '体力超标',
           description: `当日疲劳指数 ${totalFatigue.toFixed(1)}，超过建议值 80`,
-          affectedDays: [date],
+          affectedDays: [String(_dayIndex)],
+          fromDayNumber: _dayIndex,
+          toDayNumber: _dayIndex,
           affectedItemIds: items.map((i: any) => i.id),
           suggestions: [
             {
@@ -723,7 +741,9 @@ export class TripConflictsService {
               severity: ConflictSeverity.MEDIUM,
               title: '闭园风险',
               description: `活动 "${item.Place?.nameCN || item.Place?.nameEN || '未知'}" 可能接近闭园时间`,
-              affectedDays: [date],
+              affectedDays: [String(_dayIndex)],
+              fromDayNumber: _dayIndex,
+              toDayNumber: _dayIndex,
               affectedItemIds: [item.id],
               suggestions: [
                 {

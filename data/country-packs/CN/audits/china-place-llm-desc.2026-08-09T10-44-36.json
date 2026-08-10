@@ -1,0 +1,224 @@
+{
+  "metadata": {
+    "mode": "needs-llm",
+    "dryRun": false,
+    "model": "deepseek-chat",
+    "candidates": 30,
+    "ok": 30,
+    "fail": 0,
+    "skipped": 0,
+    "sampledAt": "2026-08-09T10:44:36.811Z"
+  },
+  "results": [
+    {
+      "id": 4345,
+      "nameCN": "韶关市丹霞山景区",
+      "ok": true,
+      "chars": 144,
+      "nameEN": "Danxia Mountain"
+    },
+    {
+      "id": 4346,
+      "nameCN": "梅州市雁南飞茶田景区",
+      "ok": true,
+      "chars": 121,
+      "nameEN": "Yannanfei Tea Garden Scenic Area"
+    },
+    {
+      "id": 4347,
+      "nameCN": "惠州市罗浮山景区",
+      "ok": true,
+      "chars": 130,
+      "nameEN": "Luofu Mountain Scenic Area"
+    },
+    {
+      "id": 4348,
+      "nameCN": "惠州市西湖旅游景区",
+      "ok": true,
+      "chars": 109,
+      "nameEN": "Huizhou West Lake Scenic Area"
+    },
+    {
+      "id": 4349,
+      "nameCN": "中山市孙中山故里旅游区",
+      "ok": true,
+      "chars": 121,
+      "nameEN": "Sun Yat-sen's Hometown Tourist Area"
+    },
+    {
+      "id": 4350,
+      "nameCN": "江门市开平碉楼文化旅游区",
+      "ok": true,
+      "chars": 162,
+      "nameEN": "Kaiping Diaolou Cultural Tourism Zone"
+    },
+    {
+      "id": 4351,
+      "nameCN": "阳江市海陵岛大角湾海上丝路旅游区",
+      "ok": true,
+      "chars": 136,
+      "nameEN": "Dajiao Bay Maritime Silk Road Tourist Area, Hailing Island"
+    },
+    {
+      "id": 4352,
+      "nameCN": "肇庆市星湖旅游景区",
+      "ok": true,
+      "chars": 192,
+      "nameEN": "Xinghu Tourist Attraction"
+    },
+    {
+      "id": 4353,
+      "nameCN": "清远市连州地下河旅游景区",
+      "ok": true,
+      "chars": 103,
+      "nameEN": "Lianzhou Underground River"
+    },
+    {
+      "id": 4714,
+      "nameCN": "广西壮族自治区南宁市青秀区南宁青秀山旅游风景区",
+      "ok": true,
+      "chars": 132,
+      "nameEN": "Qingxiu Mountain Scenic Area"
+    },
+    {
+      "id": 4715,
+      "nameCN": "百色起义纪念园景区",
+      "ok": true,
+      "chars": 125,
+      "nameEN": "Baise Uprising Memorial Park"
+    },
+    {
+      "id": 4718,
+      "nameCN": "漓江景区",
+      "ok": true,
+      "chars": 96,
+      "nameEN": "Lijiang River Scenic Area"
+    },
+    {
+      "id": 4719,
+      "nameCN": "两江四湖象山景区",
+      "ok": true,
+      "chars": 132,
+      "nameEN": "Two Rivers and Four Lakes & Elephant Trunk Hill Scenic Area"
+    },
+    {
+      "id": 4720,
+      "nameCN": "乐满地度假世界景区",
+      "ok": true,
+      "chars": 104,
+      "nameEN": "Merryland Resort"
+    },
+    {
+      "id": 4721,
+      "nameCN": "广西壮族自治区桂林市秀峰区独秀峰王城景区",
+      "ok": true,
+      "chars": 130,
+      "nameEN": "Duxiu Peak & Prince City Scenic Area"
+    },
+    {
+      "id": 4722,
+      "nameCN": "广西壮族自治区贺州市昭平县黄姚古镇景区",
+      "ok": true,
+      "chars": 120,
+      "nameEN": "Huangyao Ancient Town"
+    },
+    {
+      "id": 5187,
+      "nameCN": "青城山--都江堰旅游景区",
+      "ok": true,
+      "chars": 119,
+      "nameEN": "Mount Qingcheng and Dujiangyan Scenic Area"
+    },
+    {
+      "id": 5188,
+      "nameCN": "峨眉山风景名胜区",
+      "ok": true,
+      "chars": 123,
+      "nameEN": "Mount Emei Scenic Area"
+    },
+    {
+      "id": 5189,
+      "nameCN": "九寨沟风景名胜区",
+      "ok": true,
+      "chars": 159,
+      "nameEN": "Jiuzhaigou Valley Scenic and Historic Interest Area"
+    },
+    {
+      "id": 5190,
+      "nameCN": "乐山大佛景区",
+      "ok": true,
+      "chars": 134,
+      "nameEN": "Leshan Giant Buddha Scenic Area"
+    },
+    {
+      "id": 5192,
+      "nameCN": "汶川特别旅游区",
+      "ok": true,
+      "chars": 120,
+      "nameEN": "Wenchuan Special Tourism Zone"
+    },
+    {
+      "id": 5193,
+      "nameCN": "北川羌城旅游区",
+      "ok": true,
+      "chars": 154,
+      "nameEN": "Beichuan Qiangcheng Tourism Area"
+    },
+    {
+      "id": 5194,
+      "nameCN": "邓小平故里旅游区",
+      "ok": true,
+      "chars": 127,
+      "nameEN": "Deng Xiaoping's Hometown Scenic Area"
+    },
+    {
+      "id": 5195,
+      "nameCN": "南充市阆中古城旅游区",
+      "ok": true,
+      "chars": 147,
+      "nameEN": "Langzhong Ancient City"
+    },
+    {
+      "id": 5196,
+      "nameCN": "剑门蜀道剑门关旅游景区",
+      "ok": true,
+      "chars": 125,
+      "nameEN": "Jianmen Pass Scenic Area"
+    },
+    {
+      "id": 5197,
+      "nameCN": "朱德故里景区",
+      "ok": true,
+      "chars": 172,
+      "nameEN": "Zhu De's Hometown Scenic Area"
+    },
+    {
+      "id": 5198,
+      "nameCN": "泸定海螺沟冰川森林公园",
+      "ok": true,
+      "chars": 148,
+      "nameEN": "Hailuogou Glacier Forest Park"
+    },
+    {
+      "id": 5199,
+      "nameCN": "碧峰峡旅游景区",
+      "ok": true,
+      "chars": 128,
+      "nameEN": "Bifengxia Scenic Area"
+    },
+    {
+      "id": 5200,
+      "nameCN": "巴中市光雾山景区",
+      "ok": true,
+      "chars": 146,
+      "nameEN": "Guangwu Mountain Scenic Area"
+    },
+    {
+      "id": 5202,
+      "nameCN": "安仁古镇景区",
+      "ok": true,
+      "chars": 125,
+      "nameEN": "Anren Ancient Town"
+    }
+  ]
+}

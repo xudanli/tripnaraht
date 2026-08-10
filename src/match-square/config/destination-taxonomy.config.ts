@@ -24,8 +24,20 @@ export const DESTINATION_TAXONOMY: DestinationRegionDefinition[] = [
       {
         id: 'qinggan_great_loop',
         label: '青甘大环',
-        patterns: [/青甘大环/, /青甘环线/, /西北环线/, /河西走廊/],
+        patterns: [/青甘大环/, /青甘环线/, /青甘线/, /西北环线/, /西北大环线/, /河西走廊/],
         destinationLabel: '西北·青甘大环',
+      },
+      {
+        id: 'duku_highway',
+        label: '独库公路',
+        patterns: [/独库公路/, /独库线/, /(?<![\d])独库(?![\dA-Za-z])/],
+        destinationLabel: '新疆·独库公路',
+      },
+      {
+        id: 'g211_yinrong',
+        label: 'G211银榕',
+        patterns: [/G\s*211|国道\s*211|211\s*国道|银榕线|银西线/],
+        destinationLabel: '西北·G211银榕线',
       },
       {
         id: 'xinjiang',
@@ -44,8 +56,32 @@ export const DESTINATION_TAXONOMY: DestinationRegionDefinition[] = [
   {
     id: 'domestic_southwest',
     label: '国内 · 西南',
-    patterns: [/西南/, /云贵川/, /西藏/],
+    patterns: [/西南/, /云贵川/, /西藏/, /川藏/, /滇藏/],
     subScopes: [
+      {
+        id: 'g318_chuan_zang',
+        label: 'G318川藏',
+        patterns: [/G\s*318|国道318|318川藏|川藏南线|(?<![\d])318(?![\d]).{0,6}川藏|川藏线/],
+        destinationLabel: '西南·G318川藏南线',
+      },
+      {
+        id: 'g317_chuan_zang_north',
+        label: 'G317川藏北',
+        patterns: [/G\s*317|国道317|317川藏|川藏北线/],
+        destinationLabel: '西南·G317川藏北线',
+      },
+      {
+        id: 'g219_xin_zang',
+        label: 'G219新藏',
+        patterns: [/G\s*219|国道219|219新藏|新藏线/],
+        destinationLabel: '西南·G219新藏线',
+      },
+      {
+        id: 'dianzang_route',
+        label: '滇藏线',
+        patterns: [/滇藏线|滇藏公路|云南进藏/],
+        destinationLabel: '西南·滇藏线',
+      },
       {
         id: 'dali_nomad',
         label: '大理游民',

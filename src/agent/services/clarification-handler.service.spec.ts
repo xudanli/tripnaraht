@@ -19,6 +19,14 @@ describe('ClarificationHandlerService', () => {
     expect(tripPlanRequest.constraints?.vehicle_type).toBe('4WD');
   });
 
+  it('applies repair_halt_confirmation upgrade_vehicle_to_4wd', () => {
+    const { tripPlanRequest, applied } = svc.applyRelaxationsFromAnswers(baseTrip(), [
+      { questionId: 'repair_halt_confirmation', value: 'upgrade_vehicle_to_4wd' },
+    ]);
+    expect(applied.map((a) => a.id)).toEqual(['upgrade_vehicle_to_4wd']);
+    expect(tripPlanRequest.constraints?.vehicle_type).toBe('4WD');
+  });
+
   it('merges plan_gen and early_warning answers without double-counting', () => {
     const answersA = [
       { questionId: 'plan_gen_empty_draft_relax_constraints', value: ['upgrade_vehicle_to_4wd'] },

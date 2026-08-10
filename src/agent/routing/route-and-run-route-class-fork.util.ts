@@ -4,9 +4,12 @@
  */
 
 import type { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
-import type { OrchestrationPolicyDecision } from '../utils/orchestration-policy.util';
+import type { OrchestrationPolicyDecision } from './gateway-route-policy.util';
 import type { OrchestrationMode } from '../utils/resolve-orchestration-mode.util';
 import { applyBoundTripReviewRouteAndRunOverrideInPlace } from '../utils/orchestration-signals.util';
+import { applyPlanningAdmissionGateInPlace } from './planning-admission-gate.util';
+import { applyAgentTaskContractInPlace } from '../harness/compile-agent-task-contract.util';
+import { expandHotelFollowupAffirmation } from '../chat/expand-hotel-followup-affirmation.util';
 import { classifyRouteAndRunRouteClass } from './route-and-run-route-class.util';
 import type {
   DeepResearchV71Trigger,
@@ -144,14 +147,29 @@ export function applyRouteClassForkInPlace(
 }
 
 /**
- * Gateway / AgentService entry: fork when enabled; always apply bound-trip review override.
- * Fork skips when intent_mode is explicit (≠ AUTO); sidebars that mis-send TRIP_PLANNING
- * for「全面分析/可行性」仍需被钳回 DATA_LOOKUP。
+ * Gateway / AgentService entry:
+ * 1) Task Contract Compiler（吸收 Admission Gate）
+ * 2) route class fork
+ * 3) bound-trip review override
+ *
+ * intent_mode / Day 锚仅为 hint；Full Planning 由 TaskContract.allowFullPlanning 裁定。
  */
 export function applyRouteAndRunEntryRoutingInPlace(
   request: RouteAndRunRequestDto,
   env: NodeJS.ProcessEnv = process.env,
 ): RouteClassForkV1 | null {
+  const rawMessage = String(request.message ?? '');
+  const recent = request.conversation_context?.recent_messages;
+  const expanded = expandHotelFollowupAffirmation({
+    message: rawMessage,
+    recentMessages: Array.isArray(recent) ? recent.map((m) => String(m)) : undefined,
+  });
+  if (expanded !== rawMessage) {
+    request.message = expanded;
+  }
+  /** TaskContract 编译（含 Admission）；未准入则降级 options */
+  applyAgentTaskContractInPlace(request);
+  applyPlanningAdmissionGateInPlace(request);
   const fork = applyRouteClassForkInPlace(request, env);
   applyBoundTripReviewRouteAndRunOverrideInPlace(request);
   return fork;

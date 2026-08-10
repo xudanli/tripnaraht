@@ -1,13 +1,20 @@
-import { ClaudeOrchestratorService } from './claude-orchestrator.service';
+import {
+  prepareSkillInput,
+} from '../routing/prepare-skill-input.runner';
+import type { PrepareSkillInputHost } from '../routing/prepare-skill-input.host';
 
-describe('ClaudeOrchestratorService — emergency_constraints pass-through', () => {
-  it('prepareSkillInput passes request.emergency_constraints into world.buildContext input', () => {
-    const svc: any = Object.create(ClaudeOrchestratorService.prototype);
-    // Minimal stubs to satisfy prepareSkillInput internals.
-    svc.replacePlaceholders = (x: any) => x;
-    svc.extractCountryCodeFromMessage = () => undefined;
-    svc.logger = { debug: jest.fn(), warn: jest.fn() };
+describe('prepareSkillInput — emergency_constraints / planState bootstrap', () => {
+  function makeHost(overrides: Partial<PrepareSkillInputHost> = {}): PrepareSkillInputHost {
+    return {
+      logger: { log: jest.fn(), warn: jest.fn(), debug: jest.fn(), error: jest.fn() },
+      extractCountryCodeFromMessage: jest.fn(() => undefined),
+      sanitizeOrchestrationHandoff: jest.fn((_req, value) => value),
+      ...overrides,
+    };
+  }
 
+  it('passes request.emergency_constraints into world.buildContext input', () => {
+    const host = makeHost();
     const step: any = {
       skillName: 'world.buildContext',
       input: { countryCode: 'IS' },
@@ -26,21 +33,15 @@ describe('ClaudeOrchestratorService — emergency_constraints pass-through', () 
       },
     };
 
-    const input = svc.prepareSkillInput(step, results, context, request);
+    const input = prepareSkillInput(host, step, results, context, request);
     expect(input.countryCode).toBe('IS');
     expect(input.emergency_constraints).toEqual(request.emergency_constraints);
   });
 
-  it('prepareSkillInput bootstraps planState for plan.gate.precheck when absent', () => {
-    const svc: any = Object.create(ClaudeOrchestratorService.prototype);
-    svc.replacePlaceholders = (x: any) => x;
-    svc.extractCountryCodeFromMessage = () => 'IS';
-    svc.logger = { debug: jest.fn(), warn: jest.fn() };
-    svc.skillValidationRequiresPlanState = ClaudeOrchestratorService.prototype['skillValidationRequiresPlanState'].bind(svc);
-    svc.extractPlanStateFromStepResults = ClaudeOrchestratorService.prototype['extractPlanStateFromStepResults'].bind(svc);
-    svc.buildBootstrapPlanState = ClaudeOrchestratorService.prototype['buildBootstrapPlanState'].bind(svc);
-    svc.hasValue = ClaudeOrchestratorService.prototype['hasValue'].bind(svc);
-
+  it('bootstraps planState for plan.gate.precheck when absent', () => {
+    const host = makeHost({
+      extractCountryCodeFromMessage: jest.fn(() => 'IS'),
+    });
     const step: any = {
       skillName: 'plan.gate.precheck',
       input: {},
@@ -54,10 +55,9 @@ describe('ClaudeOrchestratorService — emergency_constraints pass-through', () 
       message: '7天冰岛南岸路线是否可行？',
     };
 
-    const input = svc.prepareSkillInput(step, results, context, request);
+    const input = prepareSkillInput(host, step, results, context, request);
     expect(input.planState).toBeDefined();
     expect(input.planState.constraints.time.days).toBe(7);
     expect(input.planState.itinerary.tripId).toBe('trip-iceland');
   });
 });
-

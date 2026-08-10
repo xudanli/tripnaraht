@@ -89,6 +89,128 @@ export class CountriesController {
   }
 
   @Public()
+  @Get(':countryCode/driving-context')
+  @ApiOperation({
+    summary: '自驾上下文（中国）',
+    description:
+      '返回限行城市、涉藏/川西标记、季节窗命中、段距离阈值 pack 与 advisories。' +
+      '可在选线后、bootstrap 前预览；建行程后同摘要写入 Trip.metadata.drivingContext。',
+  })
+  @ApiParam({ name: 'countryCode', description: '国家代码', example: 'CN' })
+  @ApiQuery({
+    name: 'classicRouteId',
+    required: false,
+    description: '经典线 ID',
+    example: 'cn.route.g318',
+  })
+  @ApiQuery({
+    name: 'startDate',
+    required: false,
+    description: '行程开始日 YYYY-MM-DD（用于季节窗评估）',
+    example: '2026-07-01',
+  })
+  @ApiQuery({
+    name: 'endDate',
+    required: false,
+    description: '行程结束日 YYYY-MM-DD',
+    example: '2026-07-14',
+  })
+  @ApiQuery({
+    name: 'cities',
+    required: false,
+    description: '额外限行城市，逗号分隔（会与经典线 overnight 锚点合并查表）',
+    example: '北京,成都',
+  })
+  @ApiResponse({ status: 200, description: '成功返回自驾上下文', type: ApiSuccessResponseDto })
+  @ApiResponse({ status: 404, description: '非 CN 或不支持', type: ApiErrorResponseDto })
+  async getDrivingContext(
+    @Param('countryCode') countryCode: string,
+    @Query('classicRouteId') classicRouteId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('cities') cities?: string,
+  ) {
+    try {
+      const ctx = this.countriesService.getDrivingContext(countryCode, {
+        classicRouteId,
+        startDate,
+        endDate,
+        cities,
+      });
+      return successResponse(ctx);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Get(':countryCode/classic-self-drive-routes')
+  @ApiOperation({
+    summary: '经典自驾线路 catalog（中国）',
+    description:
+      '返回可选经典/小众自驾线列表，供客户端选线后调用 POST /trips/bootstrap（classicRouteId）。' +
+      '目前仅 CN 有数据；其他国家返回空列表。',
+  })
+  @ApiParam({ name: 'countryCode', description: '国家代码', example: 'CN' })
+  @ApiQuery({
+    name: 'tier',
+    required: false,
+    description: '可选过滤：classic | niche | seasonal_classic',
+    example: 'classic',
+  })
+  @ApiResponse({ status: 200, description: '成功返回经典自驾线列表', type: ApiSuccessResponseDto })
+  async listClassicSelfDriveRoutes(
+    @Param('countryCode') countryCode: string,
+    @Query('tier') tier?: string,
+  ) {
+    try {
+      const catalog = this.countriesService.getClassicSelfDriveRouteCatalog(
+        countryCode,
+        { tier },
+      );
+      return successResponse(catalog);
+    } catch (error: any) {
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
+  @Get(':countryCode/classic-self-drive-routes/:routeId')
+  @ApiOperation({
+    summary: '经典自驾线路详情（中国）',
+    description:
+      '返回单条经典线详情（含骨架 variant、mustHints、驾驶阈值 pack）。routeId 例：cn.route.g318',
+  })
+  @ApiParam({ name: 'countryCode', description: '国家代码', example: 'CN' })
+  @ApiParam({
+    name: 'routeId',
+    description: '经典线 ID',
+    example: 'cn.route.g318',
+  })
+  @ApiResponse({ status: 200, description: '成功返回详情', type: ApiSuccessResponseDto })
+  @ApiResponse({ status: 404, description: '未找到线路', type: ApiErrorResponseDto })
+  async getClassicSelfDriveRoute(
+    @Param('countryCode') countryCode: string,
+    @Param('routeId') routeId: string,
+  ) {
+    try {
+      const detail = this.countriesService.getClassicSelfDriveRouteDetail(
+        countryCode,
+        routeId,
+      );
+      return successResponse(detail);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Public()
   @Get(':countryCode/profile')
   @ApiOperation({
     summary: '获取完整的国家档案信息',

@@ -7,6 +7,7 @@ import type {
   PlanningDecisionBasisField,
   PlanningWhatHappened,
 } from '../types/planning-decision-basis.types';
+import { expandConflictLookupIds } from './resolve-conflict-lookup-ids.util';
 
 const TRANSPORT_TYPES = new Set([
   ConflictType.TRANSPORT_INSUFFICIENT,
@@ -17,9 +18,20 @@ const TRANSPORT_TYPES = new Set([
 export function pickPrimaryConflict(
   conflicts: ConflictDto[],
   conflictId?: string,
+  lookupIds?: string[],
 ): ConflictDto | undefined {
-  if (conflictId) {
-    return conflicts.find((c) => c.id === conflictId);
+  const ids =
+    lookupIds && lookupIds.length > 0
+      ? lookupIds
+      : conflictId
+        ? expandConflictLookupIds(conflictId)
+        : [];
+  if (ids.length > 0) {
+    for (const id of ids) {
+      const hit = conflicts.find((c) => c.id === id);
+      if (hit) return hit;
+    }
+    return undefined;
   }
   return (
     conflicts.find((c) => c.type === ConflictType.TRANSPORT_INSUFFICIENT) ??
@@ -286,6 +298,9 @@ function formatValidityDisplay(iso?: string): string {
 export function buildPlanningDecisionBasis(input: {
   tripId: string;
   conflict?: ConflictDto;
+  /** Decision-space problem narrative when focus is dc_* / dp_* without a trip-conflict row. */
+  problemWhatHappened?: PlanningWhatHappened;
+  problemId?: string;
   contextFields: PlanningDecisionBasisField[];
   proposalId?: string;
   optionCount?: number;
@@ -295,13 +310,14 @@ export function buildPlanningDecisionBasis(input: {
   const conflictId = input.conflict?.id;
   const query = new URLSearchParams();
   if (conflictId) query.set('conflictId', conflictId);
+  if (input.problemId) query.set('problemId', input.problemId);
   if (input.proposalId) query.set('proposalId', input.proposalId);
   const qs = query.toString();
   const refreshUrl = `/api/trips/${input.tripId}/arrange-itinerary/decision-basis${qs ? `?${qs}` : ''}`;
 
   const whatHappened = input.conflict
     ? buildWhatHappenedFromConflict(input.conflict)
-    : {
+    : input.problemWhatHappened ?? {
         headline: '发生了什么？',
         narrative: '当前行程未发现需解释的冲突。',
       };

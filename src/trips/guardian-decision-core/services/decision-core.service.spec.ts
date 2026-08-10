@@ -2,6 +2,7 @@ import { DecisionCoreService } from '../services/decision-core.service';
 import type { DecisionWorkspace } from '../contracts/decision-workspace.types';
 import { RFC001_REASON_CODES } from '../reason-codes/reason-code.registry';
 import { rfc001DecisionRecordSchema } from '../contracts/schemas/rfc001-phase0.schemas';
+import { buildWeatherActivityDecisionScope } from '../../../decision-runtime/builders/build-weather-activity-decision-scope';
 
 describe('DecisionCoreService.finalize', () => {
   const core = new DecisionCoreService();
@@ -114,6 +115,21 @@ describe('DecisionCoreService.finalize', () => {
     expect(parsed.success).toBe(true);
   });
 
+  it('keeps in-scope REPLACE_ITEM when DecisionScope is attached', () => {
+    const scope = buildWeatherActivityDecisionScope({
+      snapshotId: 'wss_1022',
+      tripId: 'trip_is',
+      affectedPlanItemIds: ['item_day3_drive'],
+    });
+    const { record } = core.finalize({
+      workspace: { ...baseWorkspace, decisionScope: scope },
+      currentWorldStateSnapshotId: 'wss_1022',
+      defaultAuthorizationLevel: 'L2',
+    });
+    expect(record.selectedCandidateId).toBe('cand_a');
+    expect(record.finalAction).toBe('REPLACE');
+  });
+
   it('REJECT when no feasible candidates remain', () => {
     const ws: DecisionWorkspace = {
       ...baseWorkspace,
@@ -129,5 +145,55 @@ describe('DecisionCoreService.finalize', () => {
     });
     expect(record.finalAction).toBe('REJECT');
     expect(record.selectedCandidateId).toBeUndefined();
+  });
+
+  it('rejects repair candidates outside DecisionScope (Authority Consistency)', () => {
+    const scope = buildWeatherActivityDecisionScope({
+      snapshotId: 'wss_1022',
+      tripId: 'trip_is',
+      affectedPlanItemIds: ['item_day3_drive'],
+    });
+    const ws: DecisionWorkspace = {
+      ...baseWorkspace,
+      decisionScope: scope,
+      repairCandidates: [
+        {
+          ...baseWorkspace.repairCandidates[0]!,
+          candidateId: 'cand_bad',
+          proposedOperations: [
+            {
+              operationId: 'op_bad',
+              kind: 'MOVE_ITEM',
+              targetRefs: [{ kind: 'PLAN_ITEM', id: 'item_day3_drive' }],
+              parameters: {},
+            },
+          ],
+        },
+      ],
+      loadAssessments: [
+        {
+          ...baseWorkspace.loadAssessments[0]!,
+          targetCandidateId: 'cand_bad',
+        },
+      ],
+      constraintAssertions: baseWorkspace.constraintAssertions.map((a) =>
+        a.targetCandidateId === 'cand_a'
+          ? { ...a, targetCandidateId: 'cand_bad', verdict: 'PASS' as const }
+          : a,
+      ),
+    };
+    const { record } = core.finalize({
+      workspace: ws,
+      currentWorldStateSnapshotId: 'wss_1022',
+    });
+    expect(
+      record.rejectedCandidates.some(
+        (r) =>
+          r.candidateId === 'cand_bad' &&
+          r.reasonCodes.includes('DECISION_SCOPE_VIOLATION') &&
+          r.rejectedBy === 'POLICY',
+      ),
+    ).toBe(true);
+    expect(record.finalAction).toBe('REJECT');
   });
 });

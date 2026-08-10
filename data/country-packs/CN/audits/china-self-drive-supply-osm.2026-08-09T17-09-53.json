@@ -1,0 +1,365 @@
+{
+  "at": "2026-08-09T17:09:53.642Z",
+  "dryRun": false,
+  "source": "osm-overpass",
+  "routeArg": "qinggan",
+  "routes": [
+    "cn.route.qinggan_loop"
+  ],
+  "radiusM": 20000,
+  "limitPerAnchor": 15,
+  "queries": [
+    "fuel",
+    "charging",
+    "parking",
+    "highway_services",
+    "supermarket",
+    "convenience",
+    "toilets",
+    "car_repair",
+    "camping",
+    "hospital",
+    "toll",
+    "sanitary_dump"
+  ],
+  "candidateCount": 360,
+  "byCanonicalType": {
+    "TOLL_BOOTH": 49,
+    "HOSPITAL": 38,
+    "FUEL_STATION": 82,
+    "TOILETS": 65,
+    "SUPERMARKET": 15,
+    "PARKING": 82,
+    "CONVENIENCE_STORE": 13,
+    "HIGHWAY_SERVICES": 8,
+    "CAMPING": 3,
+    "EV_CHARGING": 2,
+    "REST_STOP": 3
+  },
+  "created": 360,
+  "updated": 0,
+  "skipped": 0,
+  "errors": [],
+  "sample": [
+    {
+      "osmKey": "node/527073140",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/369653656",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/2469370380",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/2469370177",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/8654716228",
+      "nameCN": "塘川收费站",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/8654716263",
+      "nameCN": "塘川收费站",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/1948001003",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/1674415151",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/1037120167",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/1630504829",
+      "nameCN": "西宁北收费站",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/1950982198",
+      "nameCN": "西宁北收费站",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/698587628",
+      "nameCN": "HOSPITAL",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/993365488",
+      "nameCN": "彭家寨卫生院",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/993365486",
+      "nameCN": "西宁市中医院",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/878427309",
+      "nameCN": "武警青海总队医院",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/627757065",
+      "nameCN": "Red Cross Hospital",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/878427308",
+      "nameCN": "青海省人民医院",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/1149578217",
+      "nameCN": "青海心脑血管病专科医院",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/5178234622",
+      "nameCN": "Qinghai Province Cancer Hospital",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/1025395779",
+      "nameCN": "门诊住院综合楼",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/1025395781",
+      "nameCN": "行政楼",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/1025395780",
+      "nameCN": "保健楼",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/1025395778",
+      "nameCN": "外科手术楼",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/1149578213",
+      "nameCN": "青海大学附属医院（南院区）",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/1005527640",
+      "nameCN": "HOSPITAL",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/11013971672",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/11013818123",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/10261339949",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/813207814",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/813208044",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/10608306269",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/907594339",
+      "nameCN": "中国石油",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/5600765985",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/9157846076",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/4211714589",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/5607767599",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/9917753740",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/865659245",
+      "nameCN": "中国石油",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "node/13978618484",
+      "nameCN": "加油站 中石化",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    },
+    {
+      "osmKey": "way/239132638",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "西宁",
+      "routeId": "cn.route.qinggan_loop"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "updatedAt": "2026-08-09",
+    "corridor": "cn.route.g219",
+    "disclaimer": "海拔与垭口为公开资料近似值，用于高原门禁提示与日里程编排；非测绘级、非实时通告。",
+    "source": "public travel/geo summaries + classic-route seed alignment"
+  },
+  "overnightHubs": [
+    { "nameCN": "叶城", "altitudeMeters": 1360, "role": "gateway" },
+    { "nameCN": "改则", "altitudeMeters": 4430, "role": "resupply" },
+    { "nameCN": "措勤", "altitudeMeters": 4670, "role": "overnight" },
+    { "nameCN": "狮泉河", "altitudeMeters": 4300, "role": "deep_resupply" },
+    { "nameCN": "札达", "altitudeMeters": 3700, "role": "optional_spur" },
+    { "nameCN": "日喀则", "altitudeMeters": 3900, "role": "buffer" },
+    { "nameCN": "拉萨", "altitudeMeters": 3650, "role": "terminus" }
+  ],
+  "passes": [
+    {
+      "nameCN": "麻扎达坂",
+      "nameEN": "Mazar Pass",
+      "altitudeMeters": 4960,
+      "nearHubCN": "叶城",
+      "segmentHint": "叶城→甜水海前段",
+      "notesCN": "新藏线早期高点；急升段，强制慢升与天气窗口"
+    },
+    {
+      "nameCN": "界山达坂",
+      "nameEN": "Jieshan Pass",
+      "altitudeMeters": 5350,
+      "nearHubCN": "改则",
+      "segmentHint": "麻扎—甜水海走廊",
+      "notesCN": "常见报道超高垭口；非经验车队勿作默认行程"
+    },
+    {
+      "nameCN": "甜水海",
+      "nameEN": "Tianshuihai",
+      "altitudeMeters": 4850,
+      "nearHubCN": "改则",
+      "segmentHint": "无人区过渡",
+      "notesCN": "补给极疏；天气窗口出发，备双备胎与额外油料"
+    }
+  ],
+  "acclimatizationHintsCN": [
+    "叶城非高原适应点；进入达坂段前完成整备与医疗预案",
+    "连续硬推日之间插入休整；狮泉河深度补给后再排古格支线",
+    "垭口停留宜短；身体不适立即降强度，禁止硬闯"
+  ]
+}

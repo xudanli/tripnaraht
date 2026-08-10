@@ -2241,7 +2241,7 @@ export class RagController {
         decision_context: {
           type: 'object',
           description:
-            'Reality OS `DecisionContextV0`。`REALITY_ENFORCEMENT` / `RAG_REALITY_POLICY_ENFORCE` 开启时须携带，与决策引擎 snapshot 对齐。',
+            'Reality OS `DecisionContextV0`。`REALITY_ENFORCEMENT` / `RAG_REALITY_POLICY_ENFORCE` 开启时须携带，与决策引擎 snapshot 对齐。咨询/脚本可用 buildConsultationDecisionContextV0({ region: "cn" }) 生成最小可用 context。',
         },
       },
       required: ['query'],

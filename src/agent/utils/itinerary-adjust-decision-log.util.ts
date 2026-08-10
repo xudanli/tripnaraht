@@ -420,6 +420,7 @@ export function pruneStaleVerifyDecisionLogForAdjustTarget(state: OrchestratorSt
 export function refreshItineraryAdjustOptimizationResult(state: OrchestratorState): void {
   const ctx = resolveItineraryAdjustRunContext(state);
   if (!ctx.active || !ctx.targetDateIso || !state.itinerary) return;
+  if (ctx.metadata.itinerary_adjust_empty_target_optimize === true) return;
 
   applyPacingRelaxToAdjustTargetState(state);
 

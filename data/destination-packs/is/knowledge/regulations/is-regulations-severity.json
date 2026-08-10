@@ -1,0 +1,27 @@
+{
+  "schemaId": "tripnara.iceland.regulations_severity@v1",
+  "version": "1.0.0",
+  "status": "ACTIVE",
+  "items": [
+    {
+      "topicId": "driving_eligibility",
+      "severity": "HARD",
+      "summaryZh": "驾驶资格与许可"
+    },
+    {
+      "topicId": "off_road",
+      "severity": "HARD",
+      "summaryZh": "禁止越野行驶"
+    },
+    {
+      "topicId": "alcohol",
+      "severity": "HARD",
+      "summaryZh": "酒驾零容忍"
+    },
+    {
+      "topicId": "winter_equipment",
+      "severity": "SOFT",
+      "summaryZh": "冬季装备要求"
+    }
+  ]
+}

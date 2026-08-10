@@ -39,6 +39,7 @@ import type { PackRuleConstraintInput } from '../../../decision-runtime/packs/ru
 import type { WorldStateDataAvailability } from '../../../decision-runtime/constraints/contracts/world-state-completeness';
 import { isConstraintCandidateFacadeEnabled } from '../../../decision-runtime/constraints/constraint-plan-verify.config';
 import { CandidateConstraintFacade } from '../../../decision-runtime/constraints/services/candidate-constraint-facade.service';
+import { resolveDecisionScopeForGateway } from '../../../decision-runtime/constraints/resolve-decision-scope-for-gateway.util';
 
 /**
  * 可行性检查结果
@@ -173,19 +174,37 @@ export class ConstraintEngineService {
     const ext = state as TripWorldState & {
       packContext?: PackRuleConstraintInput;
       dataAvailability?: WorldStateDataAvailability;
+      decisionScope?: import('../../../decision-runtime/contracts/decision-scope.types').DecisionScope;
+      worldStateSnapshotId?: string;
     };
     const signals = state.signals as unknown as Record<string, unknown> | undefined;
+    const packContext =
+      ext.packContext ??
+      (signals?.packContext as PackRuleConstraintInput | undefined);
+
+    const scopeBinding = resolveDecisionScopeForGateway({
+      tripId,
+      signals: {
+        ...(signals ?? {}),
+        ...(ext.decisionScope ? { decisionScope: ext.decisionScope } : {}),
+        ...(ext.worldStateSnapshotId
+          ? { worldStateSnapshotId: ext.worldStateSnapshotId }
+          : {}),
+      },
+      packContext,
+    });
 
     return {
       tripId,
       plan,
       worldState: state,
-      packContext:
-        ext.packContext ??
-        (signals?.packContext as PackRuleConstraintInput | undefined),
+      packContext,
       dataAvailability:
         ext.dataAvailability ??
         (signals?.dataAvailability as WorldStateDataAvailability | undefined),
+      decisionScope: scopeBinding.decisionScope,
+      worldStateSnapshotId: scopeBinding.worldStateSnapshotId,
+      scopeMutationCandidate: scopeBinding.scopeMutationCandidate,
     };
   }
 

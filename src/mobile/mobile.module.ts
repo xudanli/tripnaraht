@@ -15,15 +15,29 @@ import { GuardianDecisionCoreModule } from '../trips/guardian-decision-core/guar
 import { MobileExecutionController } from './controllers/mobile-execution.controller';
 import { MobilePlanningController } from './controllers/mobile-planning.controller';
 import { MobileUserController } from './controllers/mobile-user.controller';
+import { MobileTripCredentialsController } from './controllers/mobile-trip-credentials.controller';
+import { TripsMobileCompatController } from './controllers/trips-mobile-compat.controller';
 import { MobileExecutionService } from './services/mobile-execution.service';
 import { MobilePlanningService } from './services/mobile-planning.service';
 import { MobileSpatialRouteService } from './services/mobile-spatial-route.service';
 import { MobileExecutionWriteService } from './services/mobile-execution-write.service';
+import { MobileDailyDriveService } from './services/mobile-daily-drive.service';
+import { MobileInTripHomeService } from './services/mobile-in-trip-home.service';
+import { MobileOverviewDashboardService } from './services/mobile-overview-dashboard.service';
+import { MobileExecutionQuickActionsService } from './services/mobile-execution-quick-actions.service';
 import { MobileEmergencyContactsService } from './services/mobile-emergency-contacts.service';
 import { MobileEmergencyPackService } from './services/mobile-emergency-pack.service';
 import { MobilePushTokenService } from './services/mobile-push-token.service';
 import { MobileApnsService } from './services/mobile-apns.service';
 import { MobilePushNotificationService } from './services/mobile-push-notification.service';
+import { MobileCredentialDocumentsService } from './services/mobile-credential-documents.service';
+import { MobileCredentialDocumentStorageService } from './services/mobile-credential-document-storage.service';
+import { MobileCredentialStatusService } from './services/mobile-credential-status.service';
+import { UserPreferencesOtherStore } from './services/user-preferences-other.store';
+import { MobileIdentityService } from './services/mobile-identity.service';
+import { MobileIdentityOptionsService } from './services/mobile-identity-options.service';
+import { MobileTravelPortraitService } from './services/mobile-travel-portrait.service';
+import { MobileDriverProfileService } from './services/mobile-driver-profile.service';
 import { TripContextWebSocketService } from './ws/trip-context-ws.service';
 import { TripContextChangeNotifierService } from './ws/trip-context-change-notifier.service';
 import { CountriesModule } from '../countries/countries.module';
@@ -45,17 +59,35 @@ import { CountriesModule } from '../countries/countries.module';
     GuardianDecisionCoreModule,
     CountriesModule,
   ],
-  controllers: [MobileExecutionController, MobilePlanningController, MobileUserController],
+  controllers: [
+    MobileExecutionController,
+    MobilePlanningController,
+    MobileUserController,
+    MobileTripCredentialsController,
+    TripsMobileCompatController,
+  ],
   providers: [
     MobileExecutionService,
     MobilePlanningService,
     MobileSpatialRouteService,
     MobileExecutionWriteService,
+    MobileDailyDriveService,
+    MobileInTripHomeService,
+    MobileOverviewDashboardService,
+    MobileExecutionQuickActionsService,
     MobileEmergencyContactsService,
     MobileEmergencyPackService,
     MobilePushTokenService,
     MobileApnsService,
     MobilePushNotificationService,
+    MobileCredentialDocumentsService,
+    MobileCredentialDocumentStorageService,
+    MobileCredentialStatusService,
+    UserPreferencesOtherStore,
+    MobileIdentityService,
+    MobileIdentityOptionsService,
+    MobileTravelPortraitService,
+    MobileDriverProfileService,
     TripContextWebSocketService,
     TripContextChangeNotifierService,
   ],
@@ -64,9 +96,18 @@ import { CountriesModule } from '../countries/countries.module';
     MobilePlanningService,
     MobileSpatialRouteService,
     MobileExecutionWriteService,
+    MobileDailyDriveService,
+    MobileInTripHomeService,
+    MobileOverviewDashboardService,
+    MobileExecutionQuickActionsService,
     MobileEmergencyContactsService,
     MobilePushNotificationService,
     TripContextChangeNotifierService,
+    MobileCredentialDocumentsService,
+    MobileCredentialStatusService,
+    MobileIdentityService,
+    MobileTravelPortraitService,
+    MobileDriverProfileService,
   ],
 })
 export class MobileModule {}

@@ -1,0 +1,175 @@
+{
+  "packId": "pack.cn.sichuan",
+  "destinationId": "CN-SICHUAN",
+  "displayName": {
+    "en": "Sichuan (incl. western plateau corridors)",
+    "zh": "四川（含川西高原廊道）"
+  },
+  "version": "1.0.0",
+  "lastReviewedAt": "2026-08-08T00:00:00.000Z",
+  "geo": {
+    "countryCode": "CN",
+    "region": { "en": "Sichuan", "zh": "四川" },
+    "city": { "en": "Chengdu / western Sichuan", "zh": "成都及川西" },
+    "lat": 30.5728,
+    "lng": 104.0668
+  },
+  "supportedSeasons": ["summer", "winter", "shoulder", "monsoon"],
+  "sources": [
+    {
+      "sourceId": "src.sichuan.tourism",
+      "authority": "Sichuan Tourism",
+      "type": "html",
+      "title": { "en": "Sichuan travel info", "zh": "四川文旅信息" },
+      "canonicalUrl": "https://www.sc.gov.cn/"
+    }
+  ],
+  "hazards": [
+    {
+      "type": "ALTITUDE",
+      "severity": "high",
+      "level": "HIGH",
+      "summary": {
+        "en": "Western Sichuan rises quickly from basin to 3000m+ passes; altitude sickness risk.",
+        "zh": "川西从盆地快速爬升至 3000m+ 垭口，高原反应风险高。"
+      },
+      "mitigations": [
+        {
+          "en": "Do not rush Chengdu→highlands in one day; sleep intermediate towns.",
+          "zh": "勿成都直冲高原一日达；安排过渡夜宿。"
+        },
+        {
+          "en": "Apply CN_SICHUAN risk thresholds (highAltitudeM 3000).",
+          "zh": "套用 CN_SICHUAN 风险阈值（高海拔 3000m）。"
+        }
+      ]
+    },
+    {
+      "type": "terrain",
+      "severity": "high",
+      "summary": {
+        "en": "Mountain roads, landslides in rainy season, winter ice on passes.",
+        "zh": "山区道路、雨季滑坡、冬季垭口结冰。"
+      },
+      "mitigations": [
+        {
+          "en": "Check pass status; avoid night mountain driving.",
+          "zh": "出发前查垭口路况；避免夜间山路。"
+        }
+      ]
+    },
+    {
+      "type": "weather_extreme",
+      "severity": "medium",
+      "summary": {
+        "en": "Basin summer heat/humidity vs highland cold; large diurnal swing.",
+        "zh": "盆地湿热 vs 高原寒冷，昼夜温差大。"
+      },
+      "mitigations": [
+        {
+          "en": "Pack layered clothing for basin-to-highland transitions.",
+          "zh": "盆地进高原需分层穿衣。"
+        }
+      ]
+    }
+  ],
+  "checklists": [
+    {
+      "id": "checklist.sichuan.altitude",
+      "category": "health_insurance",
+      "items": [
+        { "en": "Acclimatization nights before 3500m+", "zh": "进入 3500m+ 前安排适应夜" },
+        { "en": "Altitude meds / portable oxygen if needed", "zh": "高反药/便携氧气（按需）" }
+      ]
+    },
+    {
+      "id": "checklist.sichuan.road",
+      "category": "logistics",
+      "items": [
+        { "en": "Fuel plan for sparse western segments", "zh": "川西稀疏路段加油计划" },
+        { "en": "Pass / landslide advisories", "zh": "垭口与塌方路况查询" }
+      ]
+    },
+    {
+      "id": "checklist.sichuan.booking",
+      "category": "activities_bookings",
+      "items": [
+        { "en": "Jiuzhaigou / other timed tickets if applicable", "zh": "九寨沟等热门票预约（如适用）" }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "rule.sichuan.rapid_ascent",
+      "category": "safety_hazards",
+      "severity": "high",
+      "when": {
+        "eq": { "path": "itinerary.countries", "value": ["CN"] }
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "Western Sichuan: avoid rapid ascent from Chengdu basin to high passes in a single day.",
+          "zh": "川西：避免从成都盆地单日急升至高海拔垭口。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Insert intermediate lodging for altitude gain",
+              "zh": "为大高差插入过渡住宿"
+            },
+            "dueOffsetDays": -10,
+            "tags": ["altitude", "planning"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rule.sichuan.monsoon_road",
+      "category": "safety_hazards",
+      "severity": "high",
+      "appliesTo": { "seasons": ["summer", "monsoon"] },
+      "when": {
+        "eq": { "path": "itinerary.countries", "value": ["CN"] }
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "Rainy season: watch for landslides and temporary road closures on western corridors.",
+          "zh": "雨季关注川西廊道塌方与临时封路。"
+        }
+      }
+    },
+    {
+      "id": "rule.sichuan.winter_pass",
+      "category": "safety_hazards",
+      "severity": "high",
+      "appliesTo": { "seasons": ["winter"] },
+      "when": {
+        "eq": { "path": "itinerary.countries", "value": ["CN"] }
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "Winter passes may require chains / close; do not plan night crossings.",
+          "zh": "冬季垭口可能需防滑链或封闭；禁止规划夜间过垭口。"
+        }
+      }
+    },
+    {
+      "id": "rule.sichuan.supply",
+      "category": "logistics",
+      "severity": "medium",
+      "when": {
+        "eq": { "path": "itinerary.countries", "value": ["CN"] }
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "Stock fuel/food in Chengdu or Kangding before sparse western segments.",
+          "zh": "进入川西稀疏段前在成都或康定补充燃油与物资。"
+        }
+      }
+    }
+  ]
+}

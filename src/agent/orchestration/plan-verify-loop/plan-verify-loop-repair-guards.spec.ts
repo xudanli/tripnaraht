@@ -147,4 +147,88 @@ describe('plan-verify-loop-repair-guards — flawed draft narrate', () => {
       ]),
     );
   });
+
+  it('surfaces upgrade_vehicle_to_4wd when F-road/2WD conflict blocks repair', () => {
+    const host = mockHost();
+    const decisionState = {
+      systemState: { repairCount: 3 },
+      verification: {
+        issues: [
+          {
+            code: 'ROUTE_INFEASIBLE',
+            class: 'CONFLICT',
+            message:
+              '[L3-PROOF|terrain.f_road_compatibility|OTHER:vehicle_terrain_arbitrator|cmp:LEQ|actual:|limit:|unit:|slack:|evidence:MODEL:x] 行程里包含冰岛 F 路，当前指向两驱。请改订四驱或改走不含 F 路的路线。',
+          },
+        ],
+      },
+    } as PlanVerifyLoopRunParams['decisionState'];
+    const loop: PlanVerifyTransientLoopState = createPlanVerifyTransientState(decisionState);
+    const params = {
+      request: {
+        request_id: 'fd-froad',
+        user_id: 'u',
+        trip_id: 'trip_froad',
+        message: '8月20号前往东住霍芬',
+      },
+      context: {},
+      state: { request_id: 'fd-froad', metadata: {}, decision_log: [], errors: [] },
+      decisionState,
+      llmProvider: 'deepseek',
+      startTime: Date.now(),
+      loop,
+    } as PlanVerifyLoopRunParams & { loop: PlanVerifyTransientLoopState };
+
+    const terminal = checkRepairCountExceededIfNeeded(host, params);
+    expect(terminal).not.toBeNull();
+    const q = (params.state as { clarification_questions?: Array<Record<string, unknown>> })
+      .clarification_questions?.[0] as {
+      question?: string;
+      options?: Array<{ value: string }>;
+      metadata?: Record<string, unknown>;
+    };
+    expect(q?.question).toContain('四驱');
+    expect(q?.options?.map((o) => o.value)).toContain('upgrade_vehicle_to_4wd');
+    expect(q?.metadata?.vehicle_terrain_conflict).toBe(true);
+  });
+
+  it('ADVICE_ONLY itinerary_adjust draft soft-continues past REPAIR budget halt', () => {
+    const host = mockHost();
+    const decisionState = { systemState: { repairCount: 3 } } as PlanVerifyLoopRunParams['decisionState'];
+    const loop: PlanVerifyTransientLoopState = createPlanVerifyTransientState(decisionState);
+    const params = {
+      request: {
+        request_id: 'adj-soft',
+        user_id: 'u',
+        trip_id: 'trip_adj',
+        message: '优化一下第六天的路线',
+        options: { execution_mode: 'ADVICE_ONLY', entry_point: 'agent_chat' },
+      },
+      context: {},
+      state: {
+        request_id: 'adj-soft',
+        metadata: {
+          itinerary_adjust_execution_mode: 'ADVICE_ONLY',
+          itinerary_adjust_result: {
+            applied: false,
+            target_date_iso: '2026-08-20',
+            draft_schedule_zh: ['08:00–10:00　Landmannalaugar'],
+          },
+        },
+        decision_log: [],
+        errors: [],
+      },
+      decisionState,
+      llmProvider: 'deepseek',
+      startTime: Date.now(),
+      loop,
+    } as PlanVerifyLoopRunParams & { loop: PlanVerifyTransientLoopState };
+
+    const terminal = checkRepairCountExceededIfNeeded(host, params);
+    expect(terminal).toBeNull();
+    expect((params.state.metadata as Record<string, unknown>).repair_halt_soft_continue_advice_only).toBe(
+      true,
+    );
+    expect(host.buildClarificationResult).not.toHaveBeenCalled();
+  });
 });

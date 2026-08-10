@@ -105,6 +105,9 @@ export class PrometheusMetricsService implements OnModuleInit {
   /** ITINERARY_ADJUST / POI_SLOT_FILL 漏斗 */
   private itineraryAdjustFunnelTotal!: Counter;
 
+  /** Decision State Contract divergence / takeover */
+  private decisionStateDivergenceTotal!: Counter;
+
   constructor() {
     this.registry = new Registry();
     this.initializeMetrics();
@@ -116,6 +119,16 @@ export class PrometheusMetricsService implements OnModuleInit {
       app: 'tripnara-iceland-world-model',
       environment: process.env.NODE_ENV || 'development',
     });
+    try {
+      const { registerDecisionStateDivergencePrometheusHook } = await import(
+        '../agent/decision-state/decision-state-divergence.util'
+      );
+      registerDecisionStateDivergencePrometheusHook((code) => {
+        this.recordDecisionStateDivergence(code);
+      });
+    } catch {
+      // decision-state 模块不可用时忽略
+    }
   }
 
   private initializeMetrics() {
@@ -498,6 +511,24 @@ export class PrometheusMetricsService implements OnModuleInit {
       labelNames: ['stage', 'outcome', 'sub_intent', 'execution_mode', 'reason'],
       registers: [this.registry],
     });
+
+    this.decisionStateDivergenceTotal = new Counter({
+      name: 'tripnara_decision_state_divergence_total',
+      help: 'Decision State vs legacy divergence / takeover counters',
+      labelNames: ['code'],
+      registers: [this.registry],
+    });
+  }
+
+  recordDecisionStateDivergence(code: string): void {
+    try {
+      const safe = String(code || 'unknown')
+        .replace(/[^\w.:|-]/g, '_')
+        .slice(0, 96);
+      this.decisionStateDivergenceTotal.inc({ code: safe || 'unknown' });
+    } catch {
+      // best-effort
+    }
   }
 
   // Gate Metrics Methods
@@ -1000,7 +1031,9 @@ export class PrometheusMetricsService implements OnModuleInit {
 
   // Get metrics for Prometheus scraping
   async getMetrics(): Promise<string> {
-    return this.registry.metrics();
+    const base = await this.registry.metrics();
+    /** 进程内 Map 与 prom-client Counter 双写；text 以 registry 为准，避免重复 HELP */
+    return base;
   }
 
   // Get metrics in JSON format

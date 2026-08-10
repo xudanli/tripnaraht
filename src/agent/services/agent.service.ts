@@ -2864,6 +2864,20 @@ export class AgentService {
     const memContract = request ? (request as any).__memoryContractObs : undefined;
     const ledgerHealing = request ? (request as any).__ledgerHealingObs : undefined;
     const decisionTriggerObs = request ? (request as any).__decisionTriggerObs : undefined;
+    const travelContextAssembly = request
+      ? (request as any).__travelContextAssembly
+      : undefined;
+    const travelMemoryConsume = request
+      ? (request as any).__travelMemoryConsume
+      : undefined;
+    const memoryDecisionTrace =
+      (request ? (request as any).__memoryDecisionTrace : undefined) ??
+      (resp as any)?.result?.decisionState?.optimizationHints?.memoryDecisionTrace ??
+      (resp as any)?.observability?.memory_decision_trace;
+    const tripShadowPair =
+      (request ? (request as any).__tripShadowPair : undefined) ??
+      (resp as any)?.result?.decisionState?.optimizationHints?.tripShadowPair ??
+      (resp as any)?.observability?.trip_shadow_pair;
     const execMemBinding =
       (request ? (request as any).__memoryExecutionBinding : undefined) ??
       this.agentExecutionContextStore.get()?.executionBinding;
@@ -2885,6 +2899,29 @@ export class AgentService {
       ...(memContract ? { memory_contract: memContract } : {}),
       ...(ledgerHealing ? { ledger_healing: ledgerHealing } : {}),
       ...(decisionTriggerObs ? { decision_trigger: decisionTriggerObs } : {}),
+      ...(travelContextAssembly
+        ? { travel_context_assembly: travelContextAssembly }
+        : {}),
+      ...(travelMemoryConsume
+        ? {
+            travel_memory_consume: memoryDecisionTrace
+              ? {
+                  ...travelMemoryConsume,
+                  contributionUsed:
+                    memoryDecisionTrace?.memoryContribution?.used ??
+                    travelMemoryConsume.contributionUsed,
+                  influenceKinds:
+                    memoryDecisionTrace?.memoryContribution?.influence?.map(
+                      (i: { influence: string }) => i.influence,
+                    ) ?? travelMemoryConsume.influenceKinds,
+                }
+              : travelMemoryConsume,
+          }
+        : {}),
+      ...(memoryDecisionTrace
+        ? { memory_decision_trace: memoryDecisionTrace }
+        : {}),
+      ...(tripShadowPair ? { trip_shadow_pair: tripShadowPair } : {}),
       ...(execMemBinding ? { execution_memory_binding: execMemBinding } : {}),
       ...(timelinePreview && timelinePreview.length > 0
         ? { execution_timeline_preview: timelinePreview }

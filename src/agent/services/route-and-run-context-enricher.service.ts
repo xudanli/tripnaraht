@@ -19,6 +19,10 @@ import { TripIntentDigestService } from '../memory/services/trip-intent-digest.s
 import { formatTripIntentDigestPromptInjection } from '../memory/utils/trip-intent-context-blocks.util';
 import { TripBudgetProfileService } from '../../trips/budget-os/services/trip-budget-profile.service';
 import { formatBudgetProfilePromptBlock } from '../../trips/services/budget-comparison.util';
+import {
+  attachTripConversationContextToRequest,
+  buildTripConversationContextSnapshot,
+} from '../delivery/conversation';
 
 /**
  * Enriches `route_and_run` conversation context before orchestration (e.g. active trip summary).
@@ -85,6 +89,51 @@ export class RouteAndRunContextEnricherService {
 
       if (!trip) {
         return;
+      }
+
+      // Phase 2：水合 TripConversationContextSnapshot（供 Conversation Assembler）
+      try {
+        const collaborators = await this.prisma.tripCollaborator.findMany({
+          where: { tripId },
+          select: { userId: true },
+        });
+        const userIds = collaborators.map((c) => c.userId).filter(Boolean);
+        let submitted = 0;
+        if (userIds.length) {
+          const answers = await this.prisma.fitness_questionnaire_answers.findMany({
+            where: { user_id: { in: userIds } },
+            select: { user_id: true },
+            distinct: ['user_id'],
+          });
+          submitted = answers.length;
+        }
+        const pending = Math.max(0, userIds.length - submitted);
+        const tz =
+          request.conversation_context?.timezone?.trim() || 'Atlantic/Reykjavik';
+        const todayYmd = new Date().toISOString().slice(0, 10);
+        const snap = buildTripConversationContextSnapshot({
+          trip_id: tripId,
+          trip_status: trip.status,
+          start_date: trip.startDate?.toISOString().slice(0, 10) ?? null,
+          end_date: trip.endDate?.toISOString().slice(0, 10) ?? null,
+          today_ymd: todayYmd,
+          timezone: tz,
+          destination: trip.destination,
+          day_count: trip.TripDay?.length ?? null,
+          member_count: userIds.length,
+          fitness_submitted_count: submitted,
+          fitness_pending_count: pending,
+          unresolved_risks_zh: [],
+          open_decisions_zh: [],
+        });
+        attachTripConversationContextToRequest(
+          request as unknown as Record<string, unknown>,
+          snap,
+        );
+      } catch (e: any) {
+        this.logger.debug(
+          `[ContextEnricher] trip_conversation_context hydrate skipped: ${e?.message ?? e}`,
+        );
       }
 
       const worldState: DecisionOsWorldState = {

@@ -5,6 +5,7 @@ import { DateTime } from 'luxon';
 import { ApplyOptimizationRequestDto, ApplyOptimizationResponseDto, ChangePreviewDto } from '../dto/trip-optimization.dto';
 import { ItineraryItemsService } from '../../itinerary-items/itinerary-items.service';
 import { randomUUID } from 'crypto';
+import { assertDirectEffectivePlanWriteBlocked } from '../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 
 @Injectable()
 export class TripOptimizationService {
@@ -22,6 +23,13 @@ export class TripOptimizationService {
     tripId: string,
     dto: ApplyOptimizationRequestDto
   ): Promise<ApplyOptimizationResponseDto> {
+    const options = dto.options || {};
+    const dryRun = options.dryRun || false;
+    // Agent Harness P0-1 W2 / C16：非 dryRun 禁止直写
+    if (!dryRun) {
+      assertDirectEffectivePlanWriteBlocked('trip-optimization.applyOptimization');
+    }
+
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
       include: {
@@ -44,8 +52,6 @@ export class TripOptimizationService {
       throw new NotFoundException(`行程 ID ${tripId} 不存在`);
     }
 
-    const options = dto.options || {};
-    const dryRun = options.dryRun || false;
     const replaceExisting = options.replaceExisting !== false;
     const preserveManualEdits = options.preserveManualEdits !== false;
     const targetDayId = options.dayId;

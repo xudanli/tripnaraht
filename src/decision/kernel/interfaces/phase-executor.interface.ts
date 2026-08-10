@@ -311,6 +311,15 @@ export interface NarrationLike {
     open_world_stub_count?: number;
     mention_count?: number;
   };
+  /** 认知主链投影摘要（聚焦问题 / 预演未来；供 UI / Assembler） */
+  cognition_summary?: {
+    decision_depth?: string;
+    markers?: string[];
+    focused_problem_id?: string;
+    focused_question?: string;
+    future_status?: string;
+    recommended_alternative_id?: string;
+  };
   /** unified-explainability@v1（与 explain.unified / decision.explainForHuman 同源） */
   unified_explainability?: import('../../../trips/decision/explainability/unified-explainability.types').UnifiedExplainabilityEnvelopeV1;
   /** 客户端 payload：envelope 仅在 explain.unified */

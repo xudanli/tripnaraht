@@ -51,4 +51,36 @@ describe('buildFlawedDraftDescriptorV1', () => {
     expect(out?.reasons.some((r) => r.code === 'REPAIR_BUDGET_EXCEEDED')).toBe(true);
     expect(out?.repair_count).toBe(3);
   });
+
+  it('does not mark ADVISORY-only VERIFY issues as flawed draft', () => {
+    const out = buildFlawedDraftDescriptorV1({
+      orchestrationResult: successResult(),
+      decisionState: {
+        verification: {
+          issues: [
+            { class: 'ADVISORY', code: 'POI_CLOSED', message: '缺少开放时间' },
+            { class: 'ADVISORY', code: 'UNKNOWN', message: '规则超过 14 天未核验' },
+          ],
+        },
+      } as any,
+    });
+    expect(out).toBeUndefined();
+  });
+
+  it('marks CONFLICT VERIFY issues as UNRESOLVED_VERIFICATION', () => {
+    const out = buildFlawedDraftDescriptorV1({
+      orchestrationResult: successResult(),
+      decisionState: {
+        verification: {
+          issues: [
+            { class: 'ADVISORY', code: 'POI_CLOSED', message: '缺少开放时间' },
+            { class: 'CONFLICT', code: 'DAY_PACE', message: '日程过密需确认' },
+          ],
+        },
+      } as any,
+    });
+    expect(out?.is_flawed).toBe(true);
+    expect(out?.reasons.some((r) => r.code === 'UNRESOLVED_VERIFICATION')).toBe(true);
+    expect(out?.unresolved_verification_codes).toEqual(['DAY_PACE']);
+  });
 });

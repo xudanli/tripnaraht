@@ -71,6 +71,18 @@ export function coalesceAccommodationForApply(
     ...(pickNonEmptyString(raw.anchor_poi_name_zh) ? { anchor_poi_name_zh: pickNonEmptyString(raw.anchor_poi_name_zh) } : {}),
     ...(pickNonEmptyString(raw.distance_label_zh) ? { distance_label_zh: pickNonEmptyString(raw.distance_label_zh) } : {}),
     ...(pickNonEmptyString(raw.decision_support_zh) ? { decision_support_zh: pickNonEmptyString(raw.decision_support_zh) } : {}),
+    ...(raw.otaRef?.provider && pickNonEmptyString(raw.otaRef.externalId)
+      ? {
+          otaRef: {
+            provider: raw.otaRef.provider,
+            externalId: pickNonEmptyString(raw.otaRef.externalId)!,
+          },
+        }
+      : raw.source === 'fliggy' && pickNonEmptyString(raw.id)
+        ? { otaRef: { provider: 'fliggy' as const, externalId: pickNonEmptyString(raw.id)! } }
+        : {}),
+    ...(typeof raw.listing_lat === 'number' ? { listing_lat: raw.listing_lat } : {}),
+    ...(typeof raw.listing_lng === 'number' ? { listing_lng: raw.listing_lng } : {}),
   };
 }
 

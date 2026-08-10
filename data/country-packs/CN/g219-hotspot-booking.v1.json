@@ -1,0 +1,164 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "updatedAt": "2026-08-09",
+    "corridor": "cn.route.g219",
+    "disclaimer": "规则与票价为公开攻略/OTA 示意；新藏线以通行窗口、补给与高反为先，门票次之。须以景区当日通告与官方/飞猪实时商品为准。",
+    "sources": [
+      "public OTA/travel guides for Guge / Tashilhunpo / Ali corridor"
+    ]
+  },
+  "hotspots": [
+    {
+      "id": "cn.poi.guge",
+      "nameCN": "古格王国遗址",
+      "nameEN": "Guge Kingdom Ruins",
+      "aliases": ["古格", "古格王朝遗址", "札达古格", "古格/土林"],
+      "hubCityCN": "札达",
+      "category": "scenic",
+      "altitudeMetersHint": 3800,
+      "openSeason": {
+        "peak": {
+          "start": "--05-01",
+          "end": "--10-15",
+          "hoursHint": "约 09:00–18:00（示意；高原日照短，以通告为准）"
+        },
+        "offPeak": {
+          "start": "--10-16",
+          "end": "--04-30",
+          "hoursHint": "冬季可关闭或大幅缩短；天气窗口优先"
+        },
+        "bestVisitMonthsHint": [6, 7, 8, 9]
+      },
+      "booking": {
+        "realNameRequired": true,
+        "advanceBookingDaysHint": { "min": 0, "recommended": 1, "peakHoliday": 2 },
+        "channelsHintCN": ["现场/主流 OTA（若有）", "行程日以身体与路况取舍"],
+        "sameDayValid": true,
+        "mustHintsCN": [
+          "属 G219 支线：仅在狮泉河深度补给与高反稳定后再排",
+          "土林/废墟日晒强、步行多，预留半日并备水与防晒",
+          "边境/管理区通行与证件须自行核验，产品不代替审批"
+        ]
+      },
+      "priceBandsCNY": {
+        "gateListAdult": {
+          "peak": 150,
+          "offPeak": 100,
+          "note": "门市常见挂牌示意（含部分联票情形）"
+        },
+        "otaAdult": { "low": 90, "high": 180, "note": "以实时商品为准" }
+      },
+      "consultBlurbCN": "古格为新藏支线亮点，须先稳住高反与补给；票价次于天气与证件窗口，勿硬排在连续硬推日后。"
+    },
+    {
+      "id": "cn.poi.tashilhunpo",
+      "nameCN": "扎什伦布寺",
+      "nameEN": "Tashilhunpo Monastery",
+      "aliases": ["扎什伦布", "日喀则扎什伦布寺"],
+      "hubCityCN": "日喀则",
+      "category": "scenic",
+      "altitudeMetersHint": 3900,
+      "openSeason": {
+        "peak": {
+          "start": "--01-01",
+          "end": "--12-31",
+          "hoursHint": "约 09:00–17:00（示意）"
+        },
+        "bestVisitMonthsHint": [5, 6, 9, 10]
+      },
+      "booking": {
+        "realNameRequired": true,
+        "advanceBookingDaysHint": { "min": 0, "recommended": 1, "peakHoliday": 3 },
+        "channelsHintCN": ["官方/现场与主流 OTA"],
+        "sameDayValid": true,
+        "mustHintsCN": [
+          "适合日喀则缓冲日轻活动；注意宗教场所礼仪",
+          "抵达首日勿高强度登山式参观"
+        ]
+      },
+      "priceBandsCNY": {
+        "gateListAdult": {
+          "peak": 100,
+          "offPeak": 80,
+          "note": "门市常见挂牌示意"
+        },
+        "otaAdult": { "low": 70, "high": 120, "note": "以实时商品为准" }
+      },
+      "consultBlurbCN": "扎什伦布寺适合日喀则缓冲日；建议实名或当日早到，注意礼仪与高反控程。"
+    },
+    {
+      "id": "cn.poi.shiquanhe_hub",
+      "nameCN": "狮泉河",
+      "nameEN": "Shiquanhe (Ngari hub)",
+      "aliases": ["阿里狮泉河", "噶尔狮泉河", "阿里首府"],
+      "hubCityCN": "狮泉河",
+      "category": "hub",
+      "altitudeMetersHint": 4300,
+      "openSeason": {
+        "peak": {
+          "start": "--06-01",
+          "end": "--09-30",
+          "hoursHint": "补给与住宿旺季窗口（示意）"
+        },
+        "bestVisitMonthsHint": [6, 7, 8, 9]
+      },
+      "booking": {
+        "realNameRequired": false,
+        "advanceBookingDaysHint": { "min": 0, "recommended": 2, "peakHoliday": 5 },
+        "channelsHintCN": ["飞猪/主流 OTA 住宿", "县城加油站与汽修当面确认"],
+        "sameDayValid": true,
+        "mustHintsCN": [
+          "硬核补给枢纽：油料、氧气、干粮、备胎优先于观光",
+          "旺季房源紧张，建议提前订并预留休整日",
+          "古格支线仅在此站稳定后再出发"
+        ]
+      },
+      "priceBandsCNY": {
+        "notes": "以住宿与补给为主；景区票另计"
+      },
+      "consultBlurbCN": "狮泉河是新藏线深度补给站：先加满油与休整，再考虑古格等支线；旺季住宿建议提前订。"
+    }
+  ],
+  "lodgingNotes": [
+    {
+      "hubCityCN": "叶城",
+      "role": "gateway_overnight",
+      "altitudeMetersHint": 1400,
+      "mustHintsCN": [
+        "出征整备日：双备胎、卫星通讯、油料与证件核验",
+        "勿把叶城当高原适应点——真正急升在达坂段"
+      ],
+      "priceBandCNYHint": {
+        "mid": [150, 350],
+        "note": "示意，非承诺"
+      }
+    },
+    {
+      "hubCityCN": "狮泉河",
+      "role": "deep_resupply",
+      "altitudeMetersHint": 4300,
+      "mustHintsCN": [
+        "强制休整与补给；观察高反后再排札达/古格",
+        "医疗与汽修相对有限，故障勿硬推"
+      ],
+      "priceBandCNYHint": {
+        "mid": [200, 500],
+        "note": "旺季偏紧，示意"
+      }
+    },
+    {
+      "hubCityCN": "日喀则",
+      "role": "buffer_overnight",
+      "altitudeMetersHint": 3900,
+      "mustHintsCN": [
+        "接拉萨前缓冲；扎什伦布寺轻游",
+        "仍须控程，勿首日硬闯高强度行程"
+      ],
+      "priceBandCNYHint": {
+        "mid": [180, 450],
+        "note": "示意"
+      }
+    }
+  ]
+}

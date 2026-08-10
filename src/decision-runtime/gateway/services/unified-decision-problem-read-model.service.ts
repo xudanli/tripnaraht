@@ -38,7 +38,10 @@ import {
   buildPlanningConflictsSummaryFromItems,
 } from '../utils/planning-conflicts-projection.util';
 import type { PlanningConflictItem } from '../../../trips/trip-constraint-solver/types/planning-conflicts.types';
-import { qualifiesForDecisionQueue } from '../utils/decision-queue-admission.util';
+import {
+  isTerminalDecisionWorkflowStatus,
+  qualifiesForDecisionQueue,
+} from '../utils/decision-queue-admission.util';
 import type { Rfc001DecisionCenterProblemView } from '../../../trips/guardian-decision-core/adapters/decision-center-bridge.adapter';
 import type {
   DecisionProblemDetail,
@@ -270,14 +273,19 @@ export class UnifiedDecisionProblemReadModelService {
       overlayStoredResolutionOnListItem(item, resolutions[item.problemId]),
     );
     const withCaseFields = baseItems.map((item) => this.attachDecisionCaseFields(tripId, item));
-    const items = await this.enrichListItemsWithCausalNarrative(tripId, withCaseFields, rows);
+    const enriched = await this.enrichListItemsWithCausalNarrative(tripId, withCaseFields, rows);
+    // Resolution overlay may flip WAITING → DECIDED; drop terminals from queue-only lists.
+    const items =
+      opts?.queueOnly === false
+        ? enriched
+        : enriched.filter((item) => !isTerminalDecisionWorkflowStatus(item.workflowStatus));
 
     const byEnforcement: Partial<Record<ConstraintEnforcement, number>> = {};
     let actionableCount = 0;
     let openCount = 0;
 
     for (const item of items) {
-      if (!['RESOLVED', 'DISMISSED'].includes(item.workflowStatus)) {
+      if (!isTerminalDecisionWorkflowStatus(item.workflowStatus)) {
         openCount += 1;
         byEnforcement[item.enforcement] = (byEnforcement[item.enforcement] ?? 0) + 1;
         if (item.actionability.requiresAction) actionableCount += 1;
@@ -319,7 +327,7 @@ export class UnifiedDecisionProblemReadModelService {
     let blockingCount = 0;
 
     for (const row of rows) {
-      if (['RESOLVED', 'DISMISSED'].includes(row.workflowStatus)) continue;
+      if (isTerminalDecisionWorkflowStatus(row.workflowStatus)) continue;
       if (
         !qualifiesForDecisionQueue({
           enforcement: row.enforcement,
@@ -367,7 +375,7 @@ export class UnifiedDecisionProblemReadModelService {
 
     let resolvedProblemCount = 0;
     for (const row of rows) {
-      if (!['RESOLVED', 'DISMISSED'].includes(row.workflowStatus)) continue;
+      if (!isTerminalDecisionWorkflowStatus(row.workflowStatus)) continue;
       if (
         qualifiesForDecisionQueue({
           enforcement: row.enforcement,
@@ -401,7 +409,7 @@ export class UnifiedDecisionProblemReadModelService {
     let actionableCount = 0;
     let openCount = 0;
     for (const item of list.items) {
-      if (!['RESOLVED', 'DISMISSED'].includes(item.workflowStatus)) {
+      if (!isTerminalDecisionWorkflowStatus(item.workflowStatus)) {
         openCount += 1;
         byEnforcement[item.enforcement] = (byEnforcement[item.enforcement] ?? 0) + 1;
         if (item.actionability.requiresAction) actionableCount += 1;
@@ -877,7 +885,7 @@ export class UnifiedDecisionProblemReadModelService {
     const travel = items.find(
       (item) =>
         item.guardianCausalStoryView &&
-        !['RESOLVED', 'DISMISSED'].includes(item.workflowStatus) &&
+        !isTerminalDecisionWorkflowStatus(item.workflowStatus) &&
         (item.semanticKey?.includes('travel') || item.dimension === 'SCHEDULE'),
     );
     if (!travel?.guardianCausalStoryView) return undefined;
@@ -902,7 +910,7 @@ export class UnifiedDecisionProblemReadModelService {
     return Promise.all(
       items.map(async (item) => {
         const row = rowByProblemId.get(item.problemId);
-        if (!row || ['RESOLVED', 'DISMISSED'].includes(item.workflowStatus)) return item;
+        if (!row || isTerminalDecisionWorkflowStatus(item.workflowStatus)) return item;
         if (item.causalStoryView?.chain?.length && item.travelCausalDecision) return item;
         try {
           const trace = await this.causalTrace.ensureProblemTrace({

@@ -9,6 +9,7 @@ import type { ItineraryVerifyOutput } from './itinerary-verify.skill';
 import { CONSTRAINT_IDS } from '../../agent/services/constraint-registry';
 import type { IcelandStrategyDocumentV1 } from '../../agent/strategy/world-strategy.types';
 import { listMatchedIcelandDrivingStrategyIds } from '../../agent/strategy/iceland-strategy-eval.util';
+import { stripSystemMessageBlocksForIntakeNl } from '../../agent/utils/trip-plan-intake-vehicle.util';
 import {
   lexiconMatchFourWheelIntent,
   lexiconMatchTwoWheelIntent,
@@ -20,9 +21,9 @@ export type CarRentalDriveInference = 'likely_2wd_only' | 'four_wheel_present' |
 /** 与 TripPlanRequest.constraints.vehicle_type 对齐；由编排层 / VERIFY 透传 */
 export type IcelandVehicleIntentHints = {
   constraints_vehicle_type?: '2WD' | '4WD';
-  /** 用户长期偏好里的 transport_preferences 等自由文本 */
+  /** 用户长期偏好里的 transport_preferences；可参与四驱词表，不单独制造两驱 CRITICAL */
   transport_preferences?: string;
-  /** 画像/偏好长文（如 user_profile.preferences），并入词表匹配 */
+  /** 画像/偏好长文；可参与四驱词表，不单独制造两驱 CRITICAL */
   preference_text?: string;
 };
 
@@ -36,13 +37,20 @@ const VIRTUAL_ROW_MARK = '__iceland_virtual_intent_rental';
 /**
  * 从 user_query + 结构化 hints 构造「影子」car_rentals 行，仅在真实 MCP 行为空时参与仲裁。
  * 4WD 模式优先于 2WD，避免「Duster 4x4」被误判成经济小车。
+ *
+ * 两驱虚拟行仅认：显式 constraints.vehicle_type=2WD，或**本轮 user_query** 词表命中。
+ * 长期画像 transport_preferences（如「冬季冰岛2WD」）不得单独升 CRITICAL——无真实租车时应走 WARNING。
  */
 export function buildVirtualCarRentalRowsFromIntent(
   userQuery: string | undefined,
   hints: IcelandVehicleIntentHints | undefined,
 ): Record<string, unknown>[] {
-  const combined = [userQuery ?? '', hints?.transport_preferences ?? '', hints?.preference_text ?? ''].join('\n');
-  const q = normalizeIcelandVehicleIntentText(combined);
+  const preferenceBlob = [hints?.transport_preferences ?? '', hints?.preference_text ?? ''].join('\n');
+  // 剥离 FITNESS_PROFILE / 长期偏好等系统注入，避免把编排旁路文案当作用户车型意图
+  const userNl = stripSystemMessageBlocksForIntakeNl(userQuery ?? '');
+  const combined = [userNl, preferenceBlob].join('\n');
+  const qCombined = normalizeIcelandVehicleIntentText(combined);
+  const qUser = normalizeIcelandVehicleIntentText(userNl);
 
   if (hints?.constraints_vehicle_type === '4WD') {
     return [{ [VIRTUAL_ROW_MARK]: true, name: 'Intent 4WD', vehicle_class: '4x4', category: 'SUV_4WD', wheelIntent: 'FOUR' }];
@@ -51,10 +59,12 @@ export function buildVirtualCarRentalRowsFromIntent(
     return [{ [VIRTUAL_ROW_MARK]: true, name: 'Intent 2WD', vehicle_class: 'economy', category: 'SMALL_2WD', wheelIntent: 'TWO' }];
   }
 
-  if (lexiconMatchFourWheelIntent(q)) {
+  // 四驱：话术或画像均可（有利于覆盖「已选四驱」类偏好文案）
+  if (lexiconMatchFourWheelIntent(qCombined)) {
     return [{ [VIRTUAL_ROW_MARK]: true, name: 'Intent SUV 4WD', vehicle_class: '4x4', category: 'SUV_4WD', wheelIntent: 'FOUR' }];
   }
-  if (lexiconMatchTwoWheelIntent(q)) {
+  // 两驱：仅本轮用户原话，避免 standing preference / FITNESS 注入污染
+  if (lexiconMatchTwoWheelIntent(qUser)) {
     return [{ [VIRTUAL_ROW_MARK]: true, name: 'Intent small 2WD', vehicle_class: 'economy', category: 'SMALL_2WD', wheelIntent: 'TWO' }];
   }
 

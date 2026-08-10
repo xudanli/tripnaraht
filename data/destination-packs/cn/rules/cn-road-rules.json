@@ -1,0 +1,65 @@
+{
+  "schemaId": "tripnara.destination.rules@v1",
+  "rules": [
+    {
+      "ruleId": "CN_ROAD_CLOSED_BLOCK",
+      "semanticKey": "ROAD_SEGMENT_UNAVAILABLE",
+      "appliesWhen": { "country": "CN" },
+      "whenCandidateUsesRoute": true,
+      "conditions": [
+        {
+          "field": "road.status",
+          "operator": "EQ",
+          "value": "CLOSED"
+        }
+      ],
+      "result": {
+        "verdict": "BLOCK",
+        "reasonCode": "ROAD_SEGMENT_CLOSED",
+        "constraintCode": "ROAD_CLOSED",
+        "overridable": false,
+        "messageZh": "路段封闭（塌方/封路/施工），须改线或改日；以当地交警通告为准。"
+      }
+    },
+    {
+      "ruleId": "CN_ROAD_LIMITED_WARN",
+      "semanticKey": "ROAD_SEGMENT_RESTRICTED",
+      "appliesWhen": { "country": "CN" },
+      "whenCandidateUsesRoute": true,
+      "conditions": [
+        {
+          "field": "road.status",
+          "operator": "EQ",
+          "value": "LIMITED"
+        }
+      ],
+      "result": {
+        "verdict": "WARNING",
+        "reasonCode": "ROAD_SEGMENT_RESTRICTED",
+        "constraintCode": "ROAD_RESTRICTED",
+        "overridable": true,
+        "messageZh": "路段受限（雨季塌方风险/单行/限时通行），预留缓冲并核验当日通告。"
+      }
+    },
+    {
+      "ruleId": "CN_G318_RAINY_SEASON_WARN",
+      "semanticKey": "ROAD_SEGMENT_RESTRICTED",
+      "appliesWhen": { "country": "CN", "routeIds": ["cn.route.g318", "G318"] },
+      "whenCandidateUsesRoute": true,
+      "conditions": [
+        {
+          "field": "calendar.month",
+          "operator": "IN",
+          "value": [6, 7, 8, 9]
+        }
+      ],
+      "result": {
+        "verdict": "WARNING",
+        "reasonCode": "CN_G318_RAINY_SEASON",
+        "constraintCode": "ROAD_RESTRICTED",
+        "overridable": true,
+        "messageZh": "G318 雨季（约 6–9 月）滑坡塌方高发，须预留缓冲日并关注康定—理塘—芒康段通告。"
+      }
+    }
+  ]
+}

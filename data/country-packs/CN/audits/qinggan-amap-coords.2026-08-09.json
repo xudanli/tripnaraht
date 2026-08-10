@@ -1,0 +1,290 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "sampledAt": "2026-08-09T08:58:32.565Z",
+    "source": "restapi.amap.com/v3/place/text",
+    "corridor": "cn.route.qinggan_loop",
+    "disclaimer": "高德 POI 文本搜首条结果，非测绘院成果。"
+  },
+  "summary": {
+    "targets": 15,
+    "ok": 15,
+    "miss": 0,
+    "maxDeltaKm": 81.936,
+    "appliedCount": 6,
+    "thresholdKm": 3,
+    "apply": true
+  },
+  "rows": [
+    {
+      "nameCN": "西宁",
+      "ok": true,
+      "seed": {
+        "lat": 36.6171,
+        "lng": 101.7782,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 36.676027,
+        "lng": 101.758249,
+        "name": "西宁市",
+        "address": "城北区",
+        "id": "B03CB0SN18"
+      },
+      "deltaKm": 6.79,
+      "applied": true
+    },
+    {
+      "nameCN": "塔尔寺",
+      "ok": true,
+      "seed": {
+        "lat": 36.488,
+        "lng": 101.569,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 36.487524,
+        "lng": 101.567788,
+        "name": "塔尔寺",
+        "address": "居板古巷26号",
+        "id": "B03CB06N7F"
+      },
+      "deltaKm": 0.121,
+      "applied": false
+    },
+    {
+      "nameCN": "茶卡盐湖",
+      "ok": true,
+      "seed": {
+        "lat": 36.742,
+        "lng": 99.079,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 36.75991,
+        "lng": 99.078336,
+        "name": "茶卡盐湖景区",
+        "address": "茶卡镇盐湖路9号",
+        "id": "B03D1008S8"
+      },
+      "deltaKm": 1.992,
+      "applied": false
+    },
+    {
+      "nameCN": "大柴旦",
+      "ok": true,
+      "seed": {
+        "lat": 37.852,
+        "lng": 95.356,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 37.866427,
+        "lng": 95.265841,
+        "name": "大柴旦翡翠湖",
+        "address": "大柴旦行政区大柴旦硼化工业基地西南4千米",
+        "id": "B0FFJZ6MJD"
+      },
+      "deltaKm": 8.076,
+      "applied": true
+    },
+    {
+      "nameCN": "翡翠湖",
+      "ok": true,
+      "seed": {
+        "lat": 37.896,
+        "lng": 94.333,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 37.866427,
+        "lng": 95.265841,
+        "name": "大柴旦翡翠湖",
+        "address": "大柴旦行政区大柴旦硼化工业基地西南4千米",
+        "id": "B0FFJZ6MJD"
+      },
+      "deltaKm": 81.936,
+      "applied": true
+    },
+    {
+      "nameCN": "敦煌",
+      "ok": true,
+      "seed": {
+        "lat": 40.1411,
+        "lng": 94.662,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 40.142141,
+        "lng": 94.66201,
+        "name": "敦煌市",
+        "address": "敦煌市",
+        "id": "B03A90HUKX"
+      },
+      "deltaKm": 0.116,
+      "applied": false
+    },
+    {
+      "nameCN": "莫高窟",
+      "ok": true,
+      "seed": {
+        "lat": 40.041,
+        "lng": 94.809,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 40.042511,
+        "lng": 94.809374,
+        "name": "莫高窟景区",
+        "address": "314省道太阳温泉酒店13.6公里处",
+        "id": "B03A900102"
+      },
+      "deltaKm": 0.171,
+      "applied": false
+    },
+    {
+      "nameCN": "鸣沙山月牙泉",
+      "ok": true,
+      "seed": {
+        "lat": 40.087,
+        "lng": 94.669,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 40.088833,
+        "lng": 94.680396,
+        "name": "鸣沙山月牙泉",
+        "address": "鸣山南路1660-8号",
+        "id": "B03A9000ZN"
+      },
+      "deltaKm": 0.991,
+      "applied": false
+    },
+    {
+      "nameCN": "雅丹国家地质公园",
+      "ok": true,
+      "seed": {
+        "lat": 40.52,
+        "lng": 93.06,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 40.484767,
+        "lng": 93.133082,
+        "name": "敦煌世界地质公园雅丹景区",
+        "address": "距玉门关西北80余公里处",
+        "id": "B03A9140A8"
+      },
+      "deltaKm": 7.316,
+      "applied": true
+    },
+    {
+      "nameCN": "嘉峪关关城",
+      "ok": true,
+      "seed": {
+        "lat": 39.802,
+        "lng": 98.216,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 39.800827,
+        "lng": 98.227762,
+        "name": "嘉峪关文物景区",
+        "address": "峪泉镇",
+        "id": "B079100049"
+      },
+      "deltaKm": 1.013,
+      "applied": false
+    },
+    {
+      "nameCN": "张掖",
+      "ok": true,
+      "seed": {
+        "lat": 38.9329,
+        "lng": 100.455,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 38.924766,
+        "lng": 100.449858,
+        "name": "张掖市",
+        "address": "甘州区",
+        "id": "B03A813TV2"
+      },
+      "deltaKm": 1.008,
+      "applied": false
+    },
+    {
+      "nameCN": "七彩丹霞",
+      "ok": true,
+      "seed": {
+        "lat": 38.915,
+        "lng": 100.098,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 38.97201,
+        "lng": 100.062804,
+        "name": "张掖七彩丹霞景区",
+        "address": "213省道张掖丹霞国家地质公园内",
+        "id": "B0FFF63UG9"
+      },
+      "deltaKm": 7.032,
+      "applied": true
+    },
+    {
+      "nameCN": "祁连",
+      "ok": true,
+      "seed": {
+        "lat": 38.177,
+        "lng": 100.23,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 38.177112,
+        "lng": 100.253211,
+        "name": "祁连县",
+        "address": "祁连县",
+        "id": "B03CA00636"
+      },
+      "deltaKm": 2.029,
+      "applied": false
+    },
+    {
+      "nameCN": "扁都口",
+      "ok": true,
+      "seed": {
+        "lat": 38.02,
+        "lng": 100.85,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 38.21301,
+        "lng": 100.937002,
+        "name": "扁都口生态休闲旅游区",
+        "address": "中牧公司山丹马场227国道",
+        "id": "B0HGN4KHH7"
+      },
+      "deltaKm": 22.771,
+      "applied": true
+    },
+    {
+      "nameCN": "门源",
+      "ok": true,
+      "seed": {
+        "lat": 37.377,
+        "lng": 101.622,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 37.388567,
+        "lng": 101.611524,
+        "name": "门源回族自治县",
+        "address": "门源回族自治县",
+        "id": "B03CA0065F"
+      },
+      "deltaKm": 1.585,
+      "applied": false
+    }
+  ]
+}

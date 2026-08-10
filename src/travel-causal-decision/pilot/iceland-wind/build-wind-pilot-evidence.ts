@@ -48,9 +48,11 @@ export function buildWindPilotEvidence(
     distanceKm: input.facts.distanceKm,
     baseDurationMinutes: input.facts.baseDurationMinutes,
     windMps: input.facts.windMps,
+    windGustMps: input.facts.windGustMps,
     windExposure: input.facts.windExposure ?? 'high',
     appointmentSlackMinutes: input.facts.appointmentSlackMinutes,
     region: input.facts.region ?? 'south_coast',
+    highRoof: input.facts.highRoof,
   });
 
   const rules = listTravelCausalRules({

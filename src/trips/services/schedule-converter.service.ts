@@ -17,6 +17,7 @@ const DEFAULT_SCHEDULE_METRICS: DayScheduleResult['metrics'] = {
 };
 import { DateTime } from 'luxon';
 import { randomUUID } from 'crypto';
+import { assertDirectEffectivePlanWriteBlocked } from '../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 
 /**
  * Schedule 转换服务
@@ -125,6 +126,9 @@ export class ScheduleConverterService {
     schedule: DayScheduleResult,
     dateISO: string
   ) {
+    // Agent Harness P0-1 W2 / C17：belt — 服务入口亦拦截
+    assertDirectEffectivePlanWriteBlocked('schedule-converter.saveScheduleToDatabase');
+
     // 1. 删除该日期现有的所有 ItineraryItem
     await this.prisma.itineraryItem.deleteMany({
       where: { tripDayId },
@@ -171,7 +175,8 @@ export class ScheduleConverterService {
    */
   async loadScheduleFromDatabase(
     tripDayId: string,
-    dateISO: string
+    dateISO: string,
+    timezone: string = 'utc',
   ): Promise<DayScheduleResult | null> {
     const items = await this.prisma.itineraryItem.findMany({
       where: { tripDayId },
@@ -181,7 +186,7 @@ export class ScheduleConverterService {
       orderBy: { startTime: 'asc' },
     });
 
-    return this.buildScheduleFromItems(items, dateISO);
+    return this.buildScheduleFromItems(items, dateISO, timezone);
   }
 
   /** 由已加载的 ItineraryItem 行构建 schedule（timeline 批量路径） */
@@ -212,6 +217,8 @@ export class ScheduleConverterService {
       } | null;
     }>,
     dateISO: string,
+    /** 目的地墙钟时区；缺省 utc（冰岛）。中国行程传 Asia/Shanghai，避免 09:00 显示成 01:00 */
+    timezone: string = 'utc',
   ): DayScheduleResult | null {
     if (items.length === 0) {
       return null;
@@ -237,9 +244,15 @@ export class ScheduleConverterService {
     let totalInterLegTravel = 0;
     let totalCost = 0;
 
+    const zone = timezone || 'utc';
+
     for (const item of sortedItems) {
-      const startDt = item.startTime ? DateTime.fromJSDate(item.startTime) : null;
-      const endDt = item.endTime ? DateTime.fromJSDate(item.endTime) : null;
+      const startDt = item.startTime
+        ? DateTime.fromJSDate(item.startTime, { zone: 'utc' }).setZone(zone)
+        : null;
+      const endDt = item.endTime
+        ? DateTime.fromJSDate(item.endTime, { zone: 'utc' }).setZone(zone)
+        : null;
 
       let durationMinutes: number | null = null;
       if (startDt && endDt) {
@@ -270,8 +283,8 @@ export class ScheduleConverterService {
         trailId: item.trailId ?? null,
         startTime: startDt ? startDt.toFormat('HH:mm') : null,
         endTime: endDt ? endDt.toFormat('HH:mm') : null,
-        startTimeISO: startDt ? startDt.toISO() : null,
-        endTimeISO: endDt ? endDt.toISO() : null,
+        startTimeISO: startDt ? startDt.toUTC().toISO() : null,
+        endTimeISO: endDt ? endDt.toUTC().toISO() : null,
         durationMinutes,
         note: item.note ?? null,
         estimatedCost: item.estimatedCost ?? null,

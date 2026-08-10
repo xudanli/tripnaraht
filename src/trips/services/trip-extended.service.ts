@@ -8,6 +8,8 @@ import { TripStatus } from '../dto/trip-status.dto';
 import { InTripMorningPackService } from '../in-trip-execution/services/in-trip-morning-pack.service';
 import { ProjectMembershipService } from '../../identity-governance/services/project-membership.service';
 import { bumpConstraintsVersion, snapshotConstraintsMeta } from '../trip-constraint-solver/utils/constraints-metadata.util';
+import { EffectivePlanWriteGuardService } from '../../decision-runtime/execution/effective-plan-write-guard.service';
+import { runBootstrapPlanSeedWithAuthority } from '../../decision-runtime/execution/bootstrap-plan-seed-authority.util';
 
 @Injectable()
 export class TripExtendedService {
@@ -15,6 +17,7 @@ export class TripExtendedService {
     private prisma: PrismaService,
     @Optional() private readonly inTripMorningPack?: InTripMorningPackService,
     @Optional() private readonly projectMembership?: ProjectMembershipService,
+    @Optional() private readonly effectivePlanWriteGuard?: EffectivePlanWriteGuardService,
   ) {}
 
   /**
@@ -230,55 +233,61 @@ export class TripExtendedService {
       } as any,
     });
 
-    // 复制行程日期和行程项（包括Trail数据）
-    for (const day of originalTrip.TripDay) {
-      const newDay = await this.prisma.tripDay.create({
-        data: {
-          id: randomUUID(),
-          tripId: newTrip.id,
-          date: day.date,
-        },
-      });
+    // 复制行程日期和行程项（包括Trail数据）— Item seed under write-chain ALS
+    await runBootstrapPlanSeedWithAuthority(
+      this.effectivePlanWriteGuard,
+      'trip-extended.importTripFromShare',
+      async () => {
+        for (const day of originalTrip.TripDay) {
+          const newDay = await this.prisma.tripDay.create({
+            data: {
+              id: randomUUID(),
+              tripId: newTrip.id,
+              date: day.date,
+            },
+          });
 
-      // 复制行程项
-      // 🆕 查询新 day 的最大 order 值
-      const maxOrderItem = await this.prisma.itineraryItem.findFirst({
-        where: { tripDayId: newDay.id },
-        orderBy: { order: 'desc' },
-        select: { order: true },
-      });
-      const baseOrder = maxOrderItem?.order !== null && maxOrderItem?.order !== undefined 
-        ? maxOrderItem.order + 1 
-        : 1;
+          // 复制行程项
+          // 🆕 查询新 day 的最大 order 值
+          const maxOrderItem = await this.prisma.itineraryItem.findFirst({
+            where: { tripDayId: newDay.id },
+            orderBy: { order: 'desc' },
+            select: { order: true },
+          });
+          const baseOrder = maxOrderItem?.order !== null && maxOrderItem?.order !== undefined
+            ? maxOrderItem.order + 1
+            : 1;
 
-      // 🆕 按 order 排序（如果存在），否则按 startTime 排序
-      const sortedItems = [...day.ItineraryItem].sort((a, b) => {
-        if (a.order !== null && b.order !== null) {
-          return a.order - b.order;
+          // 🆕 按 order 排序（如果存在），否则按 startTime 排序
+          const sortedItems = [...day.ItineraryItem].sort((a, b) => {
+            if (a.order !== null && b.order !== null) {
+              return a.order - b.order;
+            }
+            if (a.startTime && b.startTime) {
+              return a.startTime.getTime() - b.startTime.getTime();
+            }
+            return 0;
+          });
+
+          for (let i = 0; i < sortedItems.length; i++) {
+            const item = sortedItems[i];
+            await this.prisma.itineraryItem.create({
+              data: {
+                id: randomUUID(),
+                tripDayId: newDay.id,
+                placeId: item.placeId,
+                trailId: item.trailId, // 复制Trail关联
+                type: item.type as any,
+                startTime: item.startTime,
+                endTime: item.endTime,
+                note: item.note,
+                order: baseOrder + i, // 🆕 设置显示顺序
+              } as any,
+            });
+          }
         }
-        if (a.startTime && b.startTime) {
-          return a.startTime.getTime() - b.startTime.getTime();
-        }
-        return 0;
-      });
-
-      for (let i = 0; i < sortedItems.length; i++) {
-        const item = sortedItems[i];
-        await this.prisma.itineraryItem.create({
-          data: {
-            id: randomUUID(),
-            tripDayId: newDay.id,
-            placeId: item.placeId,
-            trailId: item.trailId, // 复制Trail关联
-            type: item.type as any,
-            startTime: item.startTime,
-            endTime: item.endTime,
-            note: item.note,
-            order: baseOrder + i, // 🆕 设置显示顺序
-          } as any,
-        });
-      }
-    }
+      },
+    );
 
     return {
       tripId: newTrip.id,

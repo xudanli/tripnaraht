@@ -1,0 +1,314 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "updatedAt": "2026-08-08",
+    "note": "Additional day variants for IS classic self-drive; existing DB templates kept as default."
+  },
+  "routes": {
+    "is.route.golden_circle": {
+      "defaultVariantId": "1d",
+      "variants": [
+        {
+          "id": "1d",
+          "days": 1,
+          "labelCN": "黄金圈经典 1 日",
+          "labelEN": "Golden Circle classic 1-day",
+          "stops": [
+            {
+              "day": 1,
+              "from": "Reykjavík",
+              "to": "Reykjavík",
+              "driveKmHint": 300,
+              "overnight": "Reykjavík",
+              "highlights": ["Thingvellir National Park", "Geysir", "Gullfoss", "Kerið Crater"],
+              "notesCN": "早出发避开停车场高峰"
+            }
+          ]
+        },
+        {
+          "id": "2d",
+          "days": 2,
+          "labelCN": "黄金圈 + 南岸入口 2 日",
+          "labelEN": "Golden Circle + South Coast gateway 2-day",
+          "stops": [
+            {
+              "day": 1,
+              "from": "Reykjavík",
+              "to": "Selfoss",
+              "driveKmHint": 250,
+              "overnight": "Selfoss",
+              "highlights": ["Thingvellir National Park", "Geysir", "Gullfoss"],
+              "notesCN": "黄金圈三大点从容游览"
+            },
+            {
+              "day": 2,
+              "from": "Selfoss",
+              "to": "Reykjavík",
+              "driveKmHint": 280,
+              "overnight": "Reykjavík",
+              "highlights": ["Seljalandsfoss", "Skógafoss", "Kerið Crater"],
+              "notesCN": "南岸瀑布后返雷市"
+            }
+          ]
+        }
+      ]
+    },
+    "is.route.ring_road": {
+      "defaultVariantId": "10d",
+      "variants": [
+        {
+          "id": "7d",
+          "days": 7,
+          "labelCN": "环岛压缩 7 日",
+          "labelEN": "Ring Road compressed 7-day",
+          "stops": [
+            {
+              "day": 1,
+              "from": "Reykjavík",
+              "to": "Vík",
+              "driveKmHint": 190,
+              "overnight": "Vík",
+              "highlights": ["Seljalandsfoss", "Skógafoss", "Reynisfjara Black Sand Beach"],
+              "notesCN": "南岸精华"
+            },
+            {
+              "day": 2,
+              "from": "Vík",
+              "to": "Höfn",
+              "driveKmHint": 270,
+              "overnight": "Höfn",
+              "highlights": ["Jökulsárlón Glacier Lagoon", "Diamond Beach"],
+              "notesCN": "冰川泻湖"
+            },
+            {
+              "day": 3,
+              "from": "Höfn",
+              "to": "Egilsstaðir",
+              "driveKmHint": 250,
+              "overnight": "Egilsstaðir",
+              "highlights": ["Seyðisfjörður"],
+              "notesCN": "东峡湾短支线可选"
+            },
+            {
+              "day": 4,
+              "from": "Egilsstaðir",
+              "to": "Mývatn",
+              "driveKmHint": 220,
+              "overnight": "Mývatn",
+              "highlights": ["Dettifoss", "Hverir Geothermal Area"],
+              "notesCN": "注意 F 路季节"
+            },
+            {
+              "day": 5,
+              "from": "Mývatn",
+              "to": "Akureyri",
+              "driveKmHint": 100,
+              "overnight": "Akureyri",
+              "highlights": ["Mývatn", "Goðafoss", "Akureyri"],
+              "notesCN": "北部补给"
+            },
+            {
+              "day": 6,
+              "from": "Akureyri",
+              "to": "Borgarnes",
+              "driveKmHint": 320,
+              "overnight": "Borgarnes",
+              "highlights": ["Kirkjufell"],
+              "notesCN": "长驾驶日，双驾更稳"
+            },
+            {
+              "day": 7,
+              "from": "Borgarnes",
+              "to": "Reykjavík",
+              "driveKmHint": 120,
+              "overnight": "Reykjavík",
+              "highlights": ["Blue Lagoon", "Reykjavík"],
+              "notesCN": "返程可排蓝湖"
+            }
+          ]
+        },
+        {
+          "id": "10d",
+          "days": 10,
+          "labelCN": "完整环岛 10 日（库内默认）",
+          "labelEN": "Full Ring Road 10-day (existing DB default)",
+          "stops": [],
+          "useExistingTemplate": true
+        },
+        {
+          "id": "14d",
+          "days": 14,
+          "labelCN": "环岛舒缓 14 日",
+          "labelEN": "Ring Road relaxed 14-day",
+          "stops": [
+            {
+              "day": 1,
+              "from": "Reykjavík",
+              "to": "Reykjavík",
+              "driveKmHint": 40,
+              "overnight": "Reykjavík",
+              "highlights": ["Hallgrímskirkja", "Reykjavík"],
+              "notesCN": "抵达整备"
+            },
+            {
+              "day": 2,
+              "from": "Reykjavík",
+              "to": "Selfoss",
+              "driveKmHint": 250,
+              "overnight": "Selfoss",
+              "highlights": ["Thingvellir National Park", "Geysir", "Gullfoss"],
+              "notesCN": "黄金圈"
+            },
+            {
+              "day": 3,
+              "from": "Selfoss",
+              "to": "Vík",
+              "driveKmHint": 150,
+              "overnight": "Vík",
+              "highlights": ["Seljalandsfoss", "Skógafoss", "Reynisfjara Black Sand Beach"],
+              "notesCN": ""
+            },
+            {
+              "day": 4,
+              "from": "Vík",
+              "to": "Kirkjubæjarklaustur",
+              "driveKmHint": 80,
+              "overnight": "Kirkjubæjarklaustur",
+              "highlights": ["Vík"],
+              "notesCN": "缓冲短程"
+            },
+            {
+              "day": 5,
+              "from": "Kirkjubæjarklaustur",
+              "to": "Höfn",
+              "driveKmHint": 200,
+              "overnight": "Höfn",
+              "highlights": ["Skaftafell National Park", "Jökulsárlón Glacier Lagoon", "Diamond Beach"],
+              "notesCN": ""
+            },
+            {
+              "day": 6,
+              "from": "Höfn",
+              "to": "Egilsstaðir",
+              "driveKmHint": 250,
+              "overnight": "Egilsstaðir",
+              "highlights": ["Seyðisfjörður"],
+              "notesCN": ""
+            },
+            {
+              "day": 7,
+              "from": "Egilsstaðir",
+              "to": "Egilsstaðir",
+              "driveKmHint": 60,
+              "overnight": "Egilsstaðir",
+              "highlights": ["Borgarfjörður eystri"],
+              "notesCN": "东峡湾轻游"
+            },
+            {
+              "day": 8,
+              "from": "Egilsstaðir",
+              "to": "Mývatn",
+              "driveKmHint": 220,
+              "overnight": "Mývatn",
+              "highlights": ["Dettifoss"],
+              "notesCN": ""
+            },
+            {
+              "day": 9,
+              "from": "Mývatn",
+              "to": "Mývatn",
+              "driveKmHint": 50,
+              "overnight": "Mývatn",
+              "highlights": ["Mývatn", "Hverir Geothermal Area"],
+              "notesCN": "地热区慢游"
+            },
+            {
+              "day": 10,
+              "from": "Mývatn",
+              "to": "Akureyri",
+              "driveKmHint": 100,
+              "overnight": "Akureyri",
+              "highlights": ["Goðafoss", "Akureyri"],
+              "notesCN": ""
+            },
+            {
+              "day": 11,
+              "from": "Akureyri",
+              "to": "Akureyri",
+              "driveKmHint": 40,
+              "overnight": "Akureyri",
+              "highlights": ["Akureyri"],
+              "notesCN": "缓冲 / 观鲸窗口"
+            },
+            {
+              "day": 12,
+              "from": "Akureyri",
+              "to": "Borgarnes",
+              "driveKmHint": 320,
+              "overnight": "Borgarnes",
+              "highlights": ["Kirkjufell"],
+              "notesCN": "西向长驾驶"
+            },
+            {
+              "day": 13,
+              "from": "Borgarnes",
+              "to": "Reykjavík",
+              "driveKmHint": 150,
+              "overnight": "Reykjavík",
+              "highlights": ["Arnarstapi", "Búðir Black Church"],
+              "notesCN": "斯奈山短探后返雷市"
+            },
+            {
+              "day": 14,
+              "from": "Reykjavík",
+              "to": "Reykjavík",
+              "driveKmHint": 50,
+              "overnight": "Reykjavík",
+              "highlights": ["Blue Lagoon", "Reykjavík"],
+              "notesCN": "返程缓冲"
+            }
+          ]
+        }
+      ]
+    },
+    "is.route.snaefellsnes": {
+      "defaultVariantId": "1d",
+      "variants": [
+        {
+          "id": "1d",
+          "days": 1,
+          "labelCN": "斯奈山 1 日",
+          "labelEN": "Snæfellsnes 1-day",
+          "stops": [],
+          "useExistingTemplate": true
+        },
+        {
+          "id": "2d",
+          "days": 2,
+          "labelCN": "斯奈山舒缓 2 日",
+          "labelEN": "Snæfellsnes relaxed 2-day",
+          "stops": [
+            {
+              "day": 1,
+              "from": "Reykjavík",
+              "to": "Grundarfjörður",
+              "driveKmHint": 190,
+              "overnight": "Grundarfjörður",
+              "highlights": ["Kirkjufell", "Arnarstapi"],
+              "notesCN": ""
+            },
+            {
+              "day": 2,
+              "from": "Grundarfjörður",
+              "to": "Reykjavík",
+              "driveKmHint": 200,
+              "overnight": "Reykjavík",
+              "highlights": ["Búðir Black Church", "Snæfellsjökull National Park"],
+              "notesCN": ""
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

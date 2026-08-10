@@ -1,0 +1,367 @@
+{
+  "at": "2026-08-09T17:23:09.964Z",
+  "dryRun": false,
+  "source": "osm-overpass",
+  "routeArg": "dianzang",
+  "routes": [
+    "cn.route.dianzang"
+  ],
+  "radiusM": 20000,
+  "limitPerAnchor": 15,
+  "queries": [
+    "fuel",
+    "charging",
+    "parking",
+    "highway_services",
+    "supermarket",
+    "convenience",
+    "toilets",
+    "car_repair",
+    "camping",
+    "hospital",
+    "toll",
+    "sanitary_dump"
+  ],
+  "candidateCount": 385,
+  "byCanonicalType": {
+    "TOLL_BOOTH": 32,
+    "SUPERMARKET": 37,
+    "TOILETS": 57,
+    "CAR_REPAIR": 18,
+    "CONVENIENCE_STORE": 52,
+    "FUEL_STATION": 60,
+    "HOSPITAL": 31,
+    "CAMPING_EQUIPPED": 3,
+    "CAMPING": 13,
+    "EV_CHARGING": 8,
+    "PARKING": 64,
+    "HIGHWAY_SERVICES": 8,
+    "REST_STOP": 2
+  },
+  "created": 369,
+  "updated": 16,
+  "skipped": 0,
+  "errors": [],
+  "sample": [
+    {
+      "osmKey": "node/6477091005",
+      "nameCN": "上登收费站",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/6477090879",
+      "nameCN": "上登收费站",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/11634320401",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/11634320402",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/2423815943",
+      "nameCN": "云浪收费站",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/4566692443",
+      "nameCN": "云浪收费站",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/3105176227",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/5961651234",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/4142253075",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/1558122423",
+      "nameCN": "大理收费站",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "way/424878615",
+      "nameCN": "大理（下关）收费站",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/778893894",
+      "nameCN": "大理收费站",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/13321611458",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/13321611437",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/3918616884",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/8590434905",
+      "nameCN": "老祥云连锁",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/6058969719",
+      "nameCN": "四方街超市",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/6054294386",
+      "nameCN": "四方街车管所店",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/6054279091",
+      "nameCN": "SUPERMARKET",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/7017532606",
+      "nameCN": "老祥云超市",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/2981950712",
+      "nameCN": "沃尔玛",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "way/297690166",
+      "nameCN": "SUPERMARKET",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "way/696344542",
+      "nameCN": "老祥云",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/6054300389",
+      "nameCN": "SUPERMARKET",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/10047105329",
+      "nameCN": "万德福购物中心",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/6325191342",
+      "nameCN": "沃尔玛",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/6056650105",
+      "nameCN": "SUPERMARKET",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/9878802434",
+      "nameCN": "汇金",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/10043958371",
+      "nameCN": "老祥云",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/11259286309",
+      "nameCN": "大兴量贩",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/8590434909",
+      "nameCN": "TOILETS",
+      "canonicalType": "TOILETS",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/6246027678",
+      "nameCN": "TOILETS",
+      "canonicalType": "TOILETS",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/13057715501",
+      "nameCN": "TOILETS",
+      "canonicalType": "TOILETS",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/10840953550",
+      "nameCN": "TOILETS",
+      "canonicalType": "TOILETS",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "way/1224952121",
+      "nameCN": "TOILETS",
+      "canonicalType": "TOILETS",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "way/1224952094",
+      "nameCN": "TOILETS",
+      "canonicalType": "TOILETS",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/8790997530",
+      "nameCN": "TOILETS",
+      "canonicalType": "TOILETS",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/8786257841",
+      "nameCN": "TOILETS",
+      "canonicalType": "TOILETS",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/6867543967",
+      "nameCN": "TOILETS",
+      "canonicalType": "TOILETS",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    },
+    {
+      "osmKey": "node/6753610756",
+      "nameCN": "TOILETS",
+      "canonicalType": "TOILETS",
+      "category": "SUPPLY",
+      "anchorCN": "大理",
+      "routeId": "cn.route.dianzang"
+    }
+  ]
+}

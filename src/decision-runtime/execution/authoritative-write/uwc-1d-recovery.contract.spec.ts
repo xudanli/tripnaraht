@@ -4,7 +4,6 @@ import {
 import {
   UWC_1D_COMPENSATION_EXEC_AUTHORIZED,
   UWC_COMPENSATION_AUTH_GATE_STATUS,
-  UWC_COMPENSATION_EXEC_HARD_BLOCK_REASON,
 } from './compensation-auth.gate';
 import {
   CORRIDOR_RECOVERY_PROFILES,
@@ -177,9 +176,9 @@ describe('UWC-1d compensation pipeline', () => {
     expect(d.reasonCodes).toContain('COMPENSATION_CONFLICT');
   });
 
-  it('matching version under shadow → NOT_AUTHORIZED (gate closed, zero writes)', () => {
-    expect(UWC_1D_COMPENSATION_EXEC_AUTHORIZED).toBe(false);
-    expect(UWC_COMPENSATION_AUTH_GATE_STATUS.mayExecuteWrites).toBe(false);
+  it('matching version under shadow → NOT_AUTHORIZED (shadow-only, zero writes)', () => {
+    expect(UWC_1D_COMPENSATION_EXEC_AUTHORIZED).toBe(true);
+    expect(UWC_COMPENSATION_AUTH_GATE_STATUS.mayExecuteWrites).toBe(true);
     const cmd = baseCompensation({
       corridor: 'ITINERARY_ADJUST',
       layer: 'POST_EFFECTIVE_COMPENSATING_WRITE',
@@ -204,8 +203,38 @@ describe('UWC-1d compensation pipeline', () => {
     });
     const d = evaluateCompensationDecision(cmd, { shadowOnly: true });
     expect(d.outcome).toBe('NOT_AUTHORIZED');
-    expect(d.reasonCodes).toContain(UWC_COMPENSATION_EXEC_HARD_BLOCK_REASON);
+    expect(d.reasonCodes).toContain('SHADOW_ONLY_NO_WRITE');
+    expect(d.reasonCodes).toContain('WOULD_APPLY_IF_NOT_SHADOW');
     expect(d.writesPerformed).toBe(false);
+  });
+
+  it('matching version with exec authorized + shadowOnly=false → COMPENSATION_APPLIED', () => {
+    const cmd = baseCompensation({
+      corridor: 'ITINERARY_ADJUST',
+      layer: 'POST_EFFECTIVE_COMPENSATING_WRITE',
+      expectedCurrentVersion: {
+        kind: 'RESOURCE_VERSION_SET',
+        resources: [{ resourceId: 'trip_1', expectedVersion: 5 }],
+      },
+      observedCurrentVersion: {
+        kind: 'RESOURCE_VERSION_SET',
+        resources: [{ resourceId: 'trip_1', observedVersion: 5 }],
+      },
+      reverseDiff: {
+        schemaId: 'tripnara.compensation_reverse_diff@v1',
+        basedOnCurrentVersion: {
+          kind: 'RESOURCE_VERSION_SET',
+          resources: [{ resourceId: 'trip_1', expectedVersion: 5 }],
+        },
+        reverseOps: [{ op: 'reverse_itinerary_edits' }],
+        internalTargets: ['ItineraryItem', 'Trip'],
+        externalSurfacesTouched: [],
+      },
+    });
+    const d = evaluateCompensationDecision(cmd, { shadowOnly: false });
+    expect(d.outcome).toBe('COMPENSATION_APPLIED');
+    expect(d.reasonCodes).toContain('COMPENSATION_APPLIED');
+    expect(d.writesPerformed).toBe(true);
   });
 
   it('idempotent compensation replay → ALREADY_APPLIED before OCC', () => {
@@ -296,24 +325,18 @@ describe('UWC-1d compensation pipeline', () => {
 });
 
 describe('UWC-1d cutover gate', () => {
-  it('next canary candidate is ACTIONS_COMMIT only', () => {
-    expect(getNextCutoverCandidate()).toBe('ACTIONS_COMMIT');
+  it('all three corridors CANARY_APPROVED; next candidate null; locks remain', () => {
+    expect(getNextCutoverCandidate()).toBeNull();
     expect(UWC_CUTOVER_REVIEW_ORDER[0]).toBe('ACTIONS_COMMIT');
-    expect(UWC_CORRIDOR_CUTOVER_STATUS.ACTIONS_COMMIT).toBe(
-      'CANARY_IN_PROGRESS',
-    );
-    expect(UWC_CORRIDOR_CUTOVER_STATUS.ITINERARY_ADJUST).toBe(
-      'BLOCKED_UNTIL_PRIOR_CORRIDOR',
-    );
-    expect(UWC_CORRIDOR_CUTOVER_STATUS.UNIFIED_EXECUTE).toBe(
-      'BLOCKED_UNTIL_PRIOR_CORRIDOR',
-    );
+    expect(UWC_CORRIDOR_CUTOVER_STATUS.ACTIONS_COMMIT).toBe('CANARY_APPROVED');
+    expect(UWC_CORRIDOR_CUTOVER_STATUS.ITINERARY_ADJUST).toBe('CANARY_APPROVED');
+    expect(UWC_CORRIDOR_CUTOVER_STATUS.UNIFIED_EXECUTE).toBe('CANARY_APPROVED');
     expect(UWC_CUTOVER_AUTO_UNLOCK_FORBIDDEN.length).toBeGreaterThan(0);
   });
 
-  it('write AUTHORITATIVE remains locked; compensation gate independent', () => {
-    expect(UWC_1C_OCC_UNLOCKED).toBe(false);
-    expect(UWC_COMPENSATION_AUTH_GATE_STATUS.execAuthorized).toBe(false);
+  it('write AUTHORITATIVE unlocked; compensation gate unlocked (UWC-COMP-UNLOCK-01)', () => {
+    expect(UWC_1C_OCC_UNLOCKED).toBe(true);
+    expect(UWC_COMPENSATION_AUTH_GATE_STATUS.execAuthorized).toBe(true);
     expect(getCorridorRecoveryProfile('ACTIONS_COMMIT').productNotes).toMatch(
       /NO_EFFECTIVE_SIDE_EFFECT|STUB/,
     );

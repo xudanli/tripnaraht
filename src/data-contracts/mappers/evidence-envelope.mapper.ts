@@ -74,6 +74,15 @@ function computeRoadConfidence(road: RoadStatus): number {
   if (meta.networkError || note.includes('失败') || note.includes('保守')) {
     return 0.35;
   }
+  // CN 季节窗 / 非 realtime：与 Kernel RoadStatusEvidence PARTIAL 对齐
+  const grade = String(meta.evidenceGrade ?? '').toLowerCase();
+  if (
+    meta.realtime === false ||
+    grade.includes('seasonal') ||
+    String(road.source).includes('seasonal')
+  ) {
+    return 0.55;
+  }
   if (road.source === 'default') {
     return 0.45;
   }

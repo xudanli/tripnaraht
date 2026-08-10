@@ -177,6 +177,15 @@ describe('IncrementalItineraryGeneratorService', () => {
           (d) => d.items.some((it: any) => it.type === 'REST' && it.location_ref?.name === '待安排'),
         ),
       ).toBe(true);
+      const restWithHint = result.itinerary.days.some((d) =>
+        d.items.some(
+          (it: any) =>
+            it.type === 'REST' &&
+            Array.isArray(it.metadata?.suggested_poi_search_queries) &&
+            it.metadata.suggested_poi_search_queries.length > 0,
+        ),
+      );
+      expect(restWithHint).toBe(true);
     });
 
     it('round_robin 下同一 POI 全程最多落槽 2 次，其余日为待安排', async () => {
@@ -267,6 +276,7 @@ describe('IncrementalItineraryGeneratorService', () => {
       expect(d0[0].start_window).toBe('10:30');
       expect(d0[0].end_window).toBe('12:00');
       expect((d0[0].metadata as any)?.time_source).toBe('poi_evidence');
+      expect((d0[0].metadata as any)?.duration_minutes).toBe(90);
       const d1lead = result.itinerary.days[1].items.find((it: any) => it.type === 'POI');
       expect(d1lead?.location_ref?.name).toBe('FromHours');
       expect(d1lead?.start_window).toBe('14:00');
@@ -274,6 +284,54 @@ describe('IncrementalItineraryGeneratorService', () => {
       const d2lead = result.itinerary.days[2].items.find((it: any) => it.type === 'POI');
       expect(d2lead?.location_ref?.name).toBe('HeuristicOnly');
       expect((d2lead?.metadata as any)?.time_source).toBe('heuristic');
+      expect((d2lead?.metadata as any)?.duration_minutes).not.toBe(120);
+      expect((d2lead?.metadata as any)?.duration_source).toBe('default');
+    });
+
+    it('稀疏目录 REST 日应附建议检索；intentional_slack 每点最多 1 次', async () => {
+      const request = {
+        request_id: 'req-slack',
+        destination: '格陵兰',
+        days: 5,
+        start_date: '2025-07-01',
+        message: 'Nuuk 周边看看',
+      } as any;
+      const pois = [
+        { poi_id: 'p1', name: 'Alpha', category: 'viewpoint' },
+        { poi_id: 'p2', name: 'Beta waterfall' },
+      ];
+      const result = await service.generateIncremental({
+        request,
+        research_data: { poi_evidence: { pois } },
+        minDaysToTrigger: 3,
+        sparsePoiDayAllocation: 'intentional_slack',
+      });
+      const poiDays = result.itinerary.days.filter((d) =>
+        d.items.some((it: any) => it.type === 'POI'),
+      );
+      expect(poiDays.length).toBeLessThanOrEqual(2);
+      const restWithHint = result.itinerary.days.filter((d) =>
+        d.items.some(
+          (it: any) =>
+            it.type === 'REST' &&
+            Array.isArray(it.metadata?.suggested_poi_search_queries) &&
+            it.metadata.suggested_poi_search_queries.length > 0,
+        ),
+      );
+      expect(restWithHint.length).toBeGreaterThan(0);
+      const alpha = result.itinerary.days.filter((d) =>
+        d.items.some((it: any) => it.type === 'POI' && it.location_ref?.name === 'Alpha'),
+      ).length;
+      const beta = result.itinerary.days.filter((d) =>
+        d.items.some((it: any) => it.type === 'POI' && it.location_ref?.name === 'Beta waterfall'),
+      ).length;
+      expect(alpha).toBeLessThanOrEqual(1);
+      expect(beta).toBeLessThanOrEqual(1);
+      const alphaMeta = result.itinerary.days
+        .flatMap((d) => d.items)
+        .find((it: any) => it.type === 'POI' && it.location_ref?.name === 'Alpha')?.metadata as any;
+      expect(alphaMeta?.duration_minutes).toBe(45);
+      expect(alphaMeta?.duration_source).toBe('category');
     });
   });
 });

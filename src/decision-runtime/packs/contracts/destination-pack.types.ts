@@ -51,6 +51,12 @@ export interface RoadProfileBundleRef {
   version?: string;
 }
 
+/** ADR-SELF-DRIVE-KERNEL — Pack 自驾能力声明文件引用 */
+export interface SelfDriveCapabilitiesRef {
+  path: string;
+  version?: string;
+}
+
 export interface PackDependency {
   packId: string;
   version?: string;
@@ -70,6 +76,8 @@ export interface DestinationPackManifest {
   ontologyMappings?: OntologyMappingRef[];
   repairTemplateBundles?: RepairTemplateBundleRef[];
   roadProfileBundles?: RoadProfileBundleRef[];
+  /** 自驾 capabilities（Kernel 读取；非国家专用决策 API） */
+  selfDriveCapabilities?: SelfDriveCapabilitiesRef;
   dependencies?: PackDependency[];
   fallbackPackId?: string;
   validFrom: string;

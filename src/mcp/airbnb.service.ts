@@ -6,6 +6,7 @@
 
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { AirbnbMcpClientConnectAPI } from './airbnb-client-connect-api';
+import { AirbnbDirectService } from './airbnb-direct.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -16,6 +17,8 @@ export class AirbnbService implements OnModuleInit, OnModuleDestroy {
   private client: AirbnbMcpClientConnectAPI | null = null;
   private readonly configDir = path.join(os.homedir(), '.tripnara-mcp');
   private readonly connectionIdFile = path.join(this.configDir, 'airbnb-connection-id.txt');
+
+  constructor(private readonly airbnbDirect: AirbnbDirectService) {}
 
   async onModuleInit() {
     // 延迟初始化，避免启动时连接失败
@@ -83,7 +86,8 @@ export class AirbnbService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * 搜索房源
+   * 搜索房源。
+   * 优先本机 Direct；失败不再等 Smithery 刮页 MCP（同病且易拖垮 LIVE_TOOL_HOTEL 超时）。
    */
   async searchListings(params: {
     location: string;
@@ -96,8 +100,37 @@ export class AirbnbService implements OnModuleInit, OnModuleDestroy {
     page?: number;
     ignoreRobotsText?: boolean;
   }) {
+    const allowMcpFallback =
+      process.env.AIRBNB_MCP_SEARCH_FALLBACK === 'true' ||
+      process.env.AIRBNB_MCP_SEARCH_FALLBACK === '1';
+
+    try {
+      const direct = await this.airbnbDirect.searchListings(params);
+      const text = direct?.content?.[0]?.type === 'text' ? direct.content[0].text : '';
+      let parsed: { searchResults?: unknown[]; error?: string } = {};
+      try {
+        parsed = text ? JSON.parse(text) : {};
+      } catch {
+        parsed = {};
+      }
+      if (Array.isArray(parsed.searchResults) && parsed.searchResults.length > 0) {
+        this.logger.debug(`Airbnb Direct 成功 ${parsed.searchResults.length} 条`);
+        return direct;
+      }
+      this.logger.warn(
+        `Airbnb Direct 无结果: ${parsed.error || 'empty'}${allowMcpFallback ? '，降级 MCP' : ''}`,
+      );
+      if (!allowMcpFallback) {
+        return direct;
+      }
+    } catch (e: any) {
+      this.logger.warn(`Airbnb Direct 异常: ${e?.message ?? e}`);
+      if (!allowMcpFallback) {
+        throw e;
+      }
+    }
+
     const client = await this.getClient();
-    
     return await client.callTool('airbnb_search', {
       location: params.location,
       adults: params.adults ?? 1,
@@ -136,6 +169,19 @@ export class AirbnbService implements OnModuleInit, OnModuleDestroy {
       pets: params.pets,
       ignoreRobotsText: params.ignoreRobotsText ?? false,
     });
+  }
+
+  /**
+   * Direct 房源页粗探所选日期是否可订（不走 Smithery MCP）。
+   */
+  async probeListingStayAvailability(params: {
+    listingId: string;
+    checkin?: string;
+    checkout?: string;
+    adults?: number;
+    timeoutMs?: number;
+  }): Promise<{ available: boolean | 'unknown'; reason?: string }> {
+    return this.airbnbDirect.probeListingStayAvailability(params);
   }
 
   /**

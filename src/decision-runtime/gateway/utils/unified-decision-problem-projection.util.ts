@@ -40,6 +40,7 @@ import type { Rfc001DecisionCenterProblemView } from '../../../trips/guardian-de
 import {
   ENFORCEMENT_ALLOWED_ACTIONS,
   inferEnforcementForQueue,
+  isTerminalDecisionWorkflowStatus,
   qualifiesForDecisionQueue,
 } from './decision-queue-admission.util';
 import {
@@ -514,7 +515,7 @@ export function buildUnifiedDecisionProblemListView(input: {
   let openCount = 0;
 
   for (const item of items) {
-    if (!['RESOLVED', 'DISMISSED'].includes(item.workflowStatus)) {
+    if (!isTerminalDecisionWorkflowStatus(item.workflowStatus)) {
       openCount += 1;
       byEnforcement[item.enforcement] = (byEnforcement[item.enforcement] ?? 0) + 1;
       occurrenceCount += item.occurrenceCount;

@@ -2,13 +2,12 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
-  Optional,
 } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ItineraryItemsService } from '../../../itinerary-items/itinerary-items.service';
 import { ItemType } from '../../../itinerary-items/dto/create-itinerary-item.dto';
-import { EffectivePlanWriteGuardService } from '../../../decision-runtime/execution/effective-plan-write-guard.service';
+import { assertDirectEffectivePlanWriteBlocked } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { ScheduleTimelineService } from '../../services/schedule-timeline.service';
 import { AttractionExploreCandidateService } from '../../attraction-explore/services/attraction-explore-candidate.service';
 import type {
@@ -22,6 +21,7 @@ import {
   scheduleTimelineUserId,
   toZeroBasedDayIndex,
 } from '../../utils/arrange-itinerary-day.util';
+import { resolveTripTimezone } from '../../../common/utils/destination-timezone.util';
 import { buildExecutionSteps } from '../utils/plan-proposal-decision-projection.util';
 import { selectAuthoritativePlanProposalChanges } from '../../../decision-runtime/solver/lab/ortools-planning-shadow-apply.guard';
 import { filterChangesByEnabledItemIds } from '../utils/scheme-preview.projection.util';
@@ -33,7 +33,6 @@ export class PlanProposalApplyService {
     private readonly itineraryItems: ItineraryItemsService,
     private readonly scheduleTimeline: ScheduleTimelineService,
     private readonly candidates: AttractionExploreCandidateService,
-    @Optional() private readonly writeGuard?: EffectivePlanWriteGuardService,
   ) {}
 
   async apply(input: {
@@ -47,11 +46,9 @@ export class PlanProposalApplyService {
       throw new BadRequestException('当前草案存在阻塞性冲突，无法写入');
     }
 
-    const run = async () => this.executeProposal(input);
-    if (this.writeGuard) {
-      return this.writeGuard.runWithAuthority('execute', run);
-    }
-    return run();
+    // Agent Harness P0-1 W2：禁止自授 ALS 权威绕过写链；页面 Apply 须走 UWC Preview / DecisionCore
+    assertDirectEffectivePlanWriteBlocked('plan-proposal.apply');
+    return this.executeProposal(input);
   }
 
   private async executeProposal(input: {
@@ -65,6 +62,14 @@ export class PlanProposalApplyService {
       where: { tripId: proposal.tripId },
       orderBy: { date: 'asc' },
       select: { id: true, date: true },
+    });
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: proposal.tripId },
+      select: { destination: true, metadata: true },
+    });
+    const timezone = resolveTripTimezone({
+      destination: trip?.destination,
+      metadata: trip?.metadata,
     });
 
     const createdItems: Array<Record<string, unknown>> = [];
@@ -83,13 +88,13 @@ export class PlanProposalApplyService {
     await this.prisma.$transaction(async () => {
       for (const change of authoritativeChanges) {
         if (change.operation === 'ADD') {
-          const item = await this.applyAdd(change, tripDays);
+          const item = await this.applyAdd(change, tripDays, timezone);
           if (item) createdItems.push(item);
           if (change.removeFromCandidates && change.candidateId) {
             removedCandidateIds.add(change.candidateId);
           }
         } else if (change.operation === 'MOVE' && change.itemId) {
-          await this.applyMove(change, tripDays);
+          await this.applyMove(change, tripDays, timezone);
         } else if (change.operation === 'REMOVE_CANDIDATE' && change.candidateId) {
           removedCandidateIds.add(change.candidateId);
         }
@@ -141,14 +146,15 @@ export class PlanProposalApplyService {
   private async applyAdd(
     change: PlanProposalChange,
     tripDays: Array<{ id: string; date: Date }>,
+    timezone: string,
   ): Promise<Record<string, unknown> | null> {
     const tripDay = resolveTripDayByIndex(tripDays, change.dayIndex);
     if (!change.startTime || !change.endTime) {
       throw new BadRequestException('ADD 变更缺少时间窗口');
     }
 
-    const startTime = buildDayDateTime(tripDay.date, change.startTime);
-    const endTime = buildDayDateTime(tripDay.date, change.endTime);
+    const startTime = buildDayDateTime(tripDay.date, change.startTime, timezone);
+    const endTime = buildDayDateTime(tripDay.date, change.endTime, timezone);
 
     const created = await this.itineraryItems.create({
       tripDayId: tripDay.id,
@@ -166,6 +172,7 @@ export class PlanProposalApplyService {
   private async applyMove(
     change: PlanProposalChange,
     tripDays: Array<{ id: string; date: Date }>,
+    timezone: string,
   ): Promise<void> {
     if (!change.itemId) return;
 
@@ -182,8 +189,8 @@ export class PlanProposalApplyService {
       throw new BadRequestException('MOVE 变更缺少目标时间');
     }
 
-    const startTime = buildDayDateTime(tripDay.date, change.startTime);
-    const endTime = buildDayDateTime(tripDay.date, change.endTime);
+    const startTime = buildDayDateTime(tripDay.date, change.startTime, timezone);
+    const endTime = buildDayDateTime(tripDay.date, change.endTime, timezone);
 
     await this.itineraryItems.update(
       change.itemId,

@@ -696,6 +696,23 @@ export class ClaudeNarratorAgentService implements NarratorAgent {
   private generateTips(itinerary: Itinerary, gateResult: GateResult): string[] {
     const tips: string[] = [];
 
+    /** Place enrich / RESEARCH 透传的游玩提示优先进 tips */
+    for (const day of itinerary.days ?? []) {
+      for (const item of day.items ?? []) {
+        if (item.type !== 'POI') continue;
+        const tip =
+          typeof (item.metadata as { visitTipCN?: unknown } | undefined)?.visitTipCN === 'string'
+            ? String((item.metadata as { visitTipCN?: string }).visitTipCN).trim()
+            : '';
+        if (!tip) continue;
+        const name = item.location_ref?.name?.trim();
+        const line = name ? `${name}：${tip}` : tip;
+        if (!tips.includes(line)) tips.push(line);
+        if (tips.length >= 4) break;
+      }
+      if (tips.length >= 4) break;
+    }
+
     // 检查是否有未验证的条目
     const hasUnverified = itinerary.days.some(day =>
       day.items.some(item => !item.verified || item.verification_status === 'UNVERIFIED')

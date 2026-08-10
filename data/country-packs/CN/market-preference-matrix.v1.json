@@ -1,0 +1,102 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "country_code": "CN",
+    "schema": "tripnara.market_preference_matrix/v1",
+    "last_updated": "2026-08-08",
+    "description": "中国客源/出行偏好矩阵骨架 — 国内游与入境游先验",
+    "source_notes": ["TripNARA CN Country Pack skeleton"]
+  },
+  "routing_weights": {
+    "residency": 0.4,
+    "locale": 0.25,
+    "season": 0.25,
+    "vehicle": 0.1
+  },
+  "blend_threshold": 0.15,
+  "confidence_apply_full": 0.7,
+  "confidence_apply_partial": 0.4,
+  "season_cross_matrix": {
+    "7-8": {
+      "CN_MARKET_DOMESTIC": 1.0,
+      "CN_MARKET_GREATER_CHINA": 0.9,
+      "CN_MARKET_INTL": 0.75
+    },
+    "10": {
+      "CN_MARKET_DOMESTIC": 1.0,
+      "CN_MARKET_GREATER_CHINA": 0.95,
+      "CN_MARKET_INTL": 0.7
+    },
+    "1-2": {
+      "CN_MARKET_DOMESTIC": 0.85,
+      "CN_MARKET_GREATER_CHINA": 0.8,
+      "CN_MARKET_INTL": 0.55
+    },
+    "3-6_9_11-12": {
+      "CN_MARKET_DOMESTIC": 0.8,
+      "CN_MARKET_GREATER_CHINA": 0.85,
+      "CN_MARKET_INTL": 0.8
+    }
+  },
+  "segments": {
+    "CN_MARKET_DOMESTIC": {
+      "label_zh": "中国大陆 — 高铁+城市深度/周边自驾",
+      "label_en": "Mainland China — HSR + city depth / regional drive",
+      "residency_countries": ["CN"],
+      "locale_prefixes": ["zh-CN", "zh"],
+      "peak_months": [7, 8, 10],
+      "avoid_months": [],
+      "preferred_route_types": ["CITY_BREAK", "ROAD_TRIP", "NATURE"],
+      "vehicle_affinities": {
+        "hsr": 1.0,
+        "2wd": 0.7,
+        "suv": 0.55
+      },
+      "world_model_intents": {
+        "city_culture": 0.9,
+        "food": 0.85,
+        "nature": 0.7,
+        "plateau": 0.25
+      },
+      "prompt_template_zh": "优先高铁串联城市；热门景区强调预约；支付默认微信/支付宝；高峰避开无票强插行程。"
+    },
+    "CN_MARKET_GREATER_CHINA": {
+      "label_zh": "港澳台 — 一线城市与经典线路",
+      "label_en": "HK/MO/TW — tier-1 cities and classic routes",
+      "residency_countries": ["HK", "MO", "TW"],
+      "locale_prefixes": ["zh-HK", "zh-TW", "zh-MO"],
+      "peak_months": [7, 8, 10, 12, 1],
+      "preferred_route_types": ["CITY_BREAK", "NATURE"],
+      "vehicle_affinities": {
+        "hsr": 0.9,
+        "private_transfer": 0.7,
+        "2wd": 0.4
+      },
+      "world_model_intents": {
+        "city_culture": 0.95,
+        "food": 0.9,
+        "iconic_landmarks": 0.85
+      },
+      "prompt_template_zh": "偏一线与经典目的地；证件与通关提示前置；支付与通讯给出落地建议。"
+    },
+    "CN_MARKET_INTL": {
+      "label_zh": "国际入境 — 签证/支付/App 就绪",
+      "label_en": "International inbound — visa / payments / apps",
+      "residency_countries": ["US", "GB", "JP", "AU", "DE", "FR", "KR", "SG"],
+      "locale_prefixes": ["en", "ja", "ko"],
+      "peak_months": [4, 5, 9, 10],
+      "preferred_route_types": ["CITY_BREAK", "GUIDED"],
+      "vehicle_affinities": {
+        "guided": 0.85,
+        "hsr": 0.7,
+        "2wd": 0.35
+      },
+      "world_model_intents": {
+        "iconic_landmarks": 0.95,
+        "city_culture": 0.9,
+        "visa_clarity": 1.0
+      },
+      "prompt_template_zh": "先澄清签证/过境政策；强调微信支付宝与地图 App；经典城市线路优先，自驾非默认。"
+    }
+  }
+}

@@ -16,7 +16,15 @@ describe('trip-dining-consultation.util', () => {
   it('detects location anchor including 黄金圈', () => {
     expect(messageHasDiningLocationAnchor('推荐黄金圈附近的餐厅')).toBe(true);
     expect(messageHasDiningLocationAnchor('第一天附近有什么吃的')).toBe(true);
+    expect(messageHasDiningLocationAnchor('8.16的，请为我推荐餐厅')).toBe(true);
+    expect(messageHasDiningLocationAnchor('8月16号推荐餐厅')).toBe(true);
     expect(messageHasDiningLocationAnchor('推荐餐厅')).toBe(false);
+  });
+
+  it('treats UI [日程] DayN suffix as dining anchor', () => {
+    expect(
+      messageHasDiningLocationAnchor('我想吃汉堡\n\n[日程] Day2 Day 2 · 黄金圈'),
+    ).toBe(true);
   });
 
   it('parses 日程项总数 from consultation summary', () => {

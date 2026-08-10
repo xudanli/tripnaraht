@@ -2,7 +2,15 @@ import { ItemType } from '@prisma/client';
 import { ExplorationItinerarySeederService } from './services/exploration-itinerary-seeder.service';
 
 describe('ExplorationItinerarySeederService', () => {
+  const originalChain = process.env.EFFECTIVE_PLAN_WRITE_CHAIN;
+
+  afterEach(() => {
+    if (originalChain === undefined) delete process.env.EFFECTIVE_PLAN_WRITE_CHAIN;
+    else process.env.EFFECTIVE_PLAN_WRITE_CHAIN = originalChain;
+  });
+
   it('seeds F208 transit item and road bindings for remote-highlands strategy', async () => {
+    process.env.EFFECTIVE_PLAN_WRITE_CHAIN = '0';
     const tripDayId = 'day_3';
     const tx = {
       itineraryItem: {

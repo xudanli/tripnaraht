@@ -218,7 +218,16 @@ describe('ClaudeOrchestratorService — poiPlanning outcome guardrail (Phase 2.1
         destination: '冰岛',
       } as any,
       research_data: {
-        poi_evidence: [{ id: 1, name: 'Only existing nearby POI', category: 'ATTRACTION' }],
+        poi_evidence: [
+          {
+            id: 1,
+            name: 'Only existing nearby POI',
+            category: 'ATTRACTION',
+            address: 'Reykjavik',
+            coordinates: { lat: 64.15, lng: -21.94 },
+            countryCode: 'IS',
+          },
+        ],
       },
       metadata: {
         started_at: new Date().toISOString(),

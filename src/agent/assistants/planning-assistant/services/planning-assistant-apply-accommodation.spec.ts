@@ -5,16 +5,20 @@ import { PlanningAssistantService } from './planning-assistant.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { ItineraryItemsService } from '../../../../itinerary-items/itinerary-items.service';
 import { ItemType } from '../../../../itinerary-items/dto/create-itinerary-item.dto';
+import { EffectivePlanWriteGuardService } from '../../../../decision-runtime/execution/effective-plan-write-guard.service';
 
 describe('PlanningAssistantV2Service.applyAccommodationToItinerary', () => {
   let service: PlanningAssistantV2Service;
   let planningAssistantService: { getSessionState: jest.Mock };
   let itineraryItemsService: { create: jest.Mock; remove: jest.Mock };
   let prisma: {
+    trip: { findUnique: jest.Mock };
     tripDay: { findFirst: jest.Mock; findMany: jest.Mock };
     itineraryItem: { findMany: jest.Mock };
-    place: { findUnique: jest.Mock; create: jest.Mock };
+    place: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
+    city: { findFirst: jest.Mock };
     $executeRaw: jest.Mock;
+    $queryRaw: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -24,6 +28,7 @@ describe('PlanningAssistantV2Service.applyAccommodationToItinerary', () => {
       remove: jest.fn().mockResolvedValue(undefined),
     };
     prisma = {
+      trip: { findUnique: jest.fn().mockResolvedValue({ destination: 'CN' }) },
       tripDay: {
         findFirst: jest.fn().mockResolvedValue({
           id: 'day-2',
@@ -38,8 +43,11 @@ describe('PlanningAssistantV2Service.applyAccommodationToItinerary', () => {
       place: {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: 501 }),
+        update: jest.fn().mockResolvedValue({ id: 501 }),
       },
+      city: { findFirst: jest.fn().mockResolvedValue({ id: 7906 }) },
       $executeRaw: jest.fn().mockResolvedValue(1),
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -48,6 +56,7 @@ describe('PlanningAssistantV2Service.applyAccommodationToItinerary', () => {
         { provide: PlanningAssistantService, useValue: planningAssistantService },
         { provide: PrismaService, useValue: prisma },
         { provide: ItineraryItemsService, useValue: itineraryItemsService },
+        EffectivePlanWriteGuardService,
       ],
     }).compile();
 
@@ -83,8 +92,7 @@ describe('PlanningAssistantV2Service.applyAccommodationToItinerary', () => {
       expect.objectContaining({
         tripDayId: 'day-2',
         type: ItemType.REST,
-        placeName: 'Cozy stay near Skaftafell',
-        address: 'Vík',
+        placeId: 501,
         externalUrl: 'https://airbnb.com/rooms/99',
         costNote: undefined,
         startTime: '2026-06-02T20:00:00.000Z',
@@ -114,7 +122,7 @@ describe('PlanningAssistantV2Service.applyAccommodationToItinerary', () => {
     expect(result.success).toBe(true);
     expect(itineraryItemsService.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        placeName: 'Route-run card',
+        placeId: 501,
         externalUrl: 'https://airbnb.com/rooms/42',
       }),
     );
@@ -198,6 +206,76 @@ describe('PlanningAssistantV2Service.applyAccommodationToItinerary', () => {
     expect(prisma.$executeRaw).toHaveBeenCalled();
     expect(itineraryItemsService.create).toHaveBeenCalledWith(
       expect.objectContaining({ placeId: 501 }),
+    );
+  });
+
+  it('upserts Place for fliggy card without coordinates (OTA-first)', async () => {
+    planningAssistantService.getSessionState.mockResolvedValue({
+      sessionId: 'sess-1',
+      lastAccommodationTripId: 'trip-1',
+      lastAccommodations: [],
+    });
+    prisma.city.findFirst.mockResolvedValue({ id: 7906 });
+
+    await service.applyAccommodationToItinerary('trip-1', {
+      sessionId: 'sess-1',
+      accommodationIndex: 0,
+      accommodationCard: {
+        id: '78309218',
+        source: 'fliggy',
+        name: '汉庭康定318国道酒店',
+        address: '康定市榆林街道',
+        checkIn: '2026-06-02',
+        checkOut: '2026-06-03',
+        otaRef: { provider: 'fliggy', externalId: '78309218' },
+      },
+    });
+
+    expect(prisma.place.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          nameCN: '汉庭康定318国道酒店',
+          category: 'HOTEL',
+          dataSource: 'fliggy',
+          cityId: 7906,
+          metadata: expect.objectContaining({
+            fliggyShId: '78309218',
+            externalId: '78309218',
+            externalSource: 'fliggy',
+          }),
+        }),
+      }),
+    );
+    expect(itineraryItemsService.create).toHaveBeenCalledWith(
+      expect.objectContaining({ placeId: 501 }),
+    );
+  });
+
+  it('reuses Place by fliggy externalId on second apply', async () => {
+    planningAssistantService.getSessionState.mockResolvedValue({
+      sessionId: 'sess-1',
+      lastAccommodationTripId: 'trip-1',
+      lastAccommodations: [],
+    });
+    prisma.$queryRaw.mockResolvedValue([{ id: 777 }]);
+
+    await service.applyAccommodationToItinerary('trip-1', {
+      sessionId: 'sess-1',
+      accommodationIndex: 0,
+      accommodationCard: {
+        id: '78309218',
+        source: 'fliggy',
+        name: '汉庭康定318国道酒店',
+        checkIn: '2026-06-02',
+        checkOut: '2026-06-03',
+        otaRef: { provider: 'fliggy', externalId: '78309218' },
+      },
+    });
+
+    expect(prisma.place.create).not.toHaveBeenCalled();
+    expect(prisma.place.update).toHaveBeenCalled();
+    expect(itineraryItemsService.create).toHaveBeenCalledWith(
+      expect.objectContaining({ placeId: 777 }),
     );
   });
 

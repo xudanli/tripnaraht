@@ -1,15 +1,15 @@
 # UWC-1c — ExpectedWriteVersion OCC
 
-**Status:** DONE (code gate)  
-**AUTHORITATIVE:** still **FORBIDDEN** (switch gate not authorized)
+**Status:** DONE (code gate) + **UWC-OCC-UNLOCK-01** (switch gate authorized)  
+**AUTHORITATIVE:** **ALLOWED** (dual gates both true)
 
 ## Dual gates
 
-| Gate | Constant | After UWC-1c |
-|------|----------|--------------|
+| Gate | Constant | After UWC-OCC-UNLOCK-01 |
+|------|----------|-------------------------|
 | Code complete | `UWC_1C_OCC_CODE_COMPLETE` | **true** |
-| Switch authorized | `UWC_1C_OCC_SWITCH_AUTHORIZED` | **false** |
-| Effective unlock | `UWC_1C_OCC_UNLOCKED` | **false** |
+| Switch authorized | `UWC_1C_OCC_SWITCH_AUTHORIZED` | **true** |
+| Effective unlock | `UWC_1C_OCC_UNLOCKED` | **true** |
 
 ## Contract
 
@@ -22,7 +22,7 @@
 ## Shadow hooks
 
 `beginCapture` (pre-legacy write) → Legacy write → `completeCapture` (reconcile)  
-UWC still **zero business writes**.
+UWC still **zero business writes** on non-authoritative paths.
 
 ## Concurrency proofs
 
@@ -30,4 +30,4 @@ Three suites (UNIFIED / ITINERARY_ADJUST / ACTIONS_COMMIT): same old expected ve
 
 ## Next
 
-**UWC-1d** rollback / compensation contract — then canary discussion. Do **not** flip switch gate here.
+Compensation remains locked — see `UWC-1d.md` / `compensation-auth.gate.ts`. Do **not** flip compensation here.

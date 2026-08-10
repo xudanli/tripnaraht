@@ -10,7 +10,6 @@ import {
 } from './authoritative-write-shadow-probe.service';
 import {
   UWC_1B_WIRE_ORDER,
-  UWC_AUTHORITATIVE_HARD_BLOCK_REASON,
   resolveCorridorWriteMode,
 } from './corridor-write-mode.config';
 import { reconcileShadowWithLegacy } from './shadow-reconcile.util';
@@ -97,7 +96,7 @@ describe('UWC-1b corridor handlers + shadow probe', () => {
     else process.env.UWC_CORRIDOR_MODE_ACTIONS_COMMIT = prev;
   });
 
-  it('AUTHORITATIVE request records hard-block skip (no write)', () => {
+  it('AUTHORITATIVE mode skips probe (no shadow write; D3 corridor auth ≠ probe apply)', () => {
     const prev = process.env.UWC_CORRIDOR_MODE_UNIFIED_EXECUTE;
     process.env.UWC_CORRIDOR_MODE_UNIFIED_EXECUTE = 'AUTHORITATIVE';
     clearShadowProbeAuditEntries();
@@ -105,7 +104,8 @@ describe('UWC-1b corridor handlers + shadow probe', () => {
       { tripId: 't', decisionId: 'd' },
       { legacyApplied: true },
     );
-    expect(entry.skipped).toBe(UWC_AUTHORITATIVE_HARD_BLOCK_REASON);
+    expect(entry.mode.authoritativeHardBlocked).toBe(false);
+    expect(entry.skipped).toBe('AUTHORITATIVE_NOT_ENABLED_IN_PROBE');
     expect(entry.report).toBeNull();
     if (prev === undefined) delete process.env.UWC_CORRIDOR_MODE_UNIFIED_EXECUTE;
     else process.env.UWC_CORRIDOR_MODE_UNIFIED_EXECUTE = prev;

@@ -25,6 +25,31 @@ describe('iceland-self-drive-causal', () => {
     expect(windToSpeedFactor(18, 'high')).toBeLessThan(windToSpeedFactor(6, 'high'));
   });
 
+  it('high-roof + gust further reduces safe speed vs sedan-equivalent', () => {
+    const sedan = windToSpeedFactor(18, 'high');
+    const camper = windToSpeedFactor(18, 'high', undefined, {
+      highRoof: true,
+      windGustMps: 22,
+    });
+    expect(camper).toBeLessThan(sedan);
+
+    const sedanTravel = computeTravelTimeDistribution({
+      baseDurationMinutes: 170,
+      distanceKm: 95,
+      windMps: 18,
+      windExposure: 'high',
+    });
+    const camperTravel = computeTravelTimeDistribution({
+      baseDurationMinutes: 170,
+      distanceKm: 95,
+      windMps: 18,
+      windGustMps: 22,
+      highRoof: true,
+      windExposure: 'high',
+    });
+    expect(camperTravel.p90Minutes).toBeGreaterThan(sedanTravel.p90Minutes);
+  });
+
   it('produces user-facing assessment with miss probability and shift recommendation', () => {
     const out = runIcelandSelfDriveCausalAnalysis({
       routeLabel: 'Vík → 冰川徒步集合点',

@@ -1,0 +1,140 @@
+{
+  "schemaId": "tripnara.iceland.weather_driving_policy@v1",
+  "version": "1.1.0",
+  "status": "ACTIVE",
+  "phenomena": {
+    "STRONG_WIND": {
+      "gustThresholdMs": 15,
+      "speedLevel": "MODERATE",
+      "delayRangeMin": [
+        10,
+        30
+      ],
+      "fatigueDelta": "MEDIUM",
+      "routeSafety": "WARN"
+    },
+    "GUST": {
+      "gustThresholdMs": 20,
+      "speedLevel": "SEVERE",
+      "delayRangeMin": [
+        20,
+        60
+      ],
+      "fatigueDelta": "HIGH",
+      "routeSafety": "WARN"
+    },
+    "SNOW": {
+      "speedLevel": "MODERATE",
+      "delayRangeMin": [
+        15,
+        45
+      ],
+      "fatigueDelta": "MEDIUM",
+      "visibility": "REDUCED",
+      "routeSafety": "WARN"
+    },
+    "ICE": {
+      "speedLevel": "SEVERE",
+      "delayRangeMin": [
+        20,
+        50
+      ],
+      "fatigueDelta": "HIGH",
+      "routeSafety": "WARN"
+    },
+    "FREEZING_RAIN": {
+      "speedLevel": "SEVERE",
+      "delayRangeMin": [
+        30,
+        90
+      ],
+      "fatigueDelta": "HIGH",
+      "visibility": "REDUCED",
+      "routeSafety": "BLOCK"
+    },
+    "LOW_VISIBILITY": {
+      "visibilityThresholdM": 200,
+      "speedLevel": "MODERATE",
+      "delayRangeMin": [
+        10,
+        40
+      ],
+      "fatigueDelta": "MEDIUM",
+      "visibility": "CRITICAL",
+      "routeSafety": "WARN"
+    },
+    "HEAVY_RAIN": {
+      "speedLevel": "MODERATE",
+      "delayRangeMin": [
+        10,
+        35
+      ],
+      "fatigueDelta": "LOW",
+      "visibility": "REDUCED",
+      "routeSafety": "WARN"
+    },
+    "DUST_ASH": {
+      "speedLevel": "MODERATE",
+      "delayRangeMin": [
+        15,
+        45
+      ],
+      "fatigueDelta": "MEDIUM",
+      "visibility": "REDUCED",
+      "routeSafety": "WARN"
+    },
+    "EXTREME_COLD": {
+      "speedLevel": "MODERATE",
+      "delayRangeMin": [
+        5,
+        20
+      ],
+      "fatigueDelta": "MEDIUM",
+      "routeSafety": "WARN"
+    },
+    "MULTI": {
+      "speedLevel": "SEVERE",
+      "delayRangeMin": [
+        30,
+        90
+      ],
+      "fatigueDelta": "HIGH",
+      "visibility": "REDUCED",
+      "routeSafety": "BLOCK"
+    }
+  },
+  "vehicleRiskMultipliers": {
+    "SEDAN": 1.0,
+    "SUV_2WD": 1.05,
+    "SUV_4WD": 0.9,
+    "CAMPERVAN": 1.25,
+    "EV_CAMPERVAN": 1.3,
+    "HIGH_PROFILE": 1.35
+  },
+  "exposureDelayBoost": {
+    "LOW": [
+      0,
+      0
+    ],
+    "MEDIUM": [
+      5,
+      10
+    ],
+    "HIGH": [
+      10,
+      25
+    ]
+  },
+  "experienceDelayMultipliers": {
+    "NONE": 1.3,
+    "BASIC": 1.1,
+    "EXPERIENCED": 1.0
+  },
+  "segmentLength": {
+    "referenceKm": 80,
+    "minScale": 0.8,
+    "maxScale": 1.6
+  },
+  "bookingMissHintDelayMin": 30,
+  "nightFatigueBump": true
+}

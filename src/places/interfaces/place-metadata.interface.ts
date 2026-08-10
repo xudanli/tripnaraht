@@ -27,6 +27,7 @@ export interface PlaceMetadata {
   contact?: {
     website?: string;
     phone?: string;
+    email?: string;
     instagram?: string;
   };
 
@@ -55,8 +56,8 @@ export interface PlaceMetadata {
     toilets?: boolean; // 厕所
   };
   
-  // 💡 抓取源的原始标签 (作为备份)
-  rawTags?: string[];
+  // 💡 抓取源的原始标签 (作为备份)；库内常见 string[] 或 OSM/Google Record
+  rawTags?: string[] | Record<string, unknown>;
   
   // 时区信息
   timezone?: string; // e.g., "Asia/Tokyo"
@@ -97,5 +98,28 @@ export interface PlaceMetadata {
 
   /** Travel World Model: 用于节奏控制，如 MUSEUM、TEMPLE */
   canonicalType?: string;
+}
+
+/**
+ * Place.metadata.rawTags 可能是 string[] 或 OSM/Google Record。
+ * 统一成 string[]，避免调用方假设 Array.prototype.join。
+ */
+export function normalizePlaceRawTags(rawTags: unknown): string[] {
+  if (rawTags == null) return [];
+  if (Array.isArray(rawTags)) {
+    return rawTags
+      .filter((t) => t != null && t !== '')
+      .map((t) => String(t));
+  }
+  if (typeof rawTags === 'string') {
+    const s = rawTags.trim();
+    return s ? [s] : [];
+  }
+  if (typeof rawTags === 'object') {
+    return Object.entries(rawTags as Record<string, unknown>).map(([k, v]) =>
+      v == null || v === '' ? k : `${k}:${String(v)}`,
+    );
+  }
+  return [String(rawTags)];
 }
 

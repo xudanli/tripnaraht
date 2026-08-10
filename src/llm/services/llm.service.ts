@@ -182,6 +182,37 @@ export class LlmService {
   }
 
   /**
+   * 轻量就绪探活：熔断器 / 默认 provider / Mock 模式。不发付费 completion。
+   */
+  async healthProbe(): Promise<{ healthy: boolean; latency?: number; error?: string }> {
+    const start = Date.now();
+    try {
+      if (this.circuitBreaker.isOpen()) {
+        return {
+          healthy: false,
+          latency: Date.now() - start,
+          error: 'circuit_open',
+        };
+      }
+      const provider = this.getDefaultProvider();
+      if (!provider) {
+        return {
+          healthy: false,
+          latency: Date.now() - start,
+          error: 'no_default_provider',
+        };
+      }
+      return { healthy: true, latency: Date.now() - start };
+    } catch (error: any) {
+      return {
+        healthy: false,
+        latency: Date.now() - start,
+        error: error?.message ?? 'llm_health_probe_failed',
+      };
+    }
+  }
+
+  /**
    * 自然语言转接口参数
    * 将用户的口语化需求转换为创建行程的接口参数
    */

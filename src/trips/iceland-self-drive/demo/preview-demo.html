@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>冰岛初始行程草案 Preview（只读演示）</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a222c;
+      --text: #e8eef4;
+      --muted: #8b9aab;
+      --accent: #3d8bfd;
+      --warn: #e6a23c;
+      --bad: #e85d5d;
+      --ok: #3ecf8e;
+      --line: #2a3542;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Noto Sans SC", system-ui, sans-serif;
+      background: radial-gradient(1200px 600px at 10% -10%, #1a3048, var(--bg));
+      color: var(--text);
+      min-height: 100vh;
+    }
+    main { max-width: 920px; margin: 0 auto; padding: 24px 16px 64px; }
+    h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 4px; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    label { display: block; font-size: 0.75rem; color: var(--muted); margin: 8px 0 4px; }
+    input, select, textarea {
+      width: 100%;
+      background: #121820;
+      border: 1px solid var(--line);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font: inherit;
+    }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    button {
+      margin-top: 14px;
+      background: var(--accent);
+      color: #fff;
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 18px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .banner {
+      border-left: 3px solid var(--accent);
+      padding-left: 12px;
+    }
+    .banner.blocked { border-color: var(--bad); }
+    .banner.warn { border-color: var(--warn); }
+    .chip {
+      display: inline-block;
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #243041;
+      margin-right: 6px;
+    }
+    .chip.ok { background: #1d3d30; color: var(--ok); }
+    .chip.bad { background: #3d1f1f; color: var(--bad); }
+    .chip.warn { background: #3d3218; color: var(--warn); }
+    .day { border-top: 1px solid var(--line); padding: 12px 0; }
+    .day:first-child { border-top: 0; }
+    .item { margin: 6px 0 6px 12px; font-size: 0.92rem; }
+    .why { color: var(--muted); font-size: 0.8rem; margin-left: 12px; }
+    .err { color: var(--bad); white-space: pre-wrap; font-size: 0.85rem; }
+    .muted { color: var(--muted); font-size: 0.85rem; }
+    .cta-disabled {
+      opacity: 0.45;
+      text-decoration: line-through;
+      pointer-events: none;
+      margin-left: 8px;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>初始行程草案 Preview</h1>
+  <p class="sub">Preview → Confirm → Apply · Iceland PlanVersion · 非 OR-Tools</p>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>API Base（无尾斜杠）</label>
+        <input id="baseUrl" value="" placeholder="http://localhost:3000" />
+      </div>
+      <div>
+        <label>x-owner-id（本地）</label>
+        <input id="ownerId" value="demo-user" />
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>开始日期</label>
+        <input id="startDate" type="date" value="2027-07-10" />
+      </div>
+      <div>
+        <label>结束日期</label>
+        <input id="endDate" type="date" value="2027-07-14" />
+      </div>
+    </div>
+    <label>区域（逗号分隔）</label>
+    <input id="regionIds" value="golden_circle,south_coast" />
+    <label>车型 driveType</label>
+    <select id="driveType">
+      <option value="2WD">2WD</option>
+      <option value="4WD">4WD</option>
+    </select>
+    <button id="runBtn" type="button">生成草案 Preview</button>
+    <p class="muted" id="statusLine">就绪</p>
+    <pre class="err" id="errorBox" hidden></pre>
+  </div>
+
+  <div class="card banner" id="banner" hidden>
+    <div id="chips"></div>
+    <h2 id="bannerTitle" style="font-size:1.05rem;margin:10px 0 4px"></h2>
+    <p id="bannerBody" class="muted" style="margin:0"></p>
+    <p style="margin-top:12px" id="ctaRow">
+      <span class="cta-disabled" id="ctaConfirm">确认草案</span>
+      <span class="cta-disabled" id="ctaApply">写入行程</span>
+    </p>
+  </div>
+
+  <div class="card" id="timeline" hidden>
+    <h3 style="margin:0 0 8px;font-size:1rem">按日草案</h3>
+    <div id="days"></div>
+  </div>
+
+  <div class="card" id="side" hidden>
+    <h3 style="margin:0 0 8px;font-size:1rem">确认项 / 阻断</h3>
+    <div id="sideBody"></div>
+  </div>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  $('baseUrl').value = window.location.origin;
+  const session = { base: '', ownerId: '', tripId: '', contextVersion: 1, contextHash: '' };
+
+  function clock(min) {
+    const h = String(Math.floor(min / 60)).padStart(2, '0');
+    const m = String(min % 60).padStart(2, '0');
+    return `${h}:${m}`;
+  }
+
+  async function api(base, path, { method = 'GET', ownerId, idem, body } = {}) {
+    const headers = { Accept: 'application/json', 'x-owner-id': ownerId };
+    if (idem) headers['Idempotency-Key'] = idem;
+    if (body) headers['Content-Type'] = 'application/json';
+    const res = await fetch(base + path, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(JSON.stringify(data, null, 2) || res.statusText);
+    return data;
+  }
+
+  function setStatusError(e) {
+    $('errorBox').hidden = false;
+    $('errorBox').textContent = String(e.message || e);
+    $('statusLine').textContent = '失败';
+  }
+
+  $('runBtn').onclick = async () => {
+    $('errorBox').hidden = true;
+    $('runBtn').disabled = true;
+    $('statusLine').textContent = '创建 Trip Shell…';
+    try {
+      const base = $('baseUrl').value.replace(/\/$/, '');
+      const ownerId = $('ownerId').value.trim();
+      const shell = await api(base, '/api/iceland-self-drive/trips', {
+        method: 'POST',
+        ownerId,
+        body: {
+          destinationCode: 'IS',
+          startDate: $('startDate').value,
+          endDate: $('endDate').value,
+          travelMode: 'SELF_DRIVE',
+          regionIds: $('regionIds').value.split(',').map((s) => s.trim()).filter(Boolean),
+          vehicleProfile: {
+            driveType: $('driveType').value,
+            riverCrossingQualified: false,
+          },
+        },
+      });
+      session.base = base;
+      session.ownerId = ownerId;
+      session.tripId = shell.tripId;
+      session.contextVersion = shell.contextVersion;
+      session.contextHash = shell.contextHash;
+      $('statusLine').textContent = `Shell ${shell.tripId} → 生成 Preview…`;
+      const created = await api(
+        base,
+        `/api/iceland-self-drive/trips/${shell.tripId}/initial-plan/proposals`,
+        {
+          method: 'POST',
+          ownerId,
+          idem: `demo-${shell.tripId}-${shell.contextHash}`,
+        },
+      );
+      const preview = await api(
+        base,
+        `/api/iceland-self-drive/trips/${shell.tripId}/initial-plan/proposals/${created.proposalId}`,
+        { ownerId },
+      );
+      renderPreview(preview);
+      $('statusLine').textContent = `完成 · proposal=${preview.proposalId} · writesPlanVersion=${preview.writesPlanVersion}`;
+    } catch (e) {
+      setStatusError(e);
+    } finally {
+      $('runBtn').disabled = false;
+    }
+  };
+
+  function renderPreview(p) {
+    const banner = $('banner');
+    banner.hidden = false;
+    banner.className =
+      'card banner' +
+      (p.status === 'BLOCKED'
+        ? ' blocked'
+        : p.status === 'VERIFIED_WITH_CONFIRMATIONS'
+          ? ' warn'
+          : '');
+    $('bannerTitle').textContent = p.productCopy?.title || '初始行程草案';
+    $('bannerBody').textContent = p.productCopy?.body || '';
+    const chipClass =
+      p.status === 'BLOCKED'
+        ? 'bad'
+        : p.status === 'APPLIED' || p.status === 'CONFIRMED' || p.status === 'VERIFIED'
+          ? 'ok'
+          : 'warn';
+    $('chips').innerHTML = [
+      `<span class="chip ${chipClass}">${p.status}</span>`,
+      `<span class="chip">${p.verification?.aggregateOutcome || ''}</span>`,
+      p.verification?.dominantCid
+        ? `<span class="chip">${p.verification.dominantCid}</span>`
+        : '',
+      `<span class="chip">${p.verification?.authorityProvider || ''}</span>`,
+    ].join('');
+
+    const ctaConfirm = $('ctaConfirm');
+    const ctaApply = $('ctaApply');
+    if (ctaConfirm) {
+      ctaConfirm.className = p.capabilities?.canConfirm ? '' : 'cta-disabled';
+      ctaConfirm.textContent = p.capabilities?.canConfirm
+        ? '可确认草案'
+        : '确认草案（未开放）';
+    }
+    if (ctaApply) {
+      ctaApply.className = p.capabilities?.canApply ? '' : 'cta-disabled';
+      ctaApply.textContent = p.capabilities?.canApply
+        ? '可写入行程'
+        : '写入行程（未开放）';
+    }
+
+    $('timeline').hidden = false;
+    $('days').innerHTML =
+      (p.days || [])
+        .map((d) => {
+          const items = (d.items || [])
+            .map((it) => {
+              const why = (it.selectedBecause || []).join(', ');
+              return `<div class="item">${clock(it.startMin)}–${clock(it.endMin)} · ${it.label}${it.placeId ? ` (#${it.placeId})` : ''}</div>
+          ${why ? `<div class="why">因为：${why}</div>` : ''}`;
+            })
+            .join('');
+          return `<div class="day"><strong>Day ${d.dayIndex}</strong> · ${d.date}
+        <span class="muted"> · 驾驶 ${d.drivingMinutes} min</span>${items || '<div class="muted item">（无活动）</div>'}</div>`;
+        })
+        .join('') || '<p class="muted">无日程</p>';
+
+    $('side').hidden = false;
+    const conf = (p.confirmations || []).map((c) => `<li>${c.message}</li>`).join('');
+    const block = (p.blockingIssues || [])
+      .map((b) => `<li>${b.code}: ${b.message}</li>`)
+      .join('');
+    $('sideBody').innerHTML = `
+      <p class="muted">确认项 ${p.confirmations?.length || 0} · 阻断 ${p.blockingIssues?.length || 0}</p>
+      ${conf ? `<ul>${conf}</ul>` : ''}
+      ${block ? `<ul style="color:var(--bad)">${block}</ul>` : ''}
+      <p class="muted">canConfirm=${p.capabilities?.canConfirm} · canApply=${p.capabilities?.canApply}</p>
+      ${p.capabilities?.canConfirm ? `<button type="button" id="btnConfirm">确认草案</button>` : ''}
+      ${p.capabilities?.canApply ? `<button type="button" id="btnApply">写入行程</button>` : ''}
+      ${p.status === 'CONFIRMED' ? `<p class="chip">已确认 · 可 Apply</p>` : ''}
+      ${p.status === 'APPLIED' ? `<p class="chip">已写入 PlanVersion ${p.appliedPlanVersionId || ''}</p>` : ''}`;
+
+    const btn = document.getElementById('btnConfirm');
+    if (btn) {
+      btn.onclick = async () => {
+        const ack = (p.confirmations || [])
+          .filter((c) => c.blockingApply)
+          .map((c) => c.confirmationId);
+        try {
+          const j = await api(
+            session.base,
+            `/api/iceland-self-drive/trips/${session.tripId}/initial-plan/proposals/${p.proposalId}/confirm`,
+            {
+              method: 'POST',
+              ownerId: session.ownerId,
+              body: { acknowledgedConfirmationIds: ack },
+            },
+          );
+          renderPreview(j.preview || j);
+          $('statusLine').textContent = '已确认草案（可 Apply）';
+        } catch (e) {
+          setStatusError(e);
+        }
+      };
+    }
+    const btnApply = document.getElementById('btnApply');
+    if (btnApply) {
+      btnApply.onclick = async () => {
+        try {
+          const j = await api(
+            session.base,
+            `/api/iceland-self-drive/trips/${session.tripId}/initial-plan/proposals/${p.proposalId}/apply`,
+            {
+              method: 'POST',
+              ownerId: session.ownerId,
+              body: {
+                contextVersion: session.contextVersion,
+                contextHash: session.contextHash,
+              },
+            },
+          );
+          renderPreview(j.preview || j);
+          $('statusLine').textContent = `已写入 PlanVersion ${j.planVersionId} · items=${j.appliedItemCount}`;
+        } catch (e) {
+          setStatusError(e);
+        }
+      };
+    }
+  }
+</script>
+</body>
+</html>

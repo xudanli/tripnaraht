@@ -9,13 +9,14 @@
 
 import { Injectable } from '@nestjs/common';
 import type { ExperienceVector } from '../interfaces/experience-vector.interface';
+import { normalizePlaceRawTags } from '../interfaces/place-metadata.interface';
 
 export interface PlaceForExperienceVector {
   category?: string;
   metadata?: {
     experienceVector?: ExperienceVector;
     canonicalType?: string;
-    rawTags?: string[];
+    rawTags?: string[] | Record<string, unknown>;
   };
 }
 
@@ -77,7 +78,7 @@ export class ExperienceVectorService {
   private inferFromPlace(place: PlaceForExperienceVector): ExperienceVector {
     const vec: ExperienceVector = {};
     const ct = (place.metadata?.canonicalType ?? '').toUpperCase();
-    const tags = (place.metadata?.rawTags ?? []).join(' ').toLowerCase();
+    const tags = normalizePlaceRawTags(place.metadata?.rawTags).join(' ').toLowerCase();
     const cat = (place.category ?? '').toUpperCase();
 
     // canonicalType 映射

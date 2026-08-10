@@ -84,11 +84,11 @@ describe('UWC-1c ExpectedWriteVersion OCC', () => {
     expect(decision.outcome).toBe('CONFLICT');
   });
 
-  it('dual gates: code complete true, switch auth false → AUTHORITATIVE still locked', () => {
+  it('dual gates: code complete + switch auth → AUTHORITATIVE unlocked', () => {
     expect(UWC_1C_OCC_CODE_COMPLETE).toBe(true);
-    expect(UWC_1C_OCC_SWITCH_AUTHORIZED).toBe(false);
-    expect(UWC_1C_OCC_UNLOCKED).toBe(false);
-    expect(UWC_AUTHORITATIVE_DUAL_GATE_STATUS.unlocked).toBe(false);
+    expect(UWC_1C_OCC_SWITCH_AUTHORIZED).toBe(true);
+    expect(UWC_1C_OCC_UNLOCKED).toBe(true);
+    expect(UWC_AUTHORITATIVE_DUAL_GATE_STATUS.unlocked).toBe(true);
   });
 });
 

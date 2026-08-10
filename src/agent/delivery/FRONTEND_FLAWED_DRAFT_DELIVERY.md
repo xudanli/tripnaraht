@@ -124,7 +124,7 @@ interface FlawedDraftDescriptorV1 {
 | `REPAIR_BUDGET_EXCEEDED` | 自动修复次数已达上限，部分冲突可能仍在 |
 | `UTILITY_DECAY_BYPASSED` | 修复后方案质量连续下降，已按您的设置仍交付草案 |
 | `GATE_ADJUST_REQUIRED` | 部分约束尚未满足，需您确认或调整 |
-| `UNRESOLVED_VERIFICATION` | 验证仍剩未消解项 |
+| `UNRESOLVED_VERIFICATION` | VERIFY 仍剩 **CONFLICT** 未消解（纯 ADVISORY 不标瑕疵，见 `VERIFIED_WITH_WARNINGS`） |
 | `VERIFY_PARTIAL` | 门控/验证仍有关联违规摘要 |
 | `ALLOW_PARTIAL_GATE_RELAXED` | 为补全草案已临时放宽日期等硬条件 |
 

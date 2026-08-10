@@ -1,0 +1,28 @@
+{
+  "schemaId": "tripnara.destination.rules@v1",
+  "version": "0.1.0-g318",
+  "rules": [
+    {
+      "ruleId": "CN_ACTIVITY_MUGECUO_ADVANCE_BOOKING",
+      "semanticKey": "ACTIVITY_ADVANCE_BOOKING_RECOMMENDED",
+      "appliesWhen": {
+        "country": "CN",
+        "poiAliases": ["木格措", "康定木格措", "康定情歌木格措"]
+      },
+      "conditions": [
+        {
+          "field": "activity.realNameRequired",
+          "operator": "EQ",
+          "value": true
+        }
+      ],
+      "result": {
+        "verdict": "WARNING",
+        "reasonCode": "ACTIVITY_ADVANCE_BOOKING",
+        "constraintCode": "ACTIVITY_BOOKING_HINT",
+        "overridable": true,
+        "messageZh": "木格措建议实名提前预订（门票常含观光车）；旺季/节假日至少提前 1–3 天，价格以飞猪当日商品为准。"
+      }
+    }
+  ]
+}

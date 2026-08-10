@@ -3,14 +3,18 @@ import { errorResponse } from '../../common/dto/standard-response.dto';
 import { isEffectivePlanWriteChainEnabled } from './effective-plan-write-chain.config';
 import {
   EffectivePlanWriteBypassError,
-  EffectivePlanWriteGuardService,
+  type EffectivePlanWriteGuardService,
 } from './effective-plan-write-guard.service';
+import { hasEffectivePlanWriteAuthority } from './effective-plan-write-authority.als';
 
 export const EFFECTIVE_PLAN_WRITE_CHAIN_REQUIRED_CODE = 'EFFECTIVE_PLAN_WRITE_CHAIN_REQUIRED';
 
 export const EFFECTIVE_PLAN_WRITE_CHAIN_AUTHORIZED_PATHS = [
   'POST /trips/:tripId/decision-problems/:problemId/resolutions',
   'POST /trips/:tripId/decision-problems/:problemId/apply',
+  'POST /api/uwc/v1/write/apply',
+  'POST /api/rfc001/decisions/:id/execute',
+  'POST /api/internal/rfc001/iceland/trips/:tripId/decisions/:id/execute',
 ] as const;
 
 export interface EffectivePlanWriteChainBlockedPayload {
@@ -61,9 +65,13 @@ export function isDirectPlanMutationBlocked(): boolean {
   return isEffectivePlanWriteChainEnabled();
 }
 
-/** Legacy ERC bridge — block direct plan mutations when write chain is enforced. */
+/** Legacy ERC bridge — block direct plan mutations when write chain is enforced.
+ *  Already inside runWithAuthority(execute|rollback) is not "direct" — allow through
+ *  so ItineraryItemsService / nested writers work under authorized callers.
+ */
 export function assertDirectEffectivePlanWriteBlocked(caller: string): void {
   if (!isDirectPlanMutationBlocked()) return;
+  if (hasEffectivePlanWriteAuthority()) return;
   throw new BadRequestException(buildEffectivePlanWriteChainBadRequestBody(caller));
 }
 

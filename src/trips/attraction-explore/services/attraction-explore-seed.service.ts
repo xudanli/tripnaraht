@@ -79,6 +79,37 @@ export class AttractionExploreSeedService {
     return count;
   }
 
+  /** 冰岛自驾 create：按 region 目录 placeIds 灌 Attraction Explore 候选 */
+  async seedFromIcelandSelfDriveRegions(input: {
+    tripId: string;
+    placeIds: number[];
+    regionIds: string[];
+  }): Promise<number> {
+    const existing = await this.prisma.tripAttractionExploreCandidate.count({
+      where: { tripId: input.tripId },
+    });
+    if (existing > 0) return 0;
+
+    const placeIds = [...new Set(input.placeIds.filter((id) => id > 0))];
+    if (placeIds.length === 0) return 0;
+
+    const count = await this.candidates.seedCandidates(
+      input.tripId,
+      placeIds,
+      'route_seed',
+      { mode: 'iceland_self_drive', regionIds: input.regionIds },
+      'very_interested',
+    );
+
+    if (count > 0) {
+      await this.markSeeded(input.tripId, 'iceland_self_drive');
+      this.logger.log(
+        `Seeded ${count} attraction explore candidates from iceland_self_drive regions for trip ${input.tripId}`,
+      );
+    }
+    return count;
+  }
+
   /** 探索/攻略 trip 尚无候选时，用目的地核心景点填充（联调 fallback） */
   async seedFromDestinationDefaults(tripId: string): Promise<number> {
     const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
@@ -129,6 +160,7 @@ export class AttractionExploreSeedService {
     const shouldBootstrap =
       metadata.source === 'exploration' ||
       metadata.source === 'guide_to_plan' ||
+      metadata.source === 'iceland_self_drive' ||
       slice?.suggestAttractionExplore === true ||
       Boolean(metadata.explorationScenarioId);
 

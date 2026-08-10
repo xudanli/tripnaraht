@@ -1,0 +1,1712 @@
+{
+  "metadata": {
+    "version": "1.3.3",
+    "updatedAt": "2026-08-09",
+    "disclaimer": "坐标经高德 POI 文本搜复核（见 audits/*-amap-coords.*）；仍非测绘级精度。",
+    "source": "classic self-drive gap fill for CN_CLASSIC_* templates",
+    "amapVerifiedAt": "2026-08-09T08:57:29.630Z",
+    "amapAudit": "data/country-packs/CN/audits/g318-amap-coords.2026-08-09.json",
+    "note": "v1.3.2: duku/dianzang/g211 amap; 九曲十八弯纠偏为巴音布鲁克观景台（拒河北同名）",
+    "qingganAmapVerifiedAt": "2026-08-09T08:58:32.566Z",
+    "qingganAmapAudit": "data/country-packs/CN/audits/qinggan-amap-coords.2026-08-09.json",
+    "dukuAmapVerifiedAt": "2026-08-09T09:00:48.850Z",
+    "dukuAmapAudit": "data/country-packs/CN/audits/duku-amap-coords.2026-08-09.json",
+    "dianzangAmapVerifiedAt": "2026-08-09T09:00:52.020Z",
+    "dianzangAmapAudit": "data/country-packs/CN/audits/dianzang-amap-coords.2026-08-09.json",
+    "g211AmapVerifiedAt": "2026-08-09T09:00:56.077Z",
+    "g211AmapAudit": "data/country-packs/CN/audits/g211-amap-coords.2026-08-09.json",
+    "noteG219G317": "v1.3.3: 已增雀儿山垭口 seed + G219/G317 复核脚本；高德日配额耗尽待重跑 verify-g219/g317-amap-coords.ts --apply"
+  },
+  "cities": [
+    {
+      "name": "Chengdu",
+      "nameCN": "成都",
+      "nameEN": "Chengdu",
+      "lat": 30.5728,
+      "lng": 104.0668
+    },
+    {
+      "name": "Kangding",
+      "nameCN": "康定",
+      "nameEN": "Kangding",
+      "lat": 29.998544,
+      "lng": 101.95687
+    },
+    {
+      "name": "Bomê",
+      "nameCN": "波密",
+      "nameEN": "Bomê",
+      "lat": 29.859,
+      "lng": 95.768
+    },
+    {
+      "name": "Nyingchi",
+      "nameCN": "林芝",
+      "nameEN": "Nyingchi",
+      "lat": 29.6504,
+      "lng": 94.3619
+    },
+    {
+      "name": "Lhasa",
+      "nameCN": "拉萨",
+      "nameEN": "Lhasa",
+      "lat": 29.652,
+      "lng": 91.172
+    },
+    {
+      "name": "Litang",
+      "nameCN": "理塘",
+      "nameEN": "Litang",
+      "lat": 29.9942,
+      "lng": 100.2692
+    },
+    {
+      "name": "Markam",
+      "nameCN": "芒康",
+      "nameEN": "Markam",
+      "lat": 29.68,
+      "lng": 98.593
+    },
+    {
+      "name": "Zogang",
+      "nameCN": "左贡",
+      "nameEN": "Zogang",
+      "lat": 29.671,
+      "lng": 97.841
+    },
+    {
+      "name": "Xinduqiao",
+      "nameCN": "新都桥",
+      "nameEN": "Xinduqiao",
+      "lat": 30.04,
+      "lng": 101.48
+    },
+    {
+      "name": "Da Qaidam",
+      "nameCN": "大柴旦",
+      "nameEN": "Da Qaidam",
+      "lat": 37.852,
+      "lng": 95.356
+    },
+    {
+      "name": "Chaka",
+      "nameCN": "茶卡",
+      "nameEN": "Chaka",
+      "lat": 36.79,
+      "lng": 99.07
+    },
+    {
+      "name": "Deqin",
+      "nameCN": "德钦",
+      "nameEN": "Deqin",
+      "lat": 28.486,
+      "lng": 98.911
+    },
+    {
+      "name": "Shiquanhe",
+      "nameCN": "狮泉河",
+      "nameEN": "Shiquanhe",
+      "lat": 32.501,
+      "lng": 80.106
+    },
+    {
+      "name": "Gerze",
+      "nameCN": "改则",
+      "nameEN": "Gerze",
+      "lat": 32.302,
+      "lng": 84.062
+    },
+    {
+      "name": "Coqen",
+      "nameCN": "措勤",
+      "nameEN": "Coqen",
+      "lat": 31.017,
+      "lng": 85.155
+    },
+    {
+      "name": "Saga",
+      "nameCN": "萨嘎",
+      "nameEN": "Saga",
+      "lat": 29.329,
+      "lng": 85.233
+    },
+    {
+      "name": "Zhongba",
+      "nameCN": "仲巴",
+      "nameEN": "Zhongba",
+      "lat": 29.769,
+      "lng": 84.032
+    },
+    {
+      "name": "Zanda",
+      "nameCN": "札达",
+      "nameEN": "Zanda",
+      "lat": 31.479,
+      "lng": 79.803
+    },
+    {
+      "name": "Derge",
+      "nameCN": "德格",
+      "nameEN": "Derge",
+      "lat": 31.806,
+      "lng": 98.581
+    },
+    {
+      "name": "Jomda",
+      "nameCN": "江达",
+      "nameEN": "Jomda",
+      "lat": 31.503,
+      "lng": 98.218
+    },
+    {
+      "name": "Luhuo",
+      "nameCN": "炉霍",
+      "nameEN": "Luhuo",
+      "lat": 31.392,
+      "lng": 100.676
+    },
+    {
+      "name": "Dawu",
+      "nameCN": "道孚",
+      "nameEN": "Dawu",
+      "lat": 30.98,
+      "lng": 101.125
+    },
+    {
+      "name": "Barkam",
+      "nameCN": "马尔康",
+      "nameEN": "Barkam",
+      "lat": 31.906,
+      "lng": 102.207
+    },
+    {
+      "name": "Yanjing",
+      "nameCN": "盐井",
+      "nameEN": "Yanjing",
+      "lat": 29.048,
+      "lng": 98.601
+    },
+    {
+      "name": "Qiaoerma",
+      "nameCN": "乔尔玛",
+      "nameEN": "Qiaoerma",
+      "lat": 43.651793,
+      "lng": 84.358667
+    },
+    {
+      "name": "Gonghe",
+      "nameCN": "共和",
+      "nameEN": "Gonghe",
+      "lat": 36.28,
+      "lng": 100.62
+    },
+    {
+      "name": "Xunyi",
+      "nameCN": "旬邑",
+      "nameEN": "Xunyi",
+      "lat": 35.112,
+      "lng": 108.334
+    },
+    {
+      "name": "Chunhua",
+      "nameCN": "淳化",
+      "nameEN": "Chunhua",
+      "lat": 34.799,
+      "lng": 108.58
+    },
+    {
+      "name": "Sinan",
+      "nameCN": "思南",
+      "nameEN": "Sinan",
+      "lat": 27.941,
+      "lng": 108.251
+    },
+    {
+      "name": "Shiqian",
+      "nameCN": "石阡",
+      "nameEN": "Shiqian",
+      "lat": 27.513,
+      "lng": 108.223
+    },
+    {
+      "name": "Zhenyuan",
+      "nameCN": "镇远",
+      "nameEN": "Zhenyuan",
+      "lat": 27.049,
+      "lng": 108.429
+    },
+    {
+      "name": "Taijiang",
+      "nameCN": "台江",
+      "nameEN": "Taijiang",
+      "lat": 26.669,
+      "lng": 108.321
+    },
+    {
+      "name": "Rongjiang",
+      "nameCN": "榕江",
+      "nameEN": "Rongjiang",
+      "lat": 25.932,
+      "lng": 108.522
+    },
+    {
+      "name": "Batang",
+      "nameCN": "巴塘",
+      "nameEN": "Batang",
+      "lat": 30.005,
+      "lng": 99.112
+    },
+    {
+      "name": "Biru",
+      "nameCN": "比如",
+      "nameEN": "Biru",
+      "lat": 31.481,
+      "lng": 93.682
+    },
+    {
+      "name": "Nyainrong",
+      "nameCN": "聂荣",
+      "nameEN": "Nyainrong",
+      "lat": 32.108,
+      "lng": 92.303
+    },
+    {
+      "name": "Yecheng",
+      "nameCN": "叶城",
+      "nameEN": "Yecheng",
+      "lat": 37.883,
+      "lng": 77.413
+    },
+    {
+      "name": "Chamdo",
+      "nameCN": "昌都",
+      "nameEN": "Chamdo",
+      "lat": 31.137,
+      "lng": 97.178
+    },
+    {
+      "name": "Dengqen",
+      "nameCN": "丁青",
+      "nameEN": "Dengqen",
+      "lat": 31.414,
+      "lng": 95.596
+    },
+    {
+      "name": "Nagqu",
+      "nameCN": "那曲",
+      "nameEN": "Nagqu",
+      "lat": 31.477,
+      "lng": 92.051
+    },
+    {
+      "name": "Damxung",
+      "nameCN": "当雄",
+      "nameEN": "Damxung",
+      "lat": 30.473,
+      "lng": 91.103
+    },
+    {
+      "name": "Shigatse",
+      "nameCN": "日喀则",
+      "nameEN": "Shigatse",
+      "lat": 29.267,
+      "lng": 88.881
+    },
+    {
+      "name": "Xining",
+      "nameCN": "西宁",
+      "nameEN": "Xining",
+      "lat": 36.676027,
+      "lng": 101.758249
+    },
+    {
+      "name": "Dunhuang",
+      "nameCN": "敦煌",
+      "nameEN": "Dunhuang",
+      "lat": 40.1411,
+      "lng": 94.662
+    },
+    {
+      "name": "Zhangye",
+      "nameCN": "张掖",
+      "nameEN": "Zhangye",
+      "lat": 38.9329,
+      "lng": 100.455
+    },
+    {
+      "name": "Jiayuguan",
+      "nameCN": "嘉峪关",
+      "nameEN": "Jiayuguan",
+      "lat": 39.7732,
+      "lng": 98.289
+    },
+    {
+      "name": "Qilian",
+      "nameCN": "祁连",
+      "nameEN": "Qilian",
+      "lat": 38.177,
+      "lng": 100.23
+    },
+    {
+      "name": "Menyuan",
+      "nameCN": "门源",
+      "nameEN": "Menyuan",
+      "lat": 37.377,
+      "lng": 101.622
+    },
+    {
+      "name": "Yinchuan",
+      "nameCN": "银川",
+      "nameEN": "Yinchuan",
+      "lat": 38.4872,
+      "lng": 106.2309
+    },
+    {
+      "name": "Qingyang",
+      "nameCN": "庆阳",
+      "nameEN": "Qingyang",
+      "lat": 35.734,
+      "lng": 107.644
+    },
+    {
+      "name": "Xi'an",
+      "nameCN": "西安",
+      "nameEN": "Xi'an",
+      "lat": 34.3416,
+      "lng": 108.9398
+    },
+    {
+      "name": "Shangluo",
+      "nameCN": "商洛",
+      "nameEN": "Shangluo",
+      "lat": 33.873,
+      "lng": 109.94
+    },
+    {
+      "name": "Ankang",
+      "nameCN": "安康",
+      "nameEN": "Ankang",
+      "lat": 32.69,
+      "lng": 109.029
+    },
+    {
+      "name": "Wanzhou",
+      "nameCN": "万州",
+      "nameEN": "Wanzhou",
+      "lat": 30.8079,
+      "lng": 108.408
+    },
+    {
+      "name": "Yanhe",
+      "nameCN": "沿河",
+      "nameEN": "Yanhe",
+      "lat": 28.564,
+      "lng": 108.496
+    },
+    {
+      "name": "Kaizhou",
+      "nameCN": "开州",
+      "nameEN": "Kaizhou",
+      "lat": 31.161,
+      "lng": 108.393
+    },
+    {
+      "name": "Dushanzi",
+      "nameCN": "独山子",
+      "nameEN": "Dushanzi",
+      "lat": 44.327,
+      "lng": 84.886
+    },
+    {
+      "name": "Kuqa",
+      "nameCN": "库车",
+      "nameEN": "Kuqa",
+      "lat": 41.719073,
+      "lng": 82.998544
+    },
+    {
+      "name": "Bayanbulak",
+      "nameCN": "巴音布鲁克",
+      "nameEN": "Bayanbulak",
+      "lat": 43.03,
+      "lng": 84.15
+    },
+    {
+      "name": "Dali",
+      "nameCN": "大理",
+      "nameEN": "Dali",
+      "lat": 25.678466,
+      "lng": 100.301614
+    },
+    {
+      "name": "Lijiang",
+      "nameCN": "丽江",
+      "nameEN": "Lijiang",
+      "lat": 26.855,
+      "lng": 100.227
+    },
+    {
+      "name": "Shangri-La",
+      "nameCN": "香格里拉",
+      "nameEN": "Shangri-La",
+      "lat": 27.842185,
+      "lng": 99.743582
+    },
+    {
+      "name": "Gongbo'gyamda",
+      "nameCN": "工布江达",
+      "nameEN": "Gongbo'gyamda",
+      "lat": 29.885,
+      "lng": 93.246
+    }
+  ],
+  "places": [
+    {
+      "nameCN": "成都",
+      "nameEN": "Chengdu",
+      "category": "TRANSIT_HUB",
+      "cityCN": "成都",
+      "lat": 30.5728,
+      "lng": 104.0668,
+      "aliases": [
+        "天府",
+        "双流"
+      ],
+      "rating": 4.6,
+      "altitudeMeters": 500
+    },
+    {
+      "nameCN": "康定",
+      "nameEN": "Kangding",
+      "category": "TRANSIT_HUB",
+      "cityCN": "康定",
+      "lat": 29.998544,
+      "lng": 101.95687,
+      "aliases": [
+        "打箭炉",
+        "康定县城"
+      ],
+      "rating": 4.5,
+      "altitudeMeters": 2560
+    },
+    {
+      "nameCN": "木格措",
+      "nameEN": "Mugecuo",
+      "category": "ATTRACTION",
+      "cityCN": "康定",
+      "lat": 30.170233,
+      "lng": 101.872437,
+      "aliases": [
+        "康定情歌木格措",
+        "木格措景区",
+        "情歌(木格措)"
+      ],
+      "rating": 4.6,
+      "altitudeMeters": 3700
+    },
+    {
+      "nameCN": "折多山垭口",
+      "nameEN": "Zheduo Pass",
+      "category": "ATTRACTION",
+      "cityCN": "康定",
+      "lat": 30.075,
+      "lng": 101.805,
+      "aliases": [
+        "折多山",
+        "折多垭口"
+      ],
+      "rating": 4.4,
+      "altitudeMeters": 4298
+    },
+    {
+      "nameCN": "波密",
+      "nameEN": "Bomê",
+      "category": "TRANSIT_HUB",
+      "cityCN": "波密",
+      "lat": 29.859,
+      "lng": 95.768,
+      "aliases": [
+        "波密县城"
+      ],
+      "rating": 4.2,
+      "altitudeMeters": 2750
+    },
+    {
+      "nameCN": "鲁朗",
+      "nameEN": "Lulang",
+      "category": "ATTRACTION",
+      "cityCN": "林芝",
+      "lat": 29.729677,
+      "lng": 94.725708,
+      "aliases": [
+        "鲁朗林海"
+      ],
+      "rating": 4.7,
+      "altitudeMeters": 3700
+    },
+    {
+      "nameCN": "林芝",
+      "nameEN": "Nyingchi",
+      "category": "TRANSIT_HUB",
+      "cityCN": "林芝",
+      "lat": 29.6504,
+      "lng": 94.3619,
+      "aliases": [
+        "八一镇",
+        "林芝八一"
+      ],
+      "rating": 4.5,
+      "altitudeMeters": 3000
+    },
+    {
+      "nameCN": "拉萨",
+      "nameEN": "Lhasa",
+      "category": "TRANSIT_HUB",
+      "cityCN": "拉萨",
+      "lat": 29.652,
+      "lng": 91.172,
+      "aliases": [
+        "拉萨市区"
+      ],
+      "rating": 4.7,
+      "altitudeMeters": 3650
+    },
+    {
+      "nameCN": "布达拉宫",
+      "nameEN": "Potala Palace",
+      "category": "ATTRACTION",
+      "cityCN": "拉萨",
+      "lat": 29.6555,
+      "lng": 91.1174,
+      "aliases": [
+        "布宫"
+      ],
+      "rating": 4.9,
+      "altitudeMeters": 3700
+    },
+    {
+      "nameCN": "理塘",
+      "nameEN": "Litang",
+      "category": "ATTRACTION",
+      "cityCN": "理塘",
+      "lat": 29.9942,
+      "lng": 100.2692,
+      "aliases": [
+        "高原县城",
+        "理塘县城"
+      ],
+      "rating": 4.5,
+      "altitudeMeters": 4014
+    },
+    {
+      "nameCN": "长青春科尔寺",
+      "nameEN": "Litang Monastery",
+      "category": "ATTRACTION",
+      "cityCN": "理塘",
+      "lat": 30.0005,
+      "lng": 100.2698,
+      "rating": 4.6
+    },
+    {
+      "nameCN": "新都桥",
+      "nameEN": "Xinduqiao",
+      "category": "ATTRACTION",
+      "cityCN": "新都桥",
+      "lat": 30.04,
+      "lng": 101.48,
+      "aliases": [
+        "摄影天堂",
+        "新都桥镇"
+      ],
+      "rating": 4.5,
+      "altitudeMeters": 3300
+    },
+    {
+      "nameCN": "芒康",
+      "nameEN": "Markam",
+      "category": "ATTRACTION",
+      "cityCN": "芒康",
+      "lat": 29.68,
+      "lng": 98.593,
+      "aliases": [
+        "入藏检查站",
+        "芒康或盐井",
+        "盐井/芒康方向"
+      ],
+      "rating": 4.2,
+      "altitudeMeters": 3870
+    },
+    {
+      "nameCN": "盐井古盐田",
+      "nameEN": "Yanjing Salt Wells",
+      "category": "ATTRACTION",
+      "cityCN": "盐井",
+      "lat": 29.048,
+      "lng": 98.601,
+      "aliases": [
+        "盐井"
+      ],
+      "rating": 4.5
+    },
+    {
+      "nameCN": "左贡",
+      "nameEN": "Zogang",
+      "category": "ATTRACTION",
+      "cityCN": "左贡",
+      "lat": 29.671,
+      "lng": 97.841,
+      "rating": 4,
+      "altitudeMeters": 3780,
+      "aliases": [
+        "左贡县城"
+      ]
+    },
+    {
+      "nameCN": "东达山垭口",
+      "nameEN": "Dongda Pass",
+      "category": "ATTRACTION",
+      "cityCN": "左贡",
+      "lat": 29.71,
+      "lng": 98.02,
+      "aliases": [
+        "东达山",
+        "东达垭口"
+      ],
+      "rating": 4.3,
+      "altitudeMeters": 5008
+    },
+    {
+      "nameCN": "巴塘",
+      "nameEN": "Batang",
+      "category": "ATTRACTION",
+      "cityCN": "巴塘",
+      "lat": 30.005,
+      "lng": 99.112,
+      "rating": 4.1,
+      "altitudeMeters": 2580
+    },
+    {
+      "nameCN": "大柴旦",
+      "nameEN": "Da Qaidam",
+      "category": "ATTRACTION",
+      "cityCN": "大柴旦",
+      "lat": 37.852,
+      "lng": 95.356,
+      "rating": 4,
+      "altitudeMeters": 3170
+    },
+    {
+      "nameCN": "大柴旦翡翠湖",
+      "nameEN": "Da Qaidam Emerald Lake",
+      "category": "ATTRACTION",
+      "cityCN": "大柴旦",
+      "lat": 37.866427,
+      "lng": 95.265841,
+      "aliases": [
+        "翡翠湖",
+        "大柴旦翡翠湖"
+      ],
+      "rating": 4.7,
+      "altitudeMeters": 3150
+    },
+    {
+      "nameCN": "茶卡镇",
+      "nameEN": "Chaka Town",
+      "category": "ATTRACTION",
+      "cityCN": "茶卡",
+      "lat": 36.79,
+      "lng": 99.07,
+      "rating": 4,
+      "altitudeMeters": 3050,
+      "aliases": [
+        "茶卡",
+        "茶卡镇过夜"
+      ]
+    },
+    {
+      "nameCN": "青海湖景区",
+      "nameEN": "Qinghai Lake",
+      "category": "ATTRACTION",
+      "cityCN": "共和",
+      "lat": 36.9,
+      "lng": 100.15,
+      "aliases": [
+        "青海湖",
+        "二郎剑/环湖",
+        "青海湖景区"
+      ],
+      "rating": 4.8,
+      "altitudeMeters": 3196
+    },
+    {
+      "nameCN": "德钦",
+      "nameEN": "Deqin",
+      "category": "ATTRACTION",
+      "cityCN": "德钦",
+      "lat": 28.486,
+      "lng": 98.911,
+      "rating": 4.2,
+      "altitudeMeters": 3400
+    },
+    {
+      "nameCN": "飞来寺观景台",
+      "nameEN": "Feilai Temple Viewpoint",
+      "category": "ATTRACTION",
+      "cityCN": "德钦",
+      "lat": 28.444183,
+      "lng": 98.881797,
+      "aliases": [
+        "梅里附近",
+        "梅里雪山"
+      ],
+      "rating": 4.7
+    },
+    {
+      "nameCN": "狮泉河",
+      "nameEN": "Shiquanhe",
+      "category": "ATTRACTION",
+      "cityCN": "狮泉河",
+      "lat": 32.501,
+      "lng": 80.106,
+      "aliases": [
+        "阿里首府"
+      ],
+      "rating": 4.2,
+      "altitudeMeters": 4278
+    },
+    {
+      "nameCN": "改则",
+      "nameEN": "Gerze",
+      "category": "ATTRACTION",
+      "cityCN": "改则",
+      "lat": 32.302,
+      "lng": 84.062,
+      "aliases": [
+        "改则一带",
+        "多玛/改则方向"
+      ],
+      "rating": 3.8
+    },
+    {
+      "nameCN": "措勤",
+      "nameEN": "Coqen",
+      "category": "ATTRACTION",
+      "cityCN": "措勤",
+      "lat": 31.017,
+      "lng": 85.155,
+      "aliases": [
+        "措勤一带",
+        "措勤方向"
+      ],
+      "rating": 3.8
+    },
+    {
+      "nameCN": "萨嘎",
+      "nameEN": "Saga",
+      "category": "ATTRACTION",
+      "cityCN": "萨嘎",
+      "lat": 29.329,
+      "lng": 85.233,
+      "rating": 3.8
+    },
+    {
+      "nameCN": "仲巴",
+      "nameEN": "Zhongba",
+      "category": "ATTRACTION",
+      "cityCN": "仲巴",
+      "lat": 29.769,
+      "lng": 84.032,
+      "aliases": [
+        "仲巴一带",
+        "仲巴方向"
+      ],
+      "rating": 3.7
+    },
+    {
+      "nameCN": "札达",
+      "nameEN": "Zanda",
+      "category": "ATTRACTION",
+      "cityCN": "札达",
+      "lat": 31.479,
+      "lng": 79.803,
+      "aliases": [
+        "札达或南线宿点",
+        "札达/土林可选或南线"
+      ],
+      "rating": 4
+    },
+    {
+      "nameCN": "古格王国遗址",
+      "nameEN": "Guge Kingdom Ruins",
+      "category": "ATTRACTION",
+      "cityCN": "札达",
+      "lat": 31.48,
+      "lng": 79.67,
+      "aliases": [
+        "古格/土林（可选）",
+        "古格"
+      ],
+      "rating": 4.6
+    },
+    {
+      "nameCN": "麻扎达坂",
+      "nameEN": "Mazar Pass",
+      "category": "ATTRACTION",
+      "cityCN": "叶城",
+      "lat": 36.35,
+      "lng": 77.05,
+      "aliases": [
+        "麻扎达坂方向",
+        "进山"
+      ],
+      "rating": 4.2
+    },
+    {
+      "nameCN": "叶城",
+      "nameEN": "Yecheng",
+      "category": "ATTRACTION",
+      "cityCN": "叶城",
+      "lat": 37.883,
+      "lng": 77.413,
+      "rating": 4
+    },
+    {
+      "nameCN": "界山达坂",
+      "nameEN": "Jieshan Pass",
+      "category": "ATTRACTION",
+      "cityCN": "改则",
+      "lat": 35.52,
+      "lng": 79.55,
+      "aliases": [
+        "界山达坂段",
+        "高原宿点"
+      ],
+      "rating": 4.1
+    },
+    {
+      "nameCN": "甜水海",
+      "nameEN": "Tianshuihai",
+      "category": "ATTRACTION",
+      "cityCN": "改则",
+      "lat": 35.35,
+      "lng": 79.55,
+      "aliases": [
+        "甜水海方向"
+      ],
+      "rating": 4
+    },
+    {
+      "nameCN": "雀儿山垭口",
+      "nameEN": "Que'er Shan Pass",
+      "category": "ATTRACTION",
+      "cityCN": "德格",
+      "lat": 31.92,
+      "lng": 99.05,
+      "aliases": [
+        "雀儿山",
+        "雀儿山隧道"
+      ],
+      "rating": 4.3
+    },
+    {
+      "nameCN": "德格印经院",
+      "nameEN": "Derge Parkhang",
+      "category": "ATTRACTION",
+      "cityCN": "德格",
+      "lat": 31.808,
+      "lng": 98.583,
+      "rating": 4.7
+    },
+    {
+      "nameCN": "德格",
+      "nameEN": "Derge",
+      "category": "ATTRACTION",
+      "cityCN": "德格",
+      "lat": 31.806,
+      "lng": 98.581,
+      "rating": 4
+    },
+    {
+      "nameCN": "江达",
+      "nameEN": "Jomda",
+      "category": "ATTRACTION",
+      "cityCN": "江达",
+      "lat": 31.503,
+      "lng": 98.218,
+      "rating": 3.9
+    },
+    {
+      "nameCN": "炉霍",
+      "nameEN": "Luhuo",
+      "category": "ATTRACTION",
+      "cityCN": "炉霍",
+      "lat": 31.392,
+      "lng": 100.676,
+      "aliases": [
+        "炉霍/道孚方向"
+      ],
+      "rating": 3.9
+    },
+    {
+      "nameCN": "道孚",
+      "nameEN": "Dawu",
+      "category": "ATTRACTION",
+      "cityCN": "道孚",
+      "lat": 30.98,
+      "lng": 101.125,
+      "rating": 3.9
+    },
+    {
+      "nameCN": "马尔康",
+      "nameEN": "Barkam",
+      "category": "ATTRACTION",
+      "cityCN": "马尔康",
+      "lat": 31.906,
+      "lng": 102.207,
+      "rating": 4.1
+    },
+    {
+      "nameCN": "乔尔玛",
+      "nameEN": "Qiaoerma",
+      "category": "ATTRACTION",
+      "cityCN": "乔尔玛",
+      "lat": 43.651793,
+      "lng": 84.358667,
+      "aliases": [
+        "乔尔玛/沿线"
+      ],
+      "rating": 4.3
+    },
+    {
+      "nameCN": "莫高窟",
+      "nameEN": "Mogao Caves",
+      "category": "ATTRACTION",
+      "cityCN": "敦煌",
+      "lat": 40.041,
+      "lng": 94.809,
+      "rating": 4.9,
+      "aliases": [
+        "敦煌莫高",
+        "莫高窟景区"
+      ]
+    },
+    {
+      "nameCN": "比如",
+      "nameEN": "Biru",
+      "category": "ATTRACTION",
+      "cityCN": "比如",
+      "lat": 31.481,
+      "lng": 93.682,
+      "aliases": [
+        "比如/聂荣方向",
+        "那曲东部"
+      ],
+      "rating": 3.8
+    },
+    {
+      "nameCN": "聂荣",
+      "nameEN": "Nyainrong",
+      "category": "ATTRACTION",
+      "cityCN": "聂荣",
+      "lat": 32.108,
+      "lng": 92.303,
+      "rating": 3.7
+    },
+    {
+      "nameCN": "旬邑",
+      "nameEN": "Xunyi",
+      "category": "ATTRACTION",
+      "cityCN": "旬邑",
+      "lat": 35.112,
+      "lng": 108.334,
+      "aliases": [
+        "旬邑/淳化方向",
+        "关中北缘",
+        "黄土→关中过渡"
+      ],
+      "rating": 3.8
+    },
+    {
+      "nameCN": "淳化",
+      "nameEN": "Chunhua",
+      "category": "ATTRACTION",
+      "cityCN": "淳化",
+      "lat": 34.799,
+      "lng": 108.58,
+      "rating": 3.7
+    },
+    {
+      "nameCN": "思南",
+      "nameEN": "Sinan",
+      "category": "ATTRACTION",
+      "cityCN": "思南",
+      "lat": 27.941,
+      "lng": 108.251,
+      "aliases": [
+        "思南/石阡",
+        "黔东北",
+        "村寨/喀斯特"
+      ],
+      "rating": 4
+    },
+    {
+      "nameCN": "石阡",
+      "nameEN": "Shiqian",
+      "category": "ATTRACTION",
+      "cityCN": "石阡",
+      "lat": 27.513,
+      "lng": 108.223,
+      "rating": 3.9
+    },
+    {
+      "nameCN": "镇远古镇",
+      "nameEN": "Zhenyuan Ancient Town",
+      "category": "ATTRACTION",
+      "cityCN": "镇远",
+      "lat": 27.049,
+      "lng": 108.429,
+      "aliases": [
+        "镇远",
+        "镇远/台江",
+        "黔东南"
+      ],
+      "rating": 4.6
+    },
+    {
+      "nameCN": "台江",
+      "nameEN": "Taijiang",
+      "category": "ATTRACTION",
+      "cityCN": "台江",
+      "lat": 26.669,
+      "lng": 108.321,
+      "rating": 3.9
+    },
+    {
+      "nameCN": "榕江",
+      "nameEN": "Rongjiang",
+      "category": "ATTRACTION",
+      "cityCN": "榕江",
+      "lat": 25.932,
+      "lng": 108.522,
+      "aliases": [
+        "终点",
+        "黔东南",
+        "榕江县"
+      ],
+      "rating": 4
+    },
+    {
+      "nameCN": "昌都",
+      "nameEN": "Chamdo",
+      "category": "TRANSIT_HUB",
+      "cityCN": "昌都",
+      "lat": 31.137,
+      "lng": 97.178,
+      "aliases": [
+        "昌都补给"
+      ],
+      "rating": 4.2,
+      "altitudeMeters": 3240
+    },
+    {
+      "nameCN": "丁青",
+      "nameEN": "Dengqen",
+      "category": "TRANSIT_HUB",
+      "cityCN": "丁青",
+      "lat": 31.414,
+      "lng": 95.596,
+      "rating": 3.9
+    },
+    {
+      "nameCN": "那曲",
+      "nameEN": "Nagqu",
+      "category": "TRANSIT_HUB",
+      "cityCN": "那曲",
+      "lat": 31.477,
+      "lng": 92.051,
+      "aliases": [
+        "那曲镇"
+      ],
+      "rating": 4.1,
+      "altitudeMeters": 4500
+    },
+    {
+      "nameCN": "当雄",
+      "nameEN": "Damxung",
+      "category": "TRANSIT_HUB",
+      "cityCN": "当雄",
+      "lat": 30.473,
+      "lng": 91.103,
+      "rating": 4
+    },
+    {
+      "nameCN": "日喀则",
+      "nameEN": "Shigatse",
+      "category": "TRANSIT_HUB",
+      "cityCN": "日喀则",
+      "lat": 29.267,
+      "lng": 88.881,
+      "rating": 4.2,
+      "altitudeMeters": 3836
+    },
+    {
+      "nameCN": "扎什伦布寺",
+      "nameEN": "Tashilhunpo Monastery",
+      "category": "ATTRACTION",
+      "cityCN": "日喀则",
+      "lat": 29.268,
+      "lng": 88.87,
+      "rating": 4.7
+    },
+    {
+      "nameCN": "然乌湖",
+      "nameEN": "Rawok Lake",
+      "category": "ATTRACTION",
+      "cityCN": "波密",
+      "lat": 29.443242,
+      "lng": 96.797833,
+      "aliases": [
+        "然乌",
+        "然乌湖景区"
+      ],
+      "rating": 4.7,
+      "altitudeMeters": 3850
+    },
+    {
+      "nameCN": "巴松措",
+      "nameEN": "Basong Tso",
+      "category": "ATTRACTION",
+      "cityCN": "林芝",
+      "lat": 30.005,
+      "lng": 93.99,
+      "aliases": [
+        "巴松错",
+        "措高湖"
+      ],
+      "rating": 4.7,
+      "altitudeMeters": 3700
+    },
+    {
+      "nameCN": "大昭寺",
+      "nameEN": "Jokhang Temple",
+      "category": "ATTRACTION",
+      "cityCN": "拉萨",
+      "lat": 29.653,
+      "lng": 91.132,
+      "aliases": [
+        "大昭寺广场"
+      ],
+      "rating": 4.8,
+      "altitudeMeters": 3650
+    },
+    {
+      "nameCN": "八廓街",
+      "nameEN": "Barkhor Street",
+      "category": "ATTRACTION",
+      "cityCN": "拉萨",
+      "lat": 29.6525,
+      "lng": 91.1335,
+      "aliases": [
+        "八廓",
+        "八角街"
+      ],
+      "rating": 4.6,
+      "altitudeMeters": 3650
+    },
+    {
+      "nameCN": "米拉山口",
+      "nameEN": "Mila Pass",
+      "category": "ATTRACTION",
+      "cityCN": "工布江达",
+      "lat": 29.826,
+      "lng": 92.34,
+      "aliases": [
+        "米拉山",
+        "米拉山口方向"
+      ],
+      "rating": 4.3,
+      "altitudeMeters": 5013
+    },
+    {
+      "nameCN": "工布江达",
+      "nameEN": "Gongbo'gyamda",
+      "category": "TRANSIT_HUB",
+      "cityCN": "工布江达",
+      "lat": 29.885,
+      "lng": 93.246,
+      "aliases": [
+        "工布江达/中转",
+        "工布江达县"
+      ],
+      "rating": 4,
+      "altitudeMeters": 3400
+    },
+    {
+      "nameCN": "卡子拉山垭口",
+      "nameEN": "Kazila Pass",
+      "category": "ATTRACTION",
+      "cityCN": "理塘",
+      "lat": 30.12,
+      "lng": 100.55,
+      "aliases": [
+        "卡子拉山",
+        "卡子拉垭口"
+      ],
+      "rating": 4.2,
+      "altitudeMeters": 4718
+    },
+    {
+      "nameCN": "海子山垭口",
+      "nameEN": "Haizi Shan Pass",
+      "category": "ATTRACTION",
+      "cityCN": "理塘",
+      "lat": 30.28,
+      "lng": 100.15,
+      "aliases": [
+        "海子山"
+      ],
+      "rating": 4.2,
+      "altitudeMeters": 4500
+    },
+    {
+      "nameCN": "业拉山垭口",
+      "nameEN": "Yela Pass",
+      "category": "ATTRACTION",
+      "cityCN": "波密",
+      "lat": 29.72,
+      "lng": 96.35,
+      "aliases": [
+        "业拉山"
+      ],
+      "rating": 4.1,
+      "altitudeMeters": 4658
+    },
+    {
+      "nameCN": "西宁",
+      "nameEN": "Xining",
+      "category": "TRANSIT_HUB",
+      "cityCN": "西宁",
+      "lat": 36.676027,
+      "lng": 101.758249,
+      "aliases": [
+        "西宁曹家堡"
+      ],
+      "rating": 4.5,
+      "altitudeMeters": 2261
+    },
+    {
+      "nameCN": "塔尔寺",
+      "nameEN": "Kumbum Monastery",
+      "category": "ATTRACTION",
+      "cityCN": "西宁",
+      "lat": 36.488,
+      "lng": 101.569,
+      "aliases": [
+        "湟中塔尔寺"
+      ],
+      "rating": 4.7,
+      "altitudeMeters": 2660
+    },
+    {
+      "nameCN": "茶卡盐湖",
+      "nameEN": "Chaka Salt Lake",
+      "category": "ATTRACTION",
+      "cityCN": "茶卡",
+      "lat": 36.742,
+      "lng": 99.079,
+      "aliases": [
+        "茶卡",
+        "天空之镜"
+      ],
+      "rating": 4.6,
+      "altitudeMeters": 3059
+    },
+    {
+      "nameCN": "敦煌",
+      "nameEN": "Dunhuang",
+      "category": "TRANSIT_HUB",
+      "cityCN": "敦煌",
+      "lat": 40.1411,
+      "lng": 94.662,
+      "aliases": [
+        "敦煌市"
+      ],
+      "rating": 4.6,
+      "altitudeMeters": 1138
+    },
+    {
+      "nameCN": "鸣沙山月牙泉",
+      "nameEN": "Mingsha Mountain & Crescent Spring",
+      "category": "ATTRACTION",
+      "cityCN": "敦煌",
+      "lat": 40.087,
+      "lng": 94.669,
+      "aliases": [
+        "鸣沙山",
+        "月牙泉",
+        "鸣沙山•月牙泉"
+      ],
+      "rating": 4.7
+    },
+    {
+      "nameCN": "雅丹国家地质公园",
+      "nameEN": "Yardang National Geopark",
+      "category": "ATTRACTION",
+      "cityCN": "敦煌",
+      "lat": 40.484767,
+      "lng": 93.133082,
+      "aliases": [
+        "水上雅丹",
+        "U型公路",
+        "雅丹",
+        "敦煌世界地质公园-雅丹",
+        "雅丹景区"
+      ],
+      "rating": 4.5
+    },
+    {
+      "nameCN": "嘉峪关",
+      "nameEN": "Jiayuguan",
+      "category": "TRANSIT_HUB",
+      "cityCN": "嘉峪关",
+      "lat": 39.7732,
+      "lng": 98.289,
+      "aliases": [
+        "嘉峪关市"
+      ],
+      "rating": 4.4
+    },
+    {
+      "nameCN": "嘉峪关关城",
+      "nameEN": "Jiayuguan Fort",
+      "category": "ATTRACTION",
+      "cityCN": "嘉峪关",
+      "lat": 39.802,
+      "lng": 98.216,
+      "aliases": [
+        "嘉峪关文物景区",
+        "天下第一雄关"
+      ],
+      "rating": 4.7
+    },
+    {
+      "nameCN": "张掖",
+      "nameEN": "Zhangye",
+      "category": "TRANSIT_HUB",
+      "cityCN": "张掖",
+      "lat": 38.9329,
+      "lng": 100.455,
+      "aliases": [
+        "张掖（丹霞周边）",
+        "张掖市"
+      ],
+      "rating": 4.4
+    },
+    {
+      "nameCN": "七彩丹霞",
+      "nameEN": "Zhangye Danxia",
+      "category": "ATTRACTION",
+      "cityCN": "张掖",
+      "lat": 38.97201,
+      "lng": 100.062804,
+      "aliases": [
+        "张掖七彩丹霞",
+        "丹霞地貌"
+      ],
+      "rating": 4.8
+    },
+    {
+      "nameCN": "祁连",
+      "nameEN": "Qilian",
+      "category": "TRANSIT_HUB",
+      "cityCN": "祁连",
+      "lat": 38.177,
+      "lng": 100.23,
+      "aliases": [
+        "祁连县"
+      ],
+      "rating": 4.3,
+      "altitudeMeters": 2787
+    },
+    {
+      "nameCN": "扁都口",
+      "nameEN": "Biandukou",
+      "category": "ATTRACTION",
+      "cityCN": "祁连",
+      "lat": 38.21301,
+      "lng": 100.937002,
+      "aliases": [
+        "扁都口景区"
+      ],
+      "rating": 4.4,
+      "altitudeMeters": 3500
+    },
+    {
+      "nameCN": "祁连草原",
+      "nameEN": "Qilian Grassland",
+      "category": "ATTRACTION",
+      "cityCN": "祁连",
+      "lat": 38.2,
+      "lng": 100.3,
+      "aliases": [
+        "祁连风光"
+      ],
+      "rating": 4.5,
+      "altitudeMeters": 3000
+    },
+    {
+      "nameCN": "门源",
+      "nameEN": "Menyuan",
+      "category": "TRANSIT_HUB",
+      "cityCN": "门源",
+      "lat": 37.377,
+      "lng": 101.622,
+      "aliases": [
+        "门源县"
+      ],
+      "rating": 4.3,
+      "altitudeMeters": 2850
+    },
+    {
+      "nameCN": "门源油菜花海",
+      "nameEN": "Menyuan Rapeseed Fields",
+      "category": "ATTRACTION",
+      "cityCN": "门源",
+      "lat": 37.35,
+      "lng": 101.55,
+      "aliases": [
+        "门源油菜花（季节）",
+        "门源百里油菜花",
+        "油菜花海"
+      ],
+      "rating": 4.6,
+      "altitudeMeters": 2800
+    },
+    {
+      "nameCN": "独山子",
+      "nameEN": "Dushanzi",
+      "category": "TRANSIT_HUB",
+      "cityCN": "独山子",
+      "lat": 44.327,
+      "lng": 84.886,
+      "aliases": [
+        "独山子区",
+        "独山子大峡谷"
+      ],
+      "rating": 4.2
+    },
+    {
+      "nameCN": "巴音布鲁克",
+      "nameEN": "Bayanbulak",
+      "category": "ATTRACTION",
+      "cityCN": "巴音布鲁克",
+      "lat": 43.03,
+      "lng": 84.15,
+      "aliases": [
+        "巴音布鲁克草原"
+      ],
+      "rating": 4.7,
+      "altitudeMeters": 2500
+    },
+    {
+      "nameCN": "九曲十八弯",
+      "nameEN": "Jiuqu Shibawan",
+      "category": "ATTRACTION",
+      "cityCN": "巴音布鲁克",
+      "lat": 42.765733,
+      "lng": 84.427713,
+      "aliases": [
+        "九曲十八弯观景台",
+        "巴音布鲁克九曲十八弯"
+      ],
+      "rating": 4.8,
+      "altitudeMeters": 2500
+    },
+    {
+      "nameCN": "库车",
+      "nameEN": "Kuqa",
+      "category": "TRANSIT_HUB",
+      "cityCN": "库车",
+      "lat": 41.719073,
+      "lng": 82.998544,
+      "aliases": [
+        "库车市",
+        "库车方向"
+      ],
+      "rating": 4.3
+    },
+    {
+      "nameCN": "库车王府",
+      "nameEN": "Kuqa Royal Palace",
+      "category": "ATTRACTION",
+      "cityCN": "库车",
+      "lat": 41.718795,
+      "lng": 82.920907,
+      "aliases": [
+        "库车王府景区"
+      ],
+      "rating": 4.4
+    },
+    {
+      "nameCN": "大理",
+      "nameEN": "Dali",
+      "category": "TRANSIT_HUB",
+      "cityCN": "大理",
+      "lat": 25.678466,
+      "lng": 100.301614,
+      "aliases": [
+        "大理古城",
+        "大理市"
+      ],
+      "rating": 4.6,
+      "altitudeMeters": 1976
+    },
+    {
+      "nameCN": "丽江",
+      "nameEN": "Lijiang",
+      "category": "TRANSIT_HUB",
+      "cityCN": "丽江",
+      "lat": 26.855,
+      "lng": 100.227,
+      "aliases": [
+        "丽江古城",
+        "丽江市"
+      ],
+      "rating": 4.6,
+      "altitudeMeters": 2416
+    },
+    {
+      "nameCN": "香格里拉",
+      "nameEN": "Shangri-La",
+      "category": "TRANSIT_HUB",
+      "cityCN": "香格里拉",
+      "lat": 27.842185,
+      "lng": 99.743582,
+      "aliases": [
+        "中甸",
+        "香格里拉市"
+      ],
+      "rating": 4.5,
+      "altitudeMeters": 3280
+    },
+    {
+      "nameCN": "普达措",
+      "nameEN": "Pudacuo",
+      "category": "ATTRACTION",
+      "cityCN": "香格里拉",
+      "lat": 27.856299,
+      "lng": 99.951808,
+      "aliases": [
+        "普达措国家公园"
+      ],
+      "rating": 4.7,
+      "altitudeMeters": 3500
+    },
+    {
+      "nameCN": "银川",
+      "nameEN": "Yinchuan",
+      "category": "TRANSIT_HUB",
+      "cityCN": "银川",
+      "lat": 38.4872,
+      "lng": 106.2309,
+      "aliases": [
+        "银川市"
+      ],
+      "rating": 4.5
+    },
+    {
+      "nameCN": "庆阳",
+      "nameEN": "Qingyang",
+      "category": "TRANSIT_HUB",
+      "cityCN": "庆阳",
+      "lat": 35.734,
+      "lng": 107.644,
+      "aliases": [
+        "庆阳一带",
+        "环县/庆阳方向",
+        "庆阳市"
+      ],
+      "rating": 4.1
+    },
+    {
+      "nameCN": "西安",
+      "nameEN": "Xi'an",
+      "category": "TRANSIT_HUB",
+      "cityCN": "西安",
+      "lat": 34.3416,
+      "lng": 108.9398,
+      "aliases": [
+        "西安市",
+        "关中"
+      ],
+      "rating": 4.7
+    },
+    {
+      "nameCN": "商洛",
+      "nameEN": "Shangluo",
+      "category": "TRANSIT_HUB",
+      "cityCN": "商洛",
+      "lat": 33.873,
+      "lng": 109.94,
+      "aliases": [
+        "商洛山区",
+        "柞水/镇安",
+        "商洛市"
+      ],
+      "rating": 4.2
+    },
+    {
+      "nameCN": "安康",
+      "nameEN": "Ankang",
+      "category": "TRANSIT_HUB",
+      "cityCN": "安康",
+      "lat": 32.69,
+      "lng": 109.029,
+      "aliases": [
+        "安康市"
+      ],
+      "rating": 4.2
+    },
+    {
+      "nameCN": "万州",
+      "nameEN": "Wanzhou",
+      "category": "TRANSIT_HUB",
+      "cityCN": "万州",
+      "lat": 30.8079,
+      "lng": 108.408,
+      "aliases": [
+        "万州区",
+        "长江节点"
+      ],
+      "rating": 4.2
+    },
+    {
+      "nameCN": "沿河",
+      "nameEN": "Yanhe",
+      "category": "TRANSIT_HUB",
+      "cityCN": "沿河",
+      "lat": 28.564,
+      "lng": 108.496,
+      "aliases": [
+        "沿河土家族自治县",
+        "乌江沿线",
+        "彭水/沿河"
+      ],
+      "rating": 4
+    },
+    {
+      "nameCN": "开州",
+      "nameEN": "Kaizhou",
+      "category": "TRANSIT_HUB",
+      "cityCN": "开州",
+      "lat": 31.161,
+      "lng": 108.393,
+      "aliases": [
+        "城口/开州方向",
+        "开州区",
+        "渝东北"
+      ],
+      "rating": 4
+    }
+  ]
+}

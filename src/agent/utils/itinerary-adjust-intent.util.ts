@@ -13,6 +13,7 @@ import {
   resolveRelativeDayYmdFromAnchor,
   resolveTripTemporalAnchor,
 } from './trip-temporal-anchor.util';
+import { stripUiInjectedDayScheduleContext } from './ui-day-schedule-context.util';
 
 export interface ItineraryAdjustDateRange {
   start_date?: string;
@@ -22,21 +23,9 @@ export interface ItineraryAdjustDateRange {
 }
 
 function conflictsWithSlotPlacementIntent(t: string): boolean {
-  const daySelectionRe =
-    /哪一天|哪几天|哪些天|哪天|那几天|哪个行程|哪一程|安排在哪|加在哪|插在|放进|能否在.{0,24}安排|顺路/i;
-  const tripDayAnchorRe = /行程|第\s*\d+\s*天|D\s*\d+/i;
-  const activityPlacementRe =
-    /观鲸|胡萨维克|阿克雷里|极光|北极光|aurora|northern\s+lights|观测日|活动|安排/i;
-  if (
-    /(?:把|将).{0,12}(?:那|哪|几)\s*天.{0,16}(?:定为|设为|当作|作为).{0,16}(?:极光|北极光|观鲸|观测)/i.test(
-      t,
-    )
-  ) {
-    return true;
-  }
-  return (
-    daySelectionRe.test(t) && (tripDayAnchorRe.test(t) || activityPlacementRe.test(t))
-  );
+  /** 与 analyzeRouteAndRunIntent 共用检测，避免「空日规划」等边界分叉 */
+  const { detectItinerarySlotPlacementIntent } = require('./route-and-run-intent-analyzer.util') as typeof import('./route-and-run-intent-analyzer.util');
+  return detectItinerarySlotPlacementIntent(t);
 }
 
 /** NL 正则落成的国家级/过粗目的地（应让 Trip 库内更细字段覆盖） */
@@ -59,7 +48,39 @@ export function isCoarseCountryOnlyDestination(destination: string | undefined |
   return d.length > 0 && COARSE_COUNTRY_ONLY_DESTINATIONS.has(d);
 }
 
-/** 绑定 Trip 且库内目的地更具体时，优先 Trip 目的地 */
+/** 粗粒度国家 token：用于绑定 Trip 时判断 NL 城市是否与库内目的地冲突 */
+export function roughDestinationCountryToken(destination: string | undefined | null): string | undefined {
+  const d = String(destination ?? '').trim();
+  if (!d) return undefined;
+  const x = d.toLowerCase();
+  if (/^is$/i.test(d) || /冰岛|iceland|reykjav[ií]k|雷克雅未克/.test(x)) return 'IS';
+  if (/^jp$/i.test(d) || /日本|tokyo|osaka|kyoto|东京|大阪|京都/.test(x)) return 'JP';
+  if (/^kr$/i.test(d) || /韩国|seoul|首尔/.test(x)) return 'KR';
+  if (
+    /^cn$/i.test(d) ||
+    /中国|china|上海|北京|广州|深圳|杭州|成都|重庆|西安|南京|苏州|武汉|厦门|青岛|天津/.test(x)
+  ) {
+    return 'CN';
+  }
+  if (/^gl$/i.test(d) || /格陵兰|greenland/.test(x)) return 'GL';
+  if (/^[a-z]{2}$/i.test(d)) return d.toUpperCase();
+  return undefined;
+}
+
+/** NL 目的地与 Trip 库目的地是否跨国家冲突（如「杭州」vs「冰岛」） */
+export function destinationsConflictForBoundTrip(
+  planDestination: string | undefined | null,
+  tripDestination: string | undefined | null,
+): boolean {
+  const a = roughDestinationCountryToken(planDestination);
+  const b = roughDestinationCountryToken(tripDestination);
+  return Boolean(a && b && a !== b);
+}
+
+/**
+ * 绑定 Trip 且库内目的地更具体 / 与 NL 跨国家冲突时，优先 Trip 目的地。
+ * 防止长期偏好「从杭州出发」等城市词在 hydration 前落成 plan.destination 后无法被冰岛 Trip 覆盖。
+ */
 export function shouldPreferTripDestinationOnHydration(
   planDestination: string | undefined | null,
   tripDestination: string | undefined | null,
@@ -68,13 +89,14 @@ export function shouldPreferTripDestinationOnHydration(
   if (!trip) return false;
   const plan = String(planDestination ?? '').trim();
   if (!plan || plan === '未指定') return true;
+  if (destinationsConflictForBoundTrip(plan, trip)) return true;
   if (!isCoarseCountryOnlyDestination(plan)) return false;
   return trip.length > plan.length || trip.includes(plan);
 }
 
-/** 行程日锚：第 N 天、D3、2026-06-02、6月2日 等 */
+/** 行程日锚：第 N 天、D3、Day 1、2026-06-02、6月2日 等 */
 const TRIP_DAY_DATE_ANCHOR_RE =
-  /\d{4}\s*年?\s*\d{1,2}\s*月(?:\d{1,2}\s*日)?|\d{4}-\d{2}-\d{2}|\d{1,2}\s*月\s*\d{1,2}\s*日|第\s*(?:\d+|[一二三四五六七八九十]{1,2})\s*天|\bD\s*\d+\b/i;
+  /\d{4}\s*年?\s*\d{1,2}\s*月(?:\d{1,2}\s*日)?|\d{4}-\d{2}-\d{2}|\d{1,2}\s*月\s*\d{1,2}\s*日|第\s*(?:\d+|[一二三四五六七八九十]{1,2})\s*天|\bD\s*\d+\b|\bDay\s*\d+\b/i;
 
 function diffCalendarDaysYmd(startYmd: string, endYmd: string): number {
   const s = new Date(`${startYmd.slice(0, 10)}T00:00:00Z`);
@@ -147,7 +169,12 @@ function hasFullTripReplanScopeSignals(
   }
 
   const tripDays = countInclusiveTripDays(dateRange);
-  const statedDayCount = t.match(/(\d+)\s*天/);
+  /** 去掉「第 N 天」后再抽「N 天」，避免「第2天调整路线」被当成 2 天整段重规划 */
+  const withoutDayOrdinals = t.replace(
+    /第\s*(?:\d+|[一二三四五六七八九十]{1,2})\s*天/g,
+    ' ',
+  );
+  const statedDayCount = withoutDayOrdinals.match(/(\d+)\s*天/);
   const statedDays = statedDayCount ? parseInt(statedDayCount[1], 10) : undefined;
 
   const hasMultiDaySpan =
@@ -178,6 +205,14 @@ function hasFullTripReplanScopeSignals(
     /(?:雷克雅未克|reykjavik).{0,48}(?:vik|维克|vík)|(?:vik|维克|vík).{0,48}(?:雷克雅未克|reykjavik)/i.test(
       t,
     );
+
+  /** 晕车/晕船等体感约束下的路线微调，不是整段走廊重规划 */
+  const motionSicknessLocalAdjust =
+    /(?:晕车|晕船|晕机|晕交通|motion\s*sick)/i.test(t) &&
+    /(?:调整|改|缩短|减少|优化).{0,16}(?:路线|行程|车程|驾驶|开车)/.test(t);
+  if (motionSicknessLocalAdjust && !/(?:全程|整段|整个行程|全部|整趟)/.test(t)) {
+    return false;
+  }
 
   const hasReplanOrFill =
     hasReplanEdit ||
@@ -311,14 +346,21 @@ export function detectItineraryAdjustIntent(
   message: string,
   dateRange?: ItineraryAdjustDateRange,
 ): boolean {
-  const t = stripSystemMessageBlocksForIntakeNl(String(message ?? ''));
+  const t = stripUiInjectedDayScheduleContext(
+    stripSystemMessageBlocksForIntakeNl(String(message ?? '')),
+  );
   if (!t.trim()) return false;
   if (detectFullTripReplanIntent(t, dateRange)) return false;
   if (conflictsWithSlotPlacementIntent(t)) return false;
 
   const hasTripAnchor =
     (/(?:行程|日程|计划|itinerary)/i.test(t) &&
-      (TRIP_DAY_DATE_ANCHOR_RE.test(t) || /冰岛|iceland/i.test(t))) ||
+      (TRIP_DAY_DATE_ANCHOR_RE.test(t) ||
+        /冰岛|iceland|雷克雅未克|reykjav[ií]k/i.test(t))) ||
+    /** 「优化第六天的路线」：日锚 + 优化/重排 + 路线，无需再写「行程」 */
+    (TRIP_DAY_DATE_ANCHOR_RE.test(t) &&
+      /(?:优化|调整|重排|重新排序)/.test(t) &&
+      /(?:路线|顺序|交通|通勤)/.test(t)) ||
     detectItineraryItemDeleteIntent(t) ||
     detectItineraryItemAddIntent(t) ||
     detectItineraryItemUpdateIntent(t);
@@ -346,9 +388,15 @@ export function detectItineraryAdjustIntent(
     (/(?:明天|今天|今日|后天|大后天)/.test(t) ||
       (/(?:行程|日程|计划)/i.test(t) && TRIP_DAY_DATE_ANCHOR_RE.test(t)));
 
+  /** 成员晕车等体感 → 调整路线/缩短车程（可无显式日锚） */
+  const hasMotionSicknessDrivenEdit =
+    /(?:晕车|晕船|晕机|晕交通|motion\s*sick)/i.test(t) &&
+    /(?:调整|改|缩短|减少|优化|重排).{0,16}(?:路线|行程|车程|驾驶|开车|日程)/.test(t);
+
   return (
     (hasTripAnchor && (hasExplicitEdit || hasWeatherDrivenEdit || hasDrivingCap)) ||
-    hasPacingDrivenEdit
+    hasPacingDrivenEdit ||
+    hasMotionSicknessDrivenEdit
   );
 }
 
@@ -462,15 +510,110 @@ export function appendFullTripReplanSystemHints(trip: TripPlanRequest, message: 
 }
 
 /**
- * 改稿且已种子化 Trip 内 POI 时，勿用「国家级冷检索 + 无起点」的通勤累加拦截整单。
+ * 绑定行程已种子化足够 Place 时，勿用「国家级冷检索 + 无起点」的通勤/稀疏闸拦截整单。
+ * 不再限制 intent：聊天 / 咨询 / 改稿都不应逼用户重选区域。
  */
 export function shouldSkipPoiDestinationClarificationForItineraryAdjust(
   primary: string | undefined,
   tripPoiSeedCount: number,
   minRequired = 2,
 ): boolean {
-  if (tripPoiSeedCount < minRequired) return false;
-  return primary === 'ITINERARY_ADJUST' || primary === 'GENERAL_PLAN';
+  void primary;
+  return tripPoiSeedCount >= minRequired;
+}
+
+export type PoiDestinationScopeBypassReason =
+  | 'RANKED_POOL_BACKFILL'
+  | 'BOUND_TRIP_POI_SEEDS'
+  | 'EXISTING_TRIP_ROUTE_ORDER_OPTIMIZATION'
+  | 'BOUND_TRIP_SOFT_CONTINUE';
+
+/**
+ * 聚类后过稀时优先回填/软放行，避免把「聚类过严 / 冷检索假象」误判成「目的地过大」硬澄清。
+ * 仅在无绑定行程、且排名池也不足时才应 clarify。
+ */
+export function resolveSparseSelectedPoiContinuation<T>(input: {
+  scored: T[];
+  rankedPois: T[];
+  minPoiRequired: number;
+  tripPoiSeedCount: number;
+  hasBoundTrip: boolean;
+  routeIntentPrimary?: string;
+  bypassRouteOrderOptimization?: boolean;
+}): {
+  scored: T[];
+  shouldClarify: boolean;
+  bypassReason?: PoiDestinationScopeBypassReason;
+} {
+  const minRequired = input.minPoiRequired > 0 ? input.minPoiRequired : 2;
+  const scoredIn = input.scored;
+
+  if (scoredIn.length === 0 || scoredIn.length >= minRequired) {
+    return { scored: scoredIn, shouldClarify: false };
+  }
+
+  if (input.rankedPois.length >= minRequired) {
+    return {
+      scored: input.rankedPois.slice(0, Math.max(minRequired, scoredIn.length)),
+      shouldClarify: false,
+      bypassReason: 'RANKED_POOL_BACKFILL',
+    };
+  }
+
+  if (
+    shouldSkipPoiDestinationClarificationForItineraryAdjust(
+      input.routeIntentPrimary,
+      input.tripPoiSeedCount,
+      minRequired,
+    )
+  ) {
+    return {
+      scored: input.rankedPois.length
+        ? input.rankedPois.slice(0, Math.max(minRequired, scoredIn.length))
+        : scoredIn,
+      shouldClarify: false,
+      bypassReason: 'BOUND_TRIP_POI_SEEDS',
+    };
+  }
+
+  if (input.bypassRouteOrderOptimization) {
+    return {
+      scored: scoredIn,
+      shouldClarify: false,
+      bypassReason: 'EXISTING_TRIP_ROUTE_ORDER_OPTIMIZATION',
+    };
+  }
+
+  if (input.hasBoundTrip) {
+    return {
+      scored: scoredIn,
+      shouldClarify: false,
+      bypassReason: 'BOUND_TRIP_SOFT_CONTINUE',
+    };
+  }
+
+  return { scored: scoredIn, shouldClarify: true };
+}
+
+/** 绑定行程上的「单日通勤过长」多为国家级冷检索假象，勿硬拦用户选区域。 */
+export function shouldSkipPoiDestinationCommuteClarification(input: {
+  tripPoiSeedCount: number;
+  hasBoundTrip: boolean;
+  routeIntentPrimary?: string;
+  bypassRouteOrderOptimization?: boolean;
+  minRequired?: number;
+}): boolean {
+  if (input.bypassRouteOrderOptimization) return true;
+  if (
+    shouldSkipPoiDestinationClarificationForItineraryAdjust(
+      input.routeIntentPrimary,
+      input.tripPoiSeedCount,
+      input.minRequired ?? 2,
+    )
+  ) {
+    return true;
+  }
+  return input.hasBoundTrip;
 }
 
 export function buildDestinationScopeClarificationOptions(destinationRaw: string): string[] {

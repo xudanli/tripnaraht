@@ -99,54 +99,102 @@ export class HotelDirectService implements OnModuleInit, OnModuleDestroy {
     @Optional() private readonly queryRewritingService?: QueryRewritingService,
     @Optional() private readonly queryRewriteMetrics?: QueryRewriteMetricsService,
   ) {
-    this.apiKey = 
-      this.configService.get<string>('GOOGLE_MAPS_API_KEY') || 
+    this.apiKey = this.resolveApiKey();
+  }
+
+  private resolveApiKey(): string | null {
+    const raw =
+      this.configService.get<string>('GOOGLE_MAPS_API_KEY') ||
       this.configService.get<string>('GOOGLE_PLACES_API_KEY') ||
-      process.env.GOOGLE_MAPS_API_KEY || 
+      process.env.GOOGLE_MAPS_API_KEY ||
       process.env.GOOGLE_PLACES_API_KEY ||
-      null;
+      '';
+    const cleaned = String(raw).replace(/^["']|["']$/g, '').trim();
+    return cleaned || null;
+  }
+
+  private lastProbeFailedAt = 0;
+  private static readonly PROBE_FAIL_COOLDOWN_MS = 10 * 60_000;
+
+  /** 启动探测失败后可重试（常见：启动时网络抖动） */
+  async ensureAvailable(): Promise<boolean> {
+    if (this.isAvailable && this.apiKey) return true;
+    if (!this.apiKey) {
+      this.apiKey = this.resolveApiKey();
+    }
+    if (!this.apiKey) return false;
+    /** 外网不可达时避免每次酒店检索再烧 5s 探测 */
+    if (
+      this.lastProbeFailedAt > 0 &&
+      Date.now() - this.lastProbeFailedAt < HotelDirectService.PROBE_FAIL_COOLDOWN_MS
+    ) {
+      return false;
+    }
+    await this.initAxiosAndProbe();
+    if (!this.isAvailable) {
+      this.lastProbeFailedAt = Date.now();
+    } else {
+      this.lastProbeFailedAt = 0;
+    }
+    return this.isAvailable;
+  }
+
+  getUnavailableReason(): string {
+    if (!this.apiKey) {
+      return 'Google Places API Key 未配置。请设置环境变量 GOOGLE_PLACES_API_KEY 或 GOOGLE_MAPS_API_KEY';
+    }
+    if (!this.isAvailable) {
+      return 'Google Places 启动探测失败（密钥可能无效、未开通 Places API，或外网不可达）';
+    }
+    return 'HotelDirectService 不可用';
   }
 
   async onModuleInit() {
     if (this.apiKey) {
-      const httpsAgent = createExternalHttpsAgent();
-
-      this.axiosInstance = axios.create({
-        baseURL: this.baseUrl,
-        timeout: EXTERNAL_API_REQUEST_TIMEOUT_MS,
-        httpsAgent,
-        proxy: false,
-        headers: {
-          'User-Agent': 'TripNARA/1.0',
-        },
-      });
-
-      // 测试连接（短超时，避免阻塞启动）
-      try {
-        const testResponse = await this.axiosInstance.get('/textsearch/json', {
-          params: {
-            query: 'hotel',
-            key: this.apiKey,
-            type: 'lodging',
-          },
-          timeout: EXTERNAL_API_INIT_PROBE_TIMEOUT_MS,
-        });
-        
-        if (testResponse.data.status === 'OK' || testResponse.data.status === 'ZERO_RESULTS') {
-          this.isAvailable = true;
-          this.logger.log('Hotel Direct Service initialized');
-        } else {
-          this.logger.warn(`Google Places API test returned: ${testResponse.data.status}`);
-          this.isAvailable = false;
-        }
-      } catch (error: any) {
-        this.logger.warn(
-          `Hotel Direct Service unavailable (init probe failed): ${error.message}`,
-        );
-        this.isAvailable = false;
+      await this.initAxiosAndProbe();
+      if (!this.isAvailable) {
+        this.lastProbeFailedAt = Date.now();
       }
     } else {
       this.logger.warn('Google Maps/Places API Key not found. Service will not be available.');
+      this.isAvailable = false;
+    }
+  }
+
+  private async initAxiosAndProbe(): Promise<void> {
+    const httpsAgent = createExternalHttpsAgent();
+
+    this.axiosInstance = axios.create({
+      baseURL: this.baseUrl,
+      timeout: EXTERNAL_API_REQUEST_TIMEOUT_MS,
+      httpsAgent,
+      proxy: false,
+      headers: {
+        'User-Agent': 'TripNARA/1.0',
+      },
+    });
+
+    try {
+      const testResponse = await this.axiosInstance.get('/textsearch/json', {
+        params: {
+          query: 'hotel',
+          key: this.apiKey,
+          type: 'lodging',
+        },
+        timeout: EXTERNAL_API_INIT_PROBE_TIMEOUT_MS,
+      });
+
+      if (testResponse.data.status === 'OK' || testResponse.data.status === 'ZERO_RESULTS') {
+        this.isAvailable = true;
+        this.logger.log('Hotel Direct Service initialized');
+      } else {
+        this.logger.warn(`Google Places API test returned: ${testResponse.data.status}`);
+        this.isAvailable = false;
+      }
+    } catch (error: any) {
+      this.logger.warn(
+        `Hotel Direct Service unavailable (init probe failed): ${error.message}`,
+      );
       this.isAvailable = false;
     }
   }

@@ -49,6 +49,7 @@ import {
 import { MobileEmergencyContactsService } from './mobile-emergency-contacts.service';
 import { MobilePushNotificationService } from './mobile-push-notification.service';
 import type { NotifyTripPushInput } from './mobile-push-notification.service';
+import { assertDirectEffectivePlanWriteBlocked } from '../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 
 interface MobileActivityOverride {
   title?: string;
@@ -459,6 +460,9 @@ export class MobileExecutionWriteService {
     },
     opts: { idempotencyKey?: string; ifMatch?: number },
   ) {
+    // Agent Harness P0-1 W3 / C7：UWC EXCLUDED 面禁止静默结构写
+    assertDirectEffectivePlanWriteBlocked('mobile.patchActivity');
+
     this.assertWriteHeaders(opts);
     await this.assertWrite(tripId, userId, opts.ifMatch);
 

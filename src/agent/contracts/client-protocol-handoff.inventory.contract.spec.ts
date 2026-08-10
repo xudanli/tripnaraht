@@ -9,10 +9,14 @@ const ROOT = path.resolve(__dirname, '../../..');
 const REQUIRED = [
   'src/decision-runtime/decision-cases/DECISION_SPACE_IOS_HANDOFF.md',
   'src/trips/arrange-itinerary/ARRANGE_ITINERARY_IOS_HANDOFF.md',
+  'src/trips/travel-observation/NARA_LOOK_IOS_HANDOFF.md',
   'src/trips/copilot/PAGE_INSIGHT_API.md',
   'src/trips/copilot/contracts/page-ai-contracts.ts',
   'src/agent/delivery/FRONTEND_TRUSTED_DELIVERY.md',
+  'src/agent/delivery/FRONTEND_ROUTE_AND_RUN_IOS_HANDOFF.md',
+  'src/agent/delivery/DECISION_COGNITION_IOS_HANDOFF.md',
   'internal-docs/frontend/TEP-SELF-DRIVE-FRONTEND-HANDOFF.md',
+  'src/decision-runtime/execution/authoritative-write/UWC_1E_WEB_IOS_HANDOFF.md',
 ] as const;
 
 describe('client-protocol-handoff.inventory.contract (EWP-06)', () => {
@@ -53,9 +57,23 @@ describe('client-protocol-handoff.inventory.contract (EWP-06)', () => {
     const samples = [
       'src/trips/arrange-itinerary/dto/frontend-arrange-itinerary-api-client.ts',
       'src/trips/copilot/dto/frontend-page-insight-api-client.ts',
+      'src/trips/dto/frontend-uwc-1e-api-client.ts',
+      'src/trips/dto/frontend-uwc-1e-ios-api-client.ts',
+      'src/trips/travel-observation/dto/frontend-nara-look-api-client.ts',
+      'src/agent/delivery/frontend-decision-cognition-ios.reference.ts',
     ];
     for (const rel of samples) {
       expect(fs.existsSync(path.join(ROOT, rel))).toBe(true);
     }
+  });
+
+  it('decision cognition iOS handoff documents consent + cognition_cards', () => {
+    const md = fs.readFileSync(
+      path.join(ROOT, 'src/agent/delivery/DECISION_COGNITION_IOS_HANDOFF.md'),
+      'utf8',
+    );
+    expect(md).toMatch(/decision_consent/);
+    expect(md).toMatch(/cognition_cards/);
+    expect(md).toMatch(/tripnara\.cognition_ui_cards@v1/);
   });
 });

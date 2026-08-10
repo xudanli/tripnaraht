@@ -50,6 +50,9 @@ export interface HybridSearchResult {
   finalScore: number;
   matchReasons: string[];
   distance?: number;
+  /** 供 poi.search / 行程生成消费 */
+  description?: string | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 /** `hybridSearch` 可选行为（默认与历史一致：向量 + 关键词混合） */
@@ -205,20 +208,23 @@ export class VectorSearchService {
         limit,
         effectiveCountryCode,
       );
-      return keywordResults.map((r) => ({
-        id: r.id,
-        nameCN: r.nameCN,
-        nameEN: r.nameEN,
-        address: r.address,
-        category: r.category,
-        lat: r.lat,
-        lng: r.lng,
-        vectorScore: 0,
-        keywordScore: r.keywordScore,
-        finalScore: r.keywordScore,
-        matchReasons: ['关键词匹配（keyword_only）'],
-        distance: r.distance,
-      }));
+      return this.attachPlaceCopyToHybridResults(
+        keywordResults.map((r) => ({
+          id: r.id,
+          nameCN: r.nameCN,
+          nameEN: r.nameEN,
+          address: r.address,
+          category: r.category,
+          lat: r.lat,
+          lng: r.lng,
+          vectorScore: 0,
+          keywordScore: r.keywordScore,
+          finalScore: r.keywordScore,
+          matchReasons: ['关键词匹配（keyword_only）'],
+          distance: r.distance,
+        })),
+        query,
+      );
     }
 
     // 如果检测到多个城市，按实体拆分搜索
@@ -422,18 +428,25 @@ export class VectorSearchService {
       .sort((a, b) => b.finalScore - a.finalScore)
       .slice(0, limit);
 
-    // 6. 为每个结果生成推荐原因
+    return this.attachPlaceCopyToHybridResults(results, query);
+  }
+
+  /** 回填 Place.description / metadata，并生成 matchReasons */
+  private async attachPlaceCopyToHybridResults(
+    results: HybridSearchResult[],
+    query: string,
+  ): Promise<HybridSearchResult[]> {
+    if (results.length === 0) return results;
     const placeIds = results.map((r) => r.id);
     const places = await this.prisma.place.findMany({
       where: { id: { in: placeIds } },
       select: {
         id: true,
+        description: true,
         metadata: true,
       },
     });
-
     const placeMap = new Map(places.map((p) => [p.id, p]));
-
     return results.map((result) => {
       const place = placeMap.get(result.id);
       if (place) {
@@ -441,8 +454,13 @@ export class VectorSearchService {
           place,
           query,
           result.vectorScore,
-          result.keywordScore
+          result.keywordScore,
         );
+        result.description = place.description ?? null;
+        result.metadata =
+          place.metadata && typeof place.metadata === 'object'
+            ? (place.metadata as Record<string, unknown>)
+            : {};
       }
       return result;
     });

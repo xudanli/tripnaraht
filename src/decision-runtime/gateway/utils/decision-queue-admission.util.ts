@@ -24,7 +24,11 @@ export interface DecisionQueueAdmissionInput {
   excludePlanObjectPlanning?: boolean;
 }
 
-const TERMINAL_STATUSES = new Set<string>(['RESOLVED', 'DISMISSED']);
+const TERMINAL_STATUSES = new Set<string>(['RESOLVED', 'DISMISSED', 'DECIDED']);
+
+export function isTerminalDecisionWorkflowStatus(status: string | undefined): boolean {
+  return Boolean(status && TERMINAL_STATUSES.has(status));
+}
 
 /** Readiness / safety notices that are not actionable decisions. */
 export function isInformOnlyContent(input: Pick<DecisionQueueAdmissionInput, 'semanticKey' | 'title' | 'summary'>): boolean {
@@ -76,7 +80,8 @@ export function qualifiesForDecisionQueue(input: DecisionQueueAdmissionInput): b
     case 'REQUIRE_CONFIRMATION':
       return true;
     case 'WARN':
-      return input.hasExecutableOptions === true;
+      // Soft tips (e.g. travel buffer suggest_adjust) — not consumer 待决策.
+      return false;
     default:
       return false;
   }

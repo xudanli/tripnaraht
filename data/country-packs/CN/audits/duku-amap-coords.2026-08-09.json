@@ -1,0 +1,135 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "sampledAt": "2026-08-09T09:00:48.849Z",
+    "source": "restapi.amap.com/v3/place/text",
+    "corridor": "cn.route.duku",
+    "disclaimer": "高德 POI 文本搜首条；独库季节性开园须另核通告。",
+    "correction": "九曲十八弯误命中河北同名；已回写巴音布鲁克观景台 84.427713,42.765733"
+  },
+  "summary": {
+    "targets": 6,
+    "ok": 6,
+    "miss": 0,
+    "maxDeltaKm": 2743.019,
+    "appliedCount": 4,
+    "thresholdKm": 3,
+    "apply": true
+  },
+  "rows": [
+    {
+      "nameCN": "独山子",
+      "ok": true,
+      "seed": {
+        "lat": 44.327,
+        "lng": 84.886,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 44.328096,
+        "lng": 84.886974,
+        "name": "独山子区",
+        "address": "独山子区",
+        "id": "B01CB012FK"
+      },
+      "deltaKm": 0.144,
+      "applied": false
+    },
+    {
+      "nameCN": "乔尔玛",
+      "ok": true,
+      "seed": {
+        "lat": 43.68,
+        "lng": 84.42,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 43.651793,
+        "lng": 84.358667,
+        "name": "乔尔玛烈士纪念馆",
+        "address": "独库公路",
+        "id": "B0HRDHWKHY"
+      },
+      "deltaKm": 5.846,
+      "applied": true
+    },
+    {
+      "nameCN": "巴音布鲁克",
+      "ok": true,
+      "seed": {
+        "lat": 43.03,
+        "lng": 84.15,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 43.012549,
+        "lng": 84.134136,
+        "name": "巴音布鲁克天鹅湖风景区",
+        "address": "巴音布鲁克景区游客中心",
+        "id": "B0FFF35QGD"
+      },
+      "deltaKm": 2.33,
+      "applied": false
+    },
+    {
+      "nameCN": "九曲十八弯",
+      "ok": true,
+      "seed": {
+        "lat": 42.98,
+        "lng": 84.22,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 40.322237,
+        "lng": 117.257888,
+        "name": "九曲十八弯",
+        "address": "黄土梁村九曲十八弯景区内",
+        "id": "B0FFF2XZH4"
+      },
+      "deltaKm": 2743.019,
+      "applied": false,
+      "rejectedReason": "wrong_homonym_hebei",
+      "correctedTo": {
+        "lat": 42.765733,
+        "lng": 84.427713,
+        "name": "九曲十八弯观景台"
+      }
+    },
+    {
+      "nameCN": "库车",
+      "ok": true,
+      "seed": {
+        "lat": 41.717,
+        "lng": 82.962,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 41.719073,
+        "lng": 82.998544,
+        "name": "库车市",
+        "address": "库车市",
+        "id": "B03E500JWP"
+      },
+      "deltaKm": 3.042,
+      "applied": true
+    },
+    {
+      "nameCN": "库车王府",
+      "ok": true,
+      "seed": {
+        "lat": 41.721,
+        "lng": 82.96,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 41.718795,
+        "lng": 82.920907,
+        "name": "库车王府",
+        "address": "林基路街31号",
+        "id": "B03E500NI4"
+      },
+      "deltaKm": 3.254,
+      "applied": true
+    }
+  ]
+}

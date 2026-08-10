@@ -7,6 +7,7 @@ import { DefaultWeatherAdapter } from './adapters/default-weather.adapter';
 import { WeatherApiAdapter } from './adapters/weatherapi.adapter';
 import { OpenMeteoWeatherAdapter } from './adapters/open-meteo-weather.adapter';
 import { DefaultRoadStatusAdapter } from './adapters/default-road-status.adapter';
+import { ChinaRoadStatusAdapter } from './adapters/china-road-status.adapter';
 import { IcelandRoadStatusAdapter } from './adapters/iceland-road-status.adapter';
 import { IcelandWeatherAdapter } from './adapters/iceland-weather.adapter';
 import { IcelandSafetyAdapter } from './adapters/iceland-safety.adapter';
@@ -37,6 +38,7 @@ import { DataContractsController } from './data-contracts.controller';
     
     // 路况适配器
     DefaultRoadStatusAdapter,
+    ChinaRoadStatusAdapter,
     IcelandRoadStatusAdapter,
     
     // 冰岛特定服务
@@ -59,6 +61,7 @@ export class DataContractsModule implements OnModuleInit {
     private readonly openMeteoWeather: OpenMeteoWeatherAdapter,
     private readonly icelandWeather: IcelandWeatherAdapter,
     private readonly defaultRoad: DefaultRoadStatusAdapter,
+    private readonly chinaRoad: ChinaRoadStatusAdapter,
     private readonly icelandRoad: IcelandRoadStatusAdapter,
   ) {}
 
@@ -75,6 +78,7 @@ export class DataContractsModule implements OnModuleInit {
     // 注册路况适配器（先注册特定适配器，再注册默认适配器）
     console.log('🔌 [DataContractsModule] Registering road status adapters...');
     this.router.registerRoadStatusAdapter(this.icelandRoad);
+    this.router.registerRoadStatusAdapter(this.chinaRoad);
     this.router.registerRoadStatusAdapter(this.defaultRoad);
     console.log('🔌 [DataContractsModule] Road status adapters registered');
     console.log('🔌 [DataContractsModule] onModuleInit called - END');

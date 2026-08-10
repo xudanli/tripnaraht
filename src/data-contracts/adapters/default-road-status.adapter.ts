@@ -16,18 +16,20 @@ export class DefaultRoadStatusAdapter implements RoadStatusAdapter {
 
   async getRoadStatus(query: RoadStatusQuery): Promise<RoadStatus> {
     // TODO: 实现 Google Traffic API 调用
-    // 目前返回默认安全状态
-    
+    // CN 应由 ChinaRoadStatusAdapter 承接；本适配器仅作全球兜底，不再宣称 riskLevel=0 安全。
     this.logger.debug(`获取路况状态 (${query.lat}, ${query.lng})`);
-    
-    // 默认返回安全状态
+
     return {
       isOpen: true,
-      riskLevel: 0,
+      riskLevel: 1,
+      reason: '未接入准实时路况数据源，结果不可当作「确认可通行」。',
       lastUpdated: new Date(),
       source: 'default',
       metadata: {
         note: '使用默认适配器，未接入实际路况数据源',
+        roadStatus: 'UNKNOWN',
+        realtime: false,
+        evidenceGrade: 'none',
       },
     };
   }

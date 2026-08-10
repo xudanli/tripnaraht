@@ -1,0 +1,40 @@
+{
+    "schemaId": "tripnara.ontology_authority_selected_trips@v1",
+    "destination": "IS",
+    "tripIds": [
+        "ont_canary_is_vehicle_01",
+        "ont_canary_is_insurance_01",
+        "ont_canary_is_wind_01",
+        "ont_canary_is_visa_01",
+        "ont_canary_is_flight_01",
+        "ont_canary_is_vehicle_02",
+        "ont_canary_is_insurance_02",
+        "ont_canary_is_wind_02",
+        "ont_canary_is_visa_02",
+        "ont_canary_is_flight_02",
+        "ont_canary_is_vehicle_03",
+        "ont_canary_is_insurance_03",
+        "ont_canary_is_wind_03",
+        "ont_canary_is_visa_03",
+        "ont_canary_is_flight_03",
+        "ont_pilot_is_missing_evidence_01",
+        "ont_pilot_is_source_conflict_01",
+        "ont_pilot_is_fact_expired_01",
+        "ont_pilot_is_multi_scenario_01",
+        "ont_pilot_is_continuous_mod_01",
+        "ont_pilot_is_visa_gap_01",
+        "ont_pilot_is_flight_conflict_01",
+        "ont_pilot_is_safe_allow_01"
+    ],
+    "scenarioSemantics": [
+        "VEHICLE_ROUTE",
+        "INSURANCE_GAP",
+        "WIND_CAMPER",
+        "VISA_ENTRY",
+        "FLIGHT_RENTAL_PICKUP"
+    ],
+    "notes": "ONT-P0-15 Real Pilot Cohort — canary + 8 pilot trips; semantic scope unchanged; NOT DEFAULT_ON until authorization applied.",
+    "expandedAt": "2026-07-23T12:36:58.504Z",
+    "previousCount": 15,
+    "newCount": 23
+}

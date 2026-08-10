@@ -20,4 +20,18 @@ describe('sparse-poi-day-allocation.util', () => {
     expect(resolveSparsePoiDayAllocation('7天冰岛一号公路环岛自驾')).toBe('block');
     expect(resolveSparsePoiDayAllocation('ring road marathon')).toBe('block');
   });
+
+  it('sparse polar destination / country maps to intentional_slack', () => {
+    expect(resolveSparsePoiDayAllocation('想去看看', undefined, { countryCode: 'GL' })).toBe(
+      'intentional_slack',
+    );
+    expect(
+      resolveSparsePoiDayAllocation('自驾', undefined, { destinationHint: 'Longyearbyen' }),
+    ).toBe('intentional_slack');
+  });
+
+  it('forced allocation wins over text heuristics', () => {
+    expect(resolveSparsePoiDayAllocation('推荐餐厅', 'block')).toBe('block');
+    expect(resolveSparsePoiDayAllocation('环岛', 'intentional_slack')).toBe('intentional_slack');
+  });
 });

@@ -45,6 +45,10 @@ import {
   ApplyAccommodationToItineraryRequestDto,
   ApplyAccommodationToItineraryResponseDto,
 } from '../dto/v2/apply-accommodation-to-itinerary.dto';
+import {
+  ApplyActivityToItineraryRequestDto,
+  ApplyActivityToItineraryResponseDto,
+} from '../dto/v2/apply-activity-to-itinerary.dto';
 
 @ApiTags('规划助手智能体 V2')
 @ApiBearerAuth() // Swagger 文档：需要 Bearer Token
@@ -182,6 +186,28 @@ export class PlanningAssistantV2Controller {
     @Body() dto: ApplyAccommodationToItineraryRequestDto,
   ): Promise<ApplyAccommodationToItineraryResponseDto> {
     return await this.planningAssistantV2Service.applyAccommodationToItinerary(tripId, dto);
+  }
+
+  /**
+   * 将活动/门票推荐卡片一键写入行程时间轴
+   */
+  @Public()
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
+  @Post('trips/:tripId/activities/apply')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '将活动/门票加入行程',
+    description:
+      '配合 chat 返回的 activity_booking_cards[].actions（add_activity_to_itinerary）。可直接传 activityCard（applySnapshot）；按飞猪 otaRef 幂等 upsert Attraction Place。',
+  })
+  @ApiParam({ name: 'tripId', description: '行程 ID（与 context.tripId 一致）' })
+  @ApiResponse({ status: 200, description: '写入成功' })
+  @ApiResponse({ status: 400, description: '参数错误' })
+  async applyActivityToItinerary(
+    @Param('tripId') tripId: string,
+    @Body() dto: ApplyActivityToItineraryRequestDto,
+  ): Promise<ApplyActivityToItineraryResponseDto> {
+    return await this.planningAssistantV2Service.applyActivityToItinerary(tripId, dto);
   }
 
   // ==================== 业务操作（快捷方式） ====================

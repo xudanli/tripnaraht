@@ -22,8 +22,8 @@ export class AccommodationItemDto {
   @ApiProperty({ description: '唯一标识（酒店 placeId / Airbnb listingId）' })
   id!: string;
 
-  @ApiProperty({ description: '数据来源', enum: ['hotel', 'airbnb'] })
-  source!: 'hotel' | 'airbnb';
+  @ApiProperty({ description: '数据来源', enum: ['hotel', 'airbnb', 'fliggy'] })
+  source!: 'hotel' | 'airbnb' | 'fliggy';
 
   @ApiProperty({ description: '名称（中文或英文，视语言偏好）' })
   name!: string;
@@ -97,4 +97,20 @@ export class AccommodationItemDto {
     type: [AccommodationCardActionDto],
   })
   actions?: AccommodationCardActionDto[];
+
+  @ApiPropertyOptional({
+    description: 'OTA 外键（飞猪 shId 等）；apply 时按此幂等 upsert Place，不依赖库内同名匹配',
+  })
+  otaRef?: { provider: 'fliggy' | 'airbnb' | 'google' | 'unknown'; externalId: string };
+
+  @ApiPropertyOptional({ description: '预订提供方（与 source 对齐时可省略）' })
+  bookingProvider?: string;
+
+  @ApiPropertyOptional({
+    description: '列表坐标（route_and_run 卡片常用；与 location 二选一）',
+  })
+  listing_lat?: number;
+
+  @ApiPropertyOptional({ description: '列表坐标经度' })
+  listing_lng?: number;
 }

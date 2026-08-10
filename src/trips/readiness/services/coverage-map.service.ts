@@ -42,6 +42,7 @@ import {
   GLOBAL_SEGMENT_DISTANCE_THRESHOLDS,
 } from '../../trip-constraint-solver/utils/segment-distance-threshold.util';
 import { normalizeIssueId } from '../../trip-constraint-solver/utils/trip-revision.util';
+import { collectTripPlaceNameHints } from '../utils/collect-trip-place-hints.util';
 import {
   deriveTodayReadinessStatus,
   filterCoverageMapForDay,
@@ -129,7 +130,7 @@ export class CoverageMapService {
         TripDay: {
           include: {
             ItineraryItem: {
-              include: { Place: true },
+              include: { Place: { include: { City: true } } },
               orderBy: [{ order: 'asc' }, { startTime: 'asc' }],
             },
           },
@@ -169,6 +170,7 @@ export class CoverageMapService {
       }
     }
 
+    const placeNames = collectTripPlaceNameHints(trip.TripDay);
     let readinessResult;
     try {
       readinessResult = await this.readinessService.checkFromDestination(
@@ -181,6 +183,7 @@ export class CoverageMapService {
           },
           itinerary: { countries: [trip.destination] },
         },
+        { placeNames },
       );
     } catch (error) {
       this.logger.warn(`获取准备度数据失败: ${(error as Error).message}`);
@@ -1197,7 +1200,7 @@ export class CoverageMapService {
         TripDay: {
           include: {
             ItineraryItem: {
-              include: { Place: true },
+              include: { Place: { include: { City: true } } },
               orderBy: [{ order: 'asc' }, { startTime: 'asc' }],
             },
           },
@@ -1215,6 +1218,7 @@ export class CoverageMapService {
       options?.coverageData ?? (await this.getCoverageMap(tripId));
 
     // 获取准备度检查结果
+    const placeNames = collectTripPlaceNameHints(trip.TripDay);
     let readinessResult: any;
     try {
       readinessResult = await this.readinessService.checkFromDestination(
@@ -1227,6 +1231,7 @@ export class CoverageMapService {
           },
           itinerary: { countries: [trip.destination] },
         },
+        { placeNames },
       );
     } catch (error) {
       this.logger.warn(`获取准备度数据失败: ${(error as Error).message}`);

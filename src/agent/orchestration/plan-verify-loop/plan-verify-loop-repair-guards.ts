@@ -12,6 +12,7 @@ import {
   extractVerifyIssueCodesFromState,
   isFlawedDraftForbidden,
 } from '../flawed-draft-allow-matrix.constants';
+import { buildRepairHaltClarificationQuestion } from '../../utils/build-repair-halt-clarification.util';
 
 export interface PlanVerifyLoopRepairGuardHost {
   readonly logger: Logger;
@@ -31,6 +32,58 @@ export type RepairGuardParams = PlanVerifyLoopRunParams & {
   euBefore?: number;
   loop: PlanVerifyTransientLoopState;
 };
+
+function hasAdviceOnlyItineraryAdjustDraft(state: OrchestratorState): boolean {
+  const md = (state.metadata ?? {}) as Record<string, unknown>;
+  const mode = String(md.itinerary_adjust_execution_mode ?? '').toUpperCase();
+  if (mode && mode !== 'ADVICE_ONLY') return false;
+  const adjust = md.itinerary_adjust_result as
+    | { applied?: boolean; draft_schedule_zh?: unknown[]; target_date_iso?: string }
+    | undefined;
+  if (adjust?.applied === true) return false;
+  const schedule = adjust?.draft_schedule_zh;
+  if (Array.isArray(schedule) && schedule.some((l) => String(l ?? '').trim())) return true;
+  if (String(adjust?.target_date_iso ?? '').trim()) return true;
+  if (md.adaptive_replan_requested === true && md.itinerary_adjust_target_date_iso) return true;
+  return false;
+}
+
+/**
+ * Chat / ADVICE_ONLY 单日改排：已有待确认草案时，REPAIR 预算耗尽勿盖住「确认写入」CTA。
+ * 不写库、不标 flawed_draft；仅让链路继续 NARRATE 展示草案。
+ */
+function tryAllowAdviceOnlyItineraryAdjustDraftContinue(
+  host: PlanVerifyLoopRepairGuardHost,
+  params: RepairGuardParams,
+  reason: 'UTILITY_DECAY_BYPASSED' | 'REPAIR_BUDGET_EXCEEDED',
+): boolean {
+  const { state, request } = params;
+  const execMode = String(request.options?.execution_mode ?? '').toUpperCase();
+  const entry = String(request.options?.entry_point ?? '');
+  const adviceOnly =
+    execMode === 'ADVICE_ONLY' ||
+    String((state.metadata as Record<string, unknown>)?.itinerary_adjust_execution_mode ?? '')
+      .toUpperCase() === 'ADVICE_ONLY';
+  if (!adviceOnly) return false;
+  if (!hasAdviceOnlyItineraryAdjustDraft(state)) return false;
+
+  const now = new Date().toISOString();
+  const md = {
+    ...(state.metadata ?? {}),
+    started_at: state.metadata?.started_at ?? now,
+    last_updated_at: now,
+    repair_halt_soft_continue_advice_only: true,
+    repair_halt_soft_continue_reason: reason,
+    repair_halt_soft_continue_entry: entry || null,
+  };
+  state.metadata = md;
+  // 清掉即将弹出的停机澄清，避免 assembler 仍读到旧题
+  state.clarification_questions = [];
+  host.logger.log(
+    `[PlanVerifyLoop] REPAIR halt soft-continue for ADVICE_ONLY itinerary_adjust draft reason=${reason} request_id=${state.request_id}`,
+  );
+  return true;
+}
 
 function tryAllowFlawedDraftBypass(
   host: PlanVerifyLoopRepairGuardHost,
@@ -136,27 +189,26 @@ export async function applyUtilityDecayAfterRepairIfNeeded(
       if (
         tryAllowFlawedDraftBypass(host, { ...params, decisionState }, 'UTILITY_DECAY_BYPASSED', {
           consecutive_utility_declines: nextDeclines,
-        })
+        }) ||
+        tryAllowAdviceOnlyItineraryAdjustDraftContinue(
+          host,
+          { ...params, decisionState },
+          'UTILITY_DECAY_BYPASSED',
+        )
       ) {
         host.logger.log(
-          `[PlanVerifyLoop] Utility decay budget exceeded (${nextDeclines}/${maxUtilityDeclines}) → allow_flawed_draft_narrate`,
+          `[PlanVerifyLoop] Utility decay budget exceeded (${nextDeclines}/${maxUtilityDeclines}) → continue (flawed_draft or advice_only adjust)`,
         );
         return { terminal: null, loop, decisionState };
       }
       state.clarification_questions = [
-        {
-          id: 'utility_decay_halt_confirmation',
-          question: `自动修复后期望效用已连续 ${nextDeclines} 次下降（E[U] ${String(prevEu)} → ${String(euAfter)}）。是否缩小范围/放宽约束，或由您确认继续？`,
-          type: 'single_choice',
-          required: true,
-          options: [
-            { value: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
-            { value: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
-            { value: 'continue_auto_repair', label: '继续自动修复' },
-          ],
-          hint: '为避免“拆东墙补西墙”的循环，系统需要您的指令。',
-          metadata: { presentation: 'structured_intake_v1', repair_halt: 'utility_decay' },
-        },
+        buildRepairHaltClarificationQuestion({
+          kind: 'utility_decay',
+          utilityDeclineCount: nextDeclines,
+          euBefore: prevEu,
+          euAfter,
+          decisionState,
+        }),
       ];
       host.maybeSnapshot(state, 'CHECKPOINT');
       return {
@@ -185,27 +237,20 @@ export function checkRepairCountExceededIfNeeded(
     if (
       tryAllowFlawedDraftBypass(host, params, 'REPAIR_BUDGET_EXCEEDED', {
         repair_count: repairCount,
-      })
+      }) ||
+      tryAllowAdviceOnlyItineraryAdjustDraftContinue(host, params, 'REPAIR_BUDGET_EXCEEDED')
     ) {
       host.logger.log(
-        `[PlanVerifyLoop] REPAIR budget exceeded (${repairCount}/${maxRepairs}) → allow_flawed_draft_narrate, continue to NARRATE`,
+        `[PlanVerifyLoop] REPAIR budget exceeded (${repairCount}/${maxRepairs}) → continue (flawed_draft or advice_only adjust)`,
       );
       return null;
     }
     state.clarification_questions = [
-      {
-        id: 'repair_halt_confirmation',
-        question: `系统已自动修复尝试 ${repairCount} 次，仍未收敛。是否需要缩小范围/放宽约束/或由您确认继续自动修复？`,
-        type: 'single_choice',
-        required: true,
-        options: [
-          { value: 'reduce_scope', label: '缩小范围（减少天数/POI）' },
-          { value: 'relax_constraints', label: '放宽约束（节奏/预算/强度）' },
-          { value: 'continue_auto_repair', label: '继续自动修复' },
-        ],
-        hint: '为避免“拆东墙补西墙”的循环，系统需要您的指令。',
-        metadata: { presentation: 'structured_intake_v1', repair_halt: 'budget_exceeded' },
-      },
+      buildRepairHaltClarificationQuestion({
+        kind: 'budget_exceeded',
+        repairCount,
+        decisionState,
+      }),
     ];
     host.maybeSnapshot(state, 'CHECKPOINT');
     return host.buildClarificationResult(state, startTime, decisionState, context);

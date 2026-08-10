@@ -1,0 +1,20 @@
+{
+  "schemaId": "tripnara.destination_self_drive_capabilities@v1",
+  "packId": "destination.cn",
+  "countryCode": "CN",
+  "version": "0.1.0-g318",
+  "capabilities": {
+    "road_status": "PARTIAL",
+    "vehicle_road_fit": "PARTIAL",
+    "altitude_risk": "SUPPORTED",
+    "restricted_area": "SUPPORTED",
+    "seasonal_window": "SUPPORTED",
+    "ferry": "NONE",
+    "toll": "SUPPORTED",
+    "live_traffic": "NONE",
+    "checkpoint": "SUPPORTED",
+    "fuel_density": "PARTIAL",
+    "charging": "PARTIAL"
+  },
+  "notes": "CN G318 试点：路况为季节窗顾问（非准实时）；准实时交警接入后升格 live_traffic / road_status。"
+}

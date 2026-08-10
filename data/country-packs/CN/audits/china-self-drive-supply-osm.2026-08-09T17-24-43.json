@@ -1,0 +1,367 @@
+{
+  "at": "2026-08-09T17:24:43.986Z",
+  "dryRun": false,
+  "source": "osm-overpass",
+  "routeArg": "g219",
+  "routes": [
+    "cn.route.g219"
+  ],
+  "radiusM": 20000,
+  "limitPerAnchor": 15,
+  "queries": [
+    "fuel",
+    "charging",
+    "parking",
+    "highway_services",
+    "supermarket",
+    "convenience",
+    "toilets",
+    "car_repair",
+    "camping",
+    "hospital",
+    "toll",
+    "sanitary_dump"
+  ],
+  "candidateCount": 146,
+  "byCanonicalType": {
+    "SUPERMARKET": 9,
+    "FUEL_STATION": 41,
+    "TOLL_BOOTH": 3,
+    "CAMPING_EQUIPPED": 2,
+    "TOILETS": 16,
+    "PARKING": 34,
+    "HOSPITAL": 24,
+    "CONVENIENCE_STORE": 6,
+    "HIGHWAY_SERVICES": 5,
+    "CAMPING": 2,
+    "CAR_REPAIR": 1,
+    "REST_STOP": 1,
+    "EV_CHARGING": 2
+  },
+  "created": 80,
+  "updated": 66,
+  "skipped": 0,
+  "errors": [],
+  "sample": [
+    {
+      "osmKey": "node/4449004114",
+      "nameCN": "易达科电子技术服务中心",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/1090947252",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/1090946669",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/1090946671",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/1090947388",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/1090947530",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/1090945958",
+      "nameCN": "Petro China Station",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/1090944994",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "node/6574302785",
+      "nameCN": "Gas Station",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/415331211",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "node/13367822859",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "node/7252320115",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "node/7252320114",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "node/13367807799",
+      "nameCN": "西夜迷城房车营地",
+      "canonicalType": "CAMPING_EQUIPPED",
+      "category": "HOTEL",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/1459523779",
+      "nameCN": "CAMPING_EQUIPPED",
+      "canonicalType": "CAMPING_EQUIPPED",
+      "category": "HOTEL",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "node/13386150781",
+      "nameCN": "TOILETS",
+      "canonicalType": "TOILETS",
+      "category": "SUPPLY",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/1457573294",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/868185443",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/690196599",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/1141847847",
+      "nameCN": "叶城县生命医院",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/1141847845",
+      "nameCN": "叶城县中医维医医院",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/1141847840",
+      "nameCN": "新疆佳音医院叶城分院",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/1141847825",
+      "nameCN": "叶城县妇女儿童医院",
+      "canonicalType": "HOSPITAL",
+      "category": "HOSPITAL",
+      "anchorCN": "叶城",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "node/9050496090",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "狮泉河",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/307863538",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "狮泉河",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/1090591846",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "狮泉河",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/1090591847",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "狮泉河",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "node/9046298480",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "狮泉河",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "node/9050924005",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "狮泉河",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/806426112",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "狮泉河",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "node/10828754206",
+      "nameCN": "CONVENIENCE_STORE",
+      "canonicalType": "CONVENIENCE_STORE",
+      "category": "SUPPLY",
+      "anchorCN": "狮泉河",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "node/13363759306",
+      "nameCN": "TOILETS",
+      "canonicalType": "TOILETS",
+      "category": "SUPPLY",
+      "anchorCN": "狮泉河",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "node/13363759307",
+      "nameCN": "TOILETS",
+      "canonicalType": "TOILETS",
+      "category": "SUPPLY",
+      "anchorCN": "狮泉河",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/978157729",
+      "nameCN": "HIGHWAY_SERVICES",
+      "canonicalType": "HIGHWAY_SERVICES",
+      "category": "SUPPLY",
+      "anchorCN": "狮泉河",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/886961874",
+      "nameCN": "HIGHWAY_SERVICES",
+      "canonicalType": "HIGHWAY_SERVICES",
+      "category": "SUPPLY",
+      "anchorCN": "狮泉河",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/886961873",
+      "nameCN": "HIGHWAY_SERVICES",
+      "canonicalType": "HIGHWAY_SERVICES",
+      "category": "SUPPLY",
+      "anchorCN": "狮泉河",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/978157727",
+      "nameCN": "HIGHWAY_SERVICES",
+      "canonicalType": "HIGHWAY_SERVICES",
+      "category": "SUPPLY",
+      "anchorCN": "狮泉河",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/886961875",
+      "nameCN": "HIGHWAY_SERVICES",
+      "canonicalType": "HIGHWAY_SERVICES",
+      "category": "SUPPLY",
+      "anchorCN": "狮泉河",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/1328308537",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "狮泉河",
+      "routeId": "cn.route.g219"
+    },
+    {
+      "osmKey": "way/978195849",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "狮泉河",
+      "routeId": "cn.route.g219"
+    }
+  ]
+}

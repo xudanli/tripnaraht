@@ -5,7 +5,6 @@ import {
   isExecutionRiskConfirmWriteEnabled,
   isExecutionRiskRfc001WriteAdapterEnabled,
 } from '../config/execution-risk-feature-flags.util';
-import { assertDirectEffectivePlanWriteBlocked } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { isExecutionRiskWriteAllowlisted } from '../config/execution-risk-write-allowlist.util';
 import { buildAutomationBoundaryLedgerPayload } from '../utils/execution-risk-automation-boundary.util';
 import { ExecutionRiskConfirmTransactionService } from './execution-risk-confirm-transaction.service';
@@ -72,7 +71,7 @@ export class ExecutionRiskConfirmWriteService {
   }): Promise<ConfirmWriteResult | null> {
     if (!this.isWriteEnabled()) return null;
 
-    assertDirectEffectivePlanWriteBlocked('ExecutionRiskConfirmWriteService.commitConfirmedRecommendation');
+    // Agent Harness P0-1 W3 / C10：确认写是 AE 入口，禁止 assertDirect 误挡（物化走 Rfc001 runWithAuthority）
 
     if (
       !isExecutionRiskWriteAllowlisted({

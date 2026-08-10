@@ -58,6 +58,15 @@ export interface RoadStatusQuery {
     from: { lat: number; lng: number };
     to: { lat: number; lng: number };
   }>;
+
+  /** 可选：显式国家代码（跳过粗地理推断时使用） */
+  countryCode?: string;
+
+  /** 中国：经典线 ID（如 cn.route.g318），用于季节窗评估 */
+  classicRouteId?: string;
+
+  /** 评估日期 YYYY-MM-DD（默认今天 UTC） */
+  asOfDate?: string;
   
   /** 冰岛特定：是否包含 F-Road 信息 */
   includeFRoadInfo?: boolean;

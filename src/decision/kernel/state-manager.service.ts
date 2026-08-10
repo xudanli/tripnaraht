@@ -71,16 +71,43 @@ export class StateManagerService {
       'uncertaintyProfile',
       'beliefSamples',
       'harnessRuntime',
+      'cognition',
       'systemState',
       'history',
       'requestId',
     ],
-    GATE_EVAL: ['constraints', 'tripState.orchestratorAlternatives', 'systemState', 'history', 'requestId'],
-    CONTEXT_BUILD: ['contextPackage', 'systemState', 'history', 'requestId'],
-    PLAN_GEN: ['tripState.planDraft', 'tripState.planVersion', 'candidates', 'systemState', 'history', 'requestId'],
-    OPTIMIZE: ['optimizationHints', 'tripState.fatigue', 'tripState.planDraft', 'environmentState', 'constraints', 'research_data', 'systemState', 'history', 'requestId'],
-    VERIFY: ['confidence', 'systemState', 'history', 'requestId'],
-    REPAIR: ['tripState.planDraft', 'systemState', 'history', 'requestId'],
+    GATE_EVAL: [
+      'constraints',
+      'tripState.orchestratorAlternatives',
+      'cognition',
+      'systemState',
+      'history',
+      'requestId',
+    ],
+    CONTEXT_BUILD: ['contextPackage', 'cognition', 'systemState', 'history', 'requestId'],
+    PLAN_GEN: [
+      'tripState.planDraft',
+      'tripState.planVersion',
+      'candidates',
+      'cognition',
+      'systemState',
+      'history',
+      'requestId',
+    ],
+    OPTIMIZE: [
+      'optimizationHints',
+      'tripState.fatigue',
+      'tripState.planDraft',
+      'environmentState',
+      'constraints',
+      'research_data',
+      'cognition',
+      'systemState',
+      'history',
+      'requestId',
+    ],
+    VERIFY: ['confidence', 'verification', 'cognition', 'systemState', 'history', 'requestId'],
+    REPAIR: ['tripState.planDraft', 'cognition', 'systemState', 'history', 'requestId'],
     NARRATE: ['systemState', 'history', 'requestId'],
     FEEDBACK: ['feedback', 'systemState', 'history', 'requestId'],
   };
@@ -150,6 +177,14 @@ export class StateManagerService {
     }
     if (patch.beliefSamples !== undefined) {
       updated.beliefSamples = patch.beliefSamples;
+    }
+    if (patch.cognition !== undefined) {
+      updated.cognition = {
+        ...(current.cognition ?? {}),
+        ...patch.cognition,
+        markers: patch.cognition.markers ?? current.cognition?.markers,
+        updatedAt: patch.cognition.updatedAt ?? new Date().toISOString(),
+      };
     }
 
     this.logger.debug(`[StateManager] Merged: requestId=${updated.requestId}, phase=${updated.systemState.currentPhase}`);

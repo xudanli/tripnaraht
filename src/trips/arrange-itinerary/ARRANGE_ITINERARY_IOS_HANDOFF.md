@@ -10,6 +10,8 @@
 - 决策空间（待决策队列，另一套写链）：[`../../decision-runtime/decision-cases/DECISION_SPACE_IOS_HANDOFF.md`](../../decision-runtime/decision-cases/DECISION_SPACE_IOS_HANDOFF.md)  
 - 整体准备度：[`../overall-readiness/OVERALL_TRIP_READINESS_FE_HANDOFF.md`](../overall-readiness/OVERALL_TRIP_READINESS_FE_HANDOFF.md)  
 - TS Client / 类型 SSOT：`dto/frontend-arrange-itinerary-api-client.ts`  
+- **UWC-1e 有效写回（same-day / remind / PlanVersion-only）**：[`../../decision-runtime/execution/authoritative-write/UWC_1E_WEB_IOS_HANDOFF.md`](../../decision-runtime/execution/authoritative-write/UWC_1E_WEB_IOS_HANDOFF.md) — Preview→Confirm→Apply；页面不得直调 Apply  
+- **打开条件：** 提案带 `uwcPreview.open=true` 且含 `timeUpdates` 或 `decisionId`+`planVersionId`+`expectedPlanVersionId`；否则沿用原 Arrange Apply  
 - Swagger：`/api-docs` → `trip-arrange-itinerary` / `trip-attraction-explore`
 
 ---

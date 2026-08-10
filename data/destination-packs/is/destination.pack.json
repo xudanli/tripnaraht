@@ -37,6 +37,10 @@
   "roadProfileBundles": [
     { "path": "road/is-road-segment-profiles.json", "version": "1.0.0" }
   ],
+  "selfDriveCapabilities": {
+    "path": "self-drive-capabilities.v1.json",
+    "version": "1.0.0"
+  },
   "environmentModifiers": [
     { "path": "modifiers/is-driving.json", "version": "1.0.0" },
     { "path": "modifiers/is-outdoor-load.json", "version": "1.0.0" }

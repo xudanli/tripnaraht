@@ -1,0 +1,24 @@
+---
+description: route_and_run 统一对话输出层 — 禁止新意图、强制 Conversation Card Assembler
+globs: src/agent/**/*.{ts,md}
+alwaysApply: false
+---
+
+# ConversationTurnResult 输出治理
+
+## 冻结原则
+
+1. **停止扩充新对话意图**（新话术检测器 / 新 fast path 正则），直到统一输出层与 `TripConversationContextSnapshot` 稳定。例外：已入库阻断的 bugfix。
+2. 所有面向 Chat / iOS 的结构化交付必须经 `assembleConversationTurnResult`（`src/agent/delivery/conversation/`）。
+3. 渠道（Chat、iOS）**只渲染** `result.payload.conversation_turn_result`；禁止新增对散落业务对象的解析逻辑。
+4. 旧字段可双写，但 **Assembler 是唯一投影源**；不要在 Chat/iOS 各自拼装平行业务卡。
+
+## 七类标准卡片（勿增 kind）
+
+`trip_fact` · `change_draft` · `decision_options` · `gate_risk` · `import_preview` · `team_action` · `apply_receipt`
+
+## 挂载点
+
+- `RouteAndRunResponseAssemblerService.attachConversationTurnResult`
+- 轻量快路径：`attachConversationTurnToRouteAndRunResponse`
+- 文档：`FRONTEND_CONVERSATION_TURN_RESULT.md`

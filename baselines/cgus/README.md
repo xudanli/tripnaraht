@@ -1,3 +1,13 @@
+## What this directory is for
+
+**Official replay baselines** — not a backlog for implementing Figure 13 EU modules.
+
+CGUS V1 is in **operational validation**: freeze scoring, complete Decision Trace, prove remaining gaps with real Trip evidence. See:
+
+`src/trips/decision/optimization/CGUS_V1_OPERATIONAL_POLICY.md`
+
+---
+
 # CGUS replay — official baseline registry
 
 **Baseline governance:** [`BASELINE_UPDATE_POLICY.md`](./BASELINE_UPDATE_POLICY.md) — when you may change anchors, required PR evidence, and how `comparisonClass` maps to approval (prevents “update baseline to go green”). **PR title/body CI:** `.github/workflows/baseline-pr-title.yml` + `npm run check:baseline-pr-title` (see policy §3a). **Copy-paste title/body literals:** edit only [`scripts/lib/baseline-pr-compliance.examples.ts`](../../scripts/lib/baseline-pr-compliance.examples.ts) (single source of truth). **示例格式版本** = `BASELINE_PR_EXAMPLE_SCHEMA_VERSION` in that file (CI stderr prints `Example schema: …`).

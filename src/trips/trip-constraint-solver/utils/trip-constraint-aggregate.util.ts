@@ -724,7 +724,8 @@ export function isLegacyConstraintId(id: string): boolean {
     id.startsWith('c_') &&
     !id.startsWith('c_wish_') &&
     !id.startsWith('c_custom_') &&
-    !id.startsWith('c_official_')
+    !id.startsWith('c_official_') &&
+    !id.startsWith('c_tpl_')
   );
 }
 

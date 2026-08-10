@@ -1,0 +1,574 @@
+{
+  "metadata": {
+    "mode": "needs-llm",
+    "dryRun": false,
+    "model": "deepseek-chat",
+    "candidates": 80,
+    "ok": 80,
+    "fail": 0,
+    "skipped": 0,
+    "sampledAt": "2026-08-09T10:50:55.586Z"
+  },
+  "results": [
+    {
+      "id": 5203,
+      "nameCN": "四姑娘山景区",
+      "ok": true,
+      "chars": 143,
+      "nameEN": "Siguniang Mountain Scenic Area"
+    },
+    {
+      "id": 5204,
+      "nameCN": "天台山景区",
+      "ok": true,
+      "chars": 114,
+      "nameEN": "Tiantai Mountain Scenic Area"
+    },
+    {
+      "id": 5666,
+      "nameCN": "贵阳市花溪青岩古镇景区",
+      "ok": true,
+      "chars": 114,
+      "nameEN": "Qingyan Ancient Town"
+    },
+    {
+      "id": 5667,
+      "nameCN": "遵义市赤水丹霞旅游区",
+      "ok": true,
+      "chars": 145,
+      "nameEN": "Chishui Danxia Tourism Area"
+    },
+    {
+      "id": 5670,
+      "nameCN": "毕节市百里杜鹃景区",
+      "ok": true,
+      "chars": 120,
+      "nameEN": "Baili Azalea Scenic Area"
+    },
+    {
+      "id": 5671,
+      "nameCN": "毕节市织金洞景区",
+      "ok": true,
+      "chars": 129,
+      "nameEN": "Zhijin Cave Scenic Area"
+    },
+    {
+      "id": 5672,
+      "nameCN": "铜仁市梵净山旅游景区",
+      "ok": true,
+      "chars": 129,
+      "nameEN": "Fanjingshan Scenic Area"
+    },
+    {
+      "id": 5673,
+      "nameCN": "黔东南州镇远古城旅游景区",
+      "ok": true,
+      "chars": 137,
+      "nameEN": "Zhenyuan Ancient Town"
+    },
+    {
+      "id": 5674,
+      "nameCN": "黔南州荔波樟江旅游景区",
+      "ok": true,
+      "chars": 124,
+      "nameEN": "Libo Zhangjiang Scenic Area"
+    },
+    {
+      "id": 5675,
+      "nameCN": "黔西南州兴义万峰林景区",
+      "ok": true,
+      "chars": 130,
+      "nameEN": "Wanfeng Forest Scenic Area"
+    },
+    {
+      "id": 5840,
+      "nameCN": "昆明市石林风景名胜区",
+      "ok": true,
+      "chars": 151,
+      "nameEN": "Stone Forest Scenic Area"
+    },
+    {
+      "id": 5841,
+      "nameCN": "昆明世博园旅游区",
+      "ok": true,
+      "chars": 146,
+      "nameEN": "Kunming Expo Garden"
+    },
+    {
+      "id": 5842,
+      "nameCN": "腾冲火山热海旅游区",
+      "ok": true,
+      "chars": 140,
+      "nameEN": "Tengchong Volcano and Hot Sea Tourist Area"
+    },
+    {
+      "id": 5843,
+      "nameCN": "普者黑旅游景区",
+      "ok": true,
+      "chars": 139,
+      "nameEN": "Puzhehei Scenic Area"
+    },
+    {
+      "id": 5845,
+      "nameCN": "大理崇圣寺三塔文化旅游区",
+      "ok": true,
+      "chars": 127,
+      "nameEN": "Chongsheng Temple and Three Pagodas Cultural Tourist Area"
+    },
+    {
+      "id": 5846,
+      "nameCN": "丽江玉龙雪山景区",
+      "ok": true,
+      "chars": 142,
+      "nameEN": "Yulong Snow Mountain Scenic Area"
+    },
+    {
+      "id": 5847,
+      "nameCN": "丽江古城景区",
+      "ok": true,
+      "chars": 152,
+      "nameEN": "Lijiang Old Town"
+    },
+    {
+      "id": 5848,
+      "nameCN": "迪庆香格里拉普达措景区",
+      "ok": true,
+      "chars": 122,
+      "nameEN": "Pudacuo National Park"
+    },
+    {
+      "id": 5849,
+      "nameCN": "腾冲和顺古镇景区",
+      "ok": true,
+      "chars": 123,
+      "nameEN": "Heshun Ancient Town"
+    },
+    {
+      "id": 6213,
+      "nameCN": "扎什伦布寺景区",
+      "ok": true,
+      "chars": 148,
+      "nameEN": "Tashilhunpo Monastery"
+    },
+    {
+      "id": 6214,
+      "nameCN": "巴松措风景旅游区",
+      "ok": true,
+      "chars": 136,
+      "nameEN": "Basum Lake Scenic Area"
+    },
+    {
+      "id": 6215,
+      "nameCN": "雅鲁藏布大峡谷景区",
+      "ok": true,
+      "chars": 103,
+      "nameEN": "Yarlung Tsangpo Grand Canyon Scenic Area"
+    },
+    {
+      "id": 6259,
+      "nameCN": "秦始皇帝陵博物院",
+      "ok": true,
+      "chars": 150,
+      "nameEN": "Emperor Qinshihuang's Mausoleum Site Museum"
+    },
+    {
+      "id": 6260,
+      "nameCN": "华清宫",
+      "ok": true,
+      "chars": 117,
+      "nameEN": "Huaqing Palace"
+    },
+    {
+      "id": 6261,
+      "nameCN": "西安曲江大雁塔·大唐芙蓉园景区",
+      "ok": true,
+      "chars": 152,
+      "nameEN": "Tang Paradise (Datang Furong Garden)"
+    },
+    {
+      "id": 6262,
+      "nameCN": "西安城墙·碑林历史文化景区",
+      "ok": true,
+      "chars": 152,
+      "nameEN": "Xi'an City Wall & Forest of Stone Steles Museum"
+    },
+    {
+      "id": 6263,
+      "nameCN": "大明宫国家遗址公园",
+      "ok": true,
+      "chars": 128,
+      "nameEN": "Daming Palace National Heritage Park"
+    },
+    {
+      "id": 6264,
+      "nameCN": "法门文化景区",
+      "ok": true,
+      "chars": 131,
+      "nameEN": "Famen Temple Cultural Scenic Area"
+    },
+    {
+      "id": 6265,
+      "nameCN": "太白山景区",
+      "ok": true,
+      "chars": 109,
+      "nameEN": "Taibai Mountain Scenic Area"
+    },
+    {
+      "id": 6266,
+      "nameCN": "黄帝陵景区",
+      "ok": true,
+      "chars": 137,
+      "nameEN": "Mausoleum of the Yellow Emperor"
+    },
+    {
+      "id": 6268,
+      "nameCN": "黄河壶口瀑布旅游区",
+      "ok": true,
+      "chars": 152,
+      "nameEN": "Hukou Waterfall Scenic Area"
+    },
+    {
+      "id": 6269,
+      "nameCN": "华山景区",
+      "ok": true,
+      "chars": 141,
+      "nameEN": "Mount Hua Scenic Area"
+    },
+    {
+      "id": 6270,
+      "nameCN": "金丝峡景区",
+      "ok": true,
+      "chars": 114,
+      "nameEN": "Jinsixia Scenic Area"
+    },
+    {
+      "id": 6838,
+      "nameCN": "塔尔寺旅游区",
+      "ok": true,
+      "chars": 118,
+      "nameEN": "Kumbum Monastery"
+    },
+    {
+      "id": 6839,
+      "nameCN": "互助土族故土园旅游区",
+      "ok": true,
+      "chars": 124,
+      "nameEN": "Tu Ethnic Minority Homeland Garden"
+    },
+    {
+      "id": 6925,
+      "nameCN": "镇北堡西部影城",
+      "ok": true,
+      "chars": 152,
+      "nameEN": "Zhenbeibu Western Film Studio"
+    },
+    {
+      "id": 6926,
+      "nameCN": "水洞沟旅游区",
+      "ok": true,
+      "chars": 143,
+      "nameEN": "Shuidonggou Tourist Area"
+    },
+    {
+      "id": 6927,
+      "nameCN": "沙湖旅游区",
+      "ok": true,
+      "chars": 133,
+      "nameEN": "Shahu Lake Tourist Area"
+    },
+    {
+      "id": 6928,
+      "nameCN": "黄河大峡谷旅游区",
+      "ok": true,
+      "chars": 156,
+      "nameEN": "Yellow River Grand Canyon Tourism Area"
+    },
+    {
+      "id": 6965,
+      "nameCN": "喀拉峻景区",
+      "ok": true,
+      "chars": 139,
+      "nameEN": "Kalajun Scenic Area"
+    },
+    {
+      "id": 6966,
+      "nameCN": "乌鲁木齐天山大峡谷",
+      "ok": true,
+      "chars": 122,
+      "nameEN": "Tianshan Grand Canyon"
+    },
+    {
+      "id": 6967,
+      "nameCN": "天山天池风景区",
+      "ok": true,
+      "chars": 159,
+      "nameEN": "Tianchi Lake (Heavenly Lake) Scenic Area"
+    },
+    {
+      "id": 6968,
+      "nameCN": "江布拉克景区",
+      "ok": true,
+      "chars": 119,
+      "nameEN": "Jiangbulake Scenic Area"
+    },
+    {
+      "id": 6969,
+      "nameCN": "喀纳斯景区",
+      "ok": true,
+      "chars": 107,
+      "nameEN": "Kanas Scenic Area"
+    },
+    {
+      "id": 6970,
+      "nameCN": "可可托海景区",
+      "ok": true,
+      "chars": 117,
+      "nameEN": "Keketuohai Scenic Area"
+    },
+    {
+      "id": 6971,
+      "nameCN": "世界魔鬼城景区",
+      "ok": true,
+      "chars": 150,
+      "nameEN": "World Devil City Scenic Area"
+    },
+    {
+      "id": 6972,
+      "nameCN": "赛里木湖景区",
+      "ok": true,
+      "chars": 157,
+      "nameEN": "Sayram Lake Scenic Area"
+    },
+    {
+      "id": 6973,
+      "nameCN": "葡萄沟景区",
+      "ok": true,
+      "chars": 154,
+      "nameEN": "Grape Valley Scenic Area"
+    },
+    {
+      "id": 6974,
+      "nameCN": "博斯腾湖景区",
+      "ok": true,
+      "chars": 120,
+      "nameEN": "Bosten Lake Scenic Area"
+    },
+    {
+      "id": 6975,
+      "nameCN": "巴音布鲁克景区",
+      "ok": true,
+      "chars": 175,
+      "nameEN": "Bayinbuluke Scenic Area"
+    },
+    {
+      "id": 6976,
+      "nameCN": "喀什古城景区",
+      "ok": true,
+      "chars": 140,
+      "nameEN": "Kashgar Old Town Scenic Area"
+    },
+    {
+      "id": 6977,
+      "nameCN": "泽普县金湖杨景区",
+      "ok": true,
+      "chars": 145,
+      "nameEN": "Jinhu Yang Populus Euphratica Scenic Area"
+    },
+    {
+      "id": 7259,
+      "nameCN": "南岳衡山旅游区",
+      "ok": true,
+      "chars": 169,
+      "nameEN": "Mount Heng (Nanyue Hengshan) Scenic Area"
+    },
+    {
+      "id": 7260,
+      "nameCN": "张家界武陵源—天门山旅游区（武陵源旅游区）",
+      "ok": true,
+      "chars": 152,
+      "nameEN": "Wulingyuan Scenic Area"
+    },
+    {
+      "id": 7261,
+      "nameCN": "湘潭市韶山旅游区",
+      "ok": true,
+      "chars": 143,
+      "nameEN": "Shaoshan Scenic Area"
+    },
+    {
+      "id": 7262,
+      "nameCN": "岳阳楼-君山岛旅游区",
+      "ok": true,
+      "chars": 143,
+      "nameEN": "Yueyang Tower & Junshan Island Scenic Area"
+    },
+    {
+      "id": 7263,
+      "nameCN": "长沙市岳麓山-橘子洲旅游区",
+      "ok": true,
+      "chars": 148,
+      "nameEN": "Yuelu Mountain & Orange Isle Scenic Area"
+    },
+    {
+      "id": 7264,
+      "nameCN": "长沙市花明楼景区",
+      "ok": true,
+      "chars": 142,
+      "nameEN": "Huaminglou Scenic Area"
+    },
+    {
+      "id": 7265,
+      "nameCN": "郴州市东江湖旅游区",
+      "ok": true,
+      "chars": 113,
+      "nameEN": "Dongjiang Lake Scenic Area"
+    },
+    {
+      "id": 7266,
+      "nameCN": "新宁崀山旅游区",
+      "ok": true,
+      "chars": 111,
+      "nameEN": "Langshan Scenic Area"
+    },
+    {
+      "id": 7267,
+      "nameCN": "株洲市炎帝陵景区",
+      "ok": true,
+      "chars": 140,
+      "nameEN": "Yandi Mausoleum Scenic Area"
+    },
+    {
+      "id": 7268,
+      "nameCN": "常德市桃花源旅游区",
+      "ok": true,
+      "chars": 152,
+      "nameEN": "Taohuayuan Scenic Area"
+    },
+    {
+      "id": 7269,
+      "nameCN": "湘西州矮寨·十八洞·德夯大峡谷景区",
+      "ok": true,
+      "chars": 115,
+      "nameEN": "Aizhai·Shibadong·Dehang Grand Canyon Scenic Area"
+    },
+    {
+      "id": 7270,
+      "nameCN": "湘西土家族苗族自治区凤凰古城旅游区",
+      "ok": true,
+      "chars": 128,
+      "nameEN": "Fenghuang Ancient Town"
+    },
+    {
+      "id": 8248,
+      "nameCN": "呼伦贝尔大草原·莫尔格勒河景区",
+      "ok": true,
+      "chars": 131,
+      "nameEN": "Hulunbuir Grassland · Morgole River Scenic Area"
+    },
+    {
+      "id": 8249,
+      "nameCN": "阿尔山—柴河旅游景区",
+      "ok": true,
+      "chars": 127,
+      "nameEN": "Arshan-Chaihe Scenic Area"
+    },
+    {
+      "id": 8250,
+      "nameCN": "阿斯哈图石林",
+      "ok": true,
+      "chars": 140,
+      "nameEN": "Asihatu Stone Forest"
+    },
+    {
+      "id": 8251,
+      "nameCN": "响沙湾旅游景区",
+      "ok": true,
+      "chars": 117,
+      "nameEN": "Xiangshawan Desert Scenic Area"
+    },
+    {
+      "id": 8252,
+      "nameCN": "成吉思汗陵旅游区",
+      "ok": true,
+      "chars": 163,
+      "nameEN": "Genghis Khan Mausoleum Scenic Area"
+    },
+    {
+      "id": 8254,
+      "nameCN": "中俄边境旅游区",
+      "ok": true,
+      "chars": 110,
+      "nameEN": "China-Russia Border Tourism Area"
+    },
+    {
+      "id": 8404,
+      "nameCN": "长春伪满皇宫博物院",
+      "ok": true,
+      "chars": 137,
+      "nameEN": "The Palace Museum of the Puppet Manchukuo"
+    },
+    {
+      "id": 8405,
+      "nameCN": "长春净月潭景区",
+      "ok": true,
+      "chars": 137,
+      "nameEN": "Jingyuetan Scenic Area"
+    },
+    {
+      "id": 8406,
+      "nameCN": "长影世纪城旅游区",
+      "ok": true,
+      "chars": 126,
+      "nameEN": "Changchun Film Century City"
+    },
+    {
+      "id": 8407,
+      "nameCN": "长春世界雕塑园",
+      "ok": true,
+      "chars": 161,
+      "nameEN": "Changchun World Sculpture Park"
+    },
+    {
+      "id": 8408,
+      "nameCN": "高句丽文物古迹旅游景区",
+      "ok": true,
+      "chars": 152,
+      "nameEN": "Goguryeo Heritage Scenic Area"
+    },
+    {
+      "id": 8409,
+      "nameCN": "查干湖景区",
+      "ok": true,
+      "chars": 108,
+      "nameEN": "Chagan Lake Scenic Area"
+    },
+    {
+      "id": 8410,
+      "nameCN": "六鼎山文化旅游区",
+      "ok": true,
+      "chars": 120,
+      "nameEN": "Liuding Mountain Cultural Tourism Zone"
+    },
+    {
+      "id": 8411,
+      "nameCN": "长白山景区",
+      "ok": true,
+      "chars": 123,
+      "nameEN": "Changbai Mountain Scenic Area"
+    },
+    {
+      "id": 8545,
+      "nameCN": "东方明珠广播电视塔",
+      "ok": true,
+      "chars": 122,
+      "nameEN": "Oriental Pearl Tower"
+    },
+    {
+      "id": 8546,
+      "nameCN": "上海野生动物园",
+      "ok": true,
+      "chars": 128,
+      "nameEN": "Shanghai Wild Animal Park"
+    }
+  ]
+}

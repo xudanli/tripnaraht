@@ -16,6 +16,11 @@ import { applyTripPoiEvidencePatch, loadTripPoiEvidencePatch } from './itinerary
 import { mergeItineraryAdjustPreserveNonTargetDays } from '../../agent/utils/itinerary-trip-neighbor-anchor-load.util';
 import { injectCorridorDriveLegsIntoDays } from './itinerary-segment-tagger.util';
 import { resolveSparsePoiDayAllocation } from '../../agent/context-engine/utils/sparse-poi-day-allocation.util';
+import {
+  buildOpeningHoursByPoiId,
+  resolvePoiVisitWindow,
+} from '../../agent/context-engine/utils/poi-visit-schedule.util';
+import { buildSparseCatalogRestDayPoiSearchHints } from '../../agent/utils/research-poi-retrieval-geography-hint.util';
 import { DateTime } from 'luxon';
 import type { ResolvedPolicies } from '../runtime-os/types/runtime-os.types';
 import {
@@ -141,13 +146,20 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
           const planningText = [request.message, (request as { intake_user_message?: string }).intake_user_message]
             .filter(Boolean)
             .join('\n');
+          const destHint =
+            typeof request.destination === 'string' ? request.destination : planningText;
           const result = await this.incrementalGenerator.generateIncremental({
             request: { ...request, request_id: requestId } as TripPlanRequest,
             research_data: effectiveResearch,
             gate_result,
             environment_state,
             minDaysToTrigger: 3,
-            sparsePoiDayAllocation: resolveSparsePoiDayAllocation(planningText),
+            sparsePoiDayAllocation: resolveSparsePoiDayAllocation(planningText, undefined, {
+              countryCode:
+                (request as { country_code?: string }).country_code ??
+                request.ontology_context?.destination?.country_code,
+              destinationHint: destHint,
+            }),
             executionPolicyHook,
             governance_runtime_state: request.governance_runtime_state,
           });
@@ -202,9 +214,13 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
         ? poiEvidence 
         : (poiEvidence?.pois || []);
 
-      // 4. 生成每日行程
+      // 4. 生成每日行程（时长/时间窗接证据；POI 偏稀时后置日留白并给检索提示）
       const itineraryDays: ItineraryDay[] = [];
-      const itemsPerDay = Math.ceil(pois.length / days);
+      const itemsPerDay = pois.length === 0 ? 0 : Math.max(1, Math.ceil(pois.length / days));
+      const openingHoursByPoi = buildOpeningHoursByPoiId(effectiveResearch);
+      const planningText = [request.message, (request as { intake_user_message?: string }).intake_user_message]
+        .filter(Boolean)
+        .join('\n');
 
       // 专利实施例 2：替代航班（environment_state.flights）优先用于 Day1
       const scheduledFlights = (environment_state?.flights ?? []).filter(
@@ -235,31 +251,32 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
           });
         }
 
-        // 为每一天分配 POI
+        // 为每一天分配 POI（不循环复用：切片耗尽后留白）
         const startPoiIndex = dayIndex * itemsPerDay;
         const endPoiIndex = Math.min(startPoiIndex + itemsPerDay, pois.length);
-        const dayPois = pois.slice(startPoiIndex, endPoiIndex);
+        const dayPois = startPoiIndex < pois.length ? pois.slice(startPoiIndex, endPoiIndex) : [];
+        let dayCursorMinutes = 9 * 60;
 
-        // 为每个 POI 创建行程项
         for (let i = 0; i < dayPois.length; i++) {
           const poi = dayPois[i];
           const poiId = poi.poi_id || poi.id || `poi_${startPoiIndex + i}`;
           const poiName = poi.name || poi.nameCN || poi.nameEN || '未知地点';
           const poiCoords = poi.coordinates || (poi.lat && poi.lng ? { lat: poi.lat, lng: poi.lng } : undefined);
 
-          // 计算时间窗（简单分配：每个 POI 2 小时，从 9:00 开始）
-          // 🆕 限制在 08:00-22:00 内，避免半夜安排行程
-          const rawStartHour = 9 + i * 2;
-          const startHour = Math.min(Math.max(rawStartHour, 8), 20);
-          const endHour = Math.min(startHour + 2, 22);
-          const startTime = `${startHour.toString().padStart(2, '0')}:00`;
-          const endTime = `${endHour.toString().padStart(2, '0')}:00`;
+          const visit = resolvePoiVisitWindow({
+            poi,
+            slotIndex: i,
+            poiId: String(poiId),
+            openingHoursByPoi,
+            dayCursorMinutes,
+          });
+          dayCursorMinutes = visit.nextDayCursorMinutes;
 
           const item: ItineraryItem = {
             id: `${request.request_id}_day${dayIndex + 1}_item${i + 1}`,
             type: 'POI',
-            start_window: startTime,
-            end_window: endTime,
+            start_window: visit.startTime,
+            end_window: visit.endTime,
             location_ref: {
               place_id: poiId,
               name: poiName,
@@ -270,15 +287,27 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
             verified: false,
             verification_status: 'UNVERIFIED',
             metadata: {
-              duration_minutes: 120, // 默认 2 小时
+              duration_minutes: visit.durationMinutes,
+              duration_source: visit.durationSource,
+              time_source: visit.timeSource,
             },
           };
 
           dayItems.push(item);
         }
 
-        // 如果没有 POI，至少添加一个占位项
-        if (dayItems.length === 0) {
+        // 无 POI：占位；稀疏目录后置日附建议检索
+        if (dayItems.length === 0 || (dayItems.length === 1 && dayItems[0]?.type === 'TRANSIT')) {
+          const sparseGap = pois.length > 0 && pois.length < days && startPoiIndex >= pois.length;
+          const destStr = typeof request.destination === 'string' ? request.destination.trim() : 'destination';
+          const suggestedQueries = sparseGap
+            ? buildSparseCatalogRestDayPoiSearchHints({
+                tripDestination: destStr,
+                userMessage: planningText,
+                dayNumber1Based: dayIndex + 1,
+                totalDays: days,
+              })
+            : [];
           dayItems.push({
             id: `${request.request_id}_day${dayIndex + 1}_placeholder`,
             type: 'REST',
@@ -287,9 +316,28 @@ export class ItineraryGenerateSkill implements Skill<ItineraryGenerateInput, Iti
             location_ref: {
               name: '待安排',
             },
+            ...(sparseGap
+              ? {
+                  notes:
+                    '研究阶段参考点不足以铺满行程，本日留白；请补充检索后再排点。' +
+                    (suggestedQueries.length
+                      ? ` 建议检索：${suggestedQueries.slice(0, 3).join('；')}`
+                      : ''),
+                }
+              : {}),
             evidence_refs: [],
             verified: false,
             verification_status: 'ASSUMPTION',
+            ...(sparseGap
+              ? {
+                  metadata: {
+                    placeholder_reason: 'sparse_poi_catalog_gap',
+                    ...(suggestedQueries.length
+                      ? { suggested_poi_search_queries: suggestedQueries }
+                      : {}),
+                  },
+                }
+              : {}),
           });
         }
 

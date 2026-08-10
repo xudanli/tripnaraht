@@ -19,6 +19,11 @@ import {
   buildPoiSlotFillAppendEdits,
   type PoiSlotFillDayTarget,
 } from './itinerary-adjust-poi-slot-fill.util';
+import {
+  buildWriteChainBlockedUserAnswerZh,
+  isWriteChainSkillBlock,
+  type WriteChainSkillBlockLike,
+} from './write-chain-skill-block.util';
 
 export const ITINERARY_ADJUST_APPLY_INTENT_RE =
   /应用到(?:正式)?行程|确认应用(?:该)?草案|应用(?:至|到)行程|apply\s+(?:to\s+)?itinerary/i;
@@ -56,8 +61,22 @@ export function buildItineraryAdjustDraftApplyAnswerText(params: {
   if (params.reason === 'no_pending_draft') {
     return '未找到待应用的改排草案，请重新生成草案后再点击「应用到行程」。';
   }
+  if (params.reason === 'write_chain_blocked') {
+    return buildWriteChainBlockedUserAnswerZh(
+      '「应用到行程」',
+      '草案可保留供预览；正式落库须走确认写链。',
+    );
+  }
   return `未能将草案写入正式行程（${params.reason ?? 'unknown'}），请重试或手动调整。`;
 }
+
+type ApplyEditSkillLike = {
+  execute: (input: {
+    mode: 'db';
+    tripId: string;
+    edits: TripUserEdit[];
+  }) => Promise<WriteChainSkillBlockLike & { success?: boolean }>;
+};
 
 export type ItineraryAdjustDraftApplyResult = {
   applied: boolean;
@@ -96,13 +115,7 @@ export async function executeItineraryAdjustMultiDayAppendApply(params: {
   pending: PendingItineraryAdjustDraft;
   loadTrip: () => Promise<TripLikeForDelete>;
   resolvePlaceId: (item: import('../interfaces/trip-plan.interface').ItineraryItem, researchPools?: unknown[][]) => number | undefined;
-  applyEditSkill: {
-    execute: (input: {
-      mode: 'db';
-      tripId: string;
-      edits: TripUserEdit[];
-    }) => Promise<{ success?: boolean }>;
-  };
+  applyEditSkill: ApplyEditSkillLike;
   researchPools?: unknown[][];
 }): Promise<ItineraryAdjustDraftApplyResult> {
   const draftDays = params.pending.itinerary_days ?? [];
@@ -188,6 +201,19 @@ export async function executeItineraryAdjustMultiDayAppendApply(params: {
       tripId: params.tripId.trim(),
       edits: edits as TripUserEdit[],
     });
+    if (isWriteChainSkillBlock(out)) {
+      return {
+        applied: false,
+        reason: 'write_chain_blocked',
+        appliedDays,
+        answerText: buildPoiSlotFillAnswerText({
+          applied: false,
+          appliedDays,
+          addedCount: 0,
+          reason: 'write_chain_blocked',
+        }),
+      };
+    }
     if (out?.success) {
       return {
         applied: true,
@@ -225,13 +251,7 @@ export async function executeItineraryAdjustDraftApply(params: {
   pending: PendingItineraryAdjustDraft;
   loadTrip: () => Promise<TripLikeForDelete>;
   resolvePlaceId: (item: ItineraryItem, researchPools?: unknown[][]) => number | undefined;
-  applyEditSkill: {
-    execute: (input: {
-      mode: 'db';
-      tripId: string;
-      edits: TripUserEdit[];
-    }) => Promise<{ success?: boolean }>;
-  };
+  applyEditSkill: ApplyEditSkillLike;
   researchPools?: unknown[][];
 }): Promise<ItineraryAdjustDraftApplyResult> {
   if (
@@ -322,6 +342,19 @@ export async function executeItineraryAdjustDraftApply(params: {
       tripId: params.tripId.trim(),
       edits: edits as TripUserEdit[],
     });
+    if (isWriteChainSkillBlock(out)) {
+      return {
+        applied: false,
+        reason: 'write_chain_blocked',
+        targetDateIso,
+        answerText: buildItineraryAdjustDraftApplyAnswerText({
+          applied: false,
+          targetDateIso,
+          dayNumber: params.pending.target_day_number,
+          reason: 'write_chain_blocked',
+        }),
+      };
+    }
     if (out?.success) {
       return {
         applied: true,

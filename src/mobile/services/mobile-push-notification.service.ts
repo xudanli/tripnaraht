@@ -1,8 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MobileApnsService } from './mobile-apns.service';
 import { MobilePushTokenService } from './mobile-push-token.service';
 import type { MobilePushEventType, MobilePushPayloadDto } from '../dto/mobile-push.dto';
+import { teamTasksRemindBus } from '../../trips/team-tasks/ports/team-tasks-remind.bus';
 
 export interface NotifyTripPushInput {
   tripId: string;
@@ -19,7 +20,7 @@ export interface NotifyTripPushInput {
 }
 
 @Injectable()
-export class MobilePushNotificationService {
+export class MobilePushNotificationService implements OnModuleInit {
   private readonly logger = new Logger(MobilePushNotificationService.name);
 
   constructor(
@@ -27,6 +28,22 @@ export class MobilePushNotificationService {
     private readonly apns: MobileApnsService,
     private readonly prisma: PrismaService,
   ) {}
+
+  onModuleInit() {
+    teamTasksRemindBus.onRemind((payload) => {
+      if (!payload.sendAppPush) return;
+      this.notifyTripEvent({
+        tripId: payload.tripId,
+        contextVersion: Date.now(),
+        recipientUserIds: payload.memberIds,
+        eventType: 'team_tasks_remind',
+        title: '团队任务提醒',
+        body: payload.message,
+        changedSections: ['teamTasks', 'team'],
+        excludeUserId: payload.fromMemberId,
+      });
+    });
+  }
 
   /** 非阻塞：写路径调用后 fire-and-forget */
   notifyTripEvent(input: NotifyTripPushInput): void {

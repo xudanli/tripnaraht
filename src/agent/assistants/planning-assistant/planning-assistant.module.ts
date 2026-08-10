@@ -13,6 +13,8 @@ import { APP_GUARD } from '@nestjs/core';
 import { PlanningAssistantService } from './services/planning-assistant.service';
 import { PlanningAssistantController } from './planning-assistant.controller';
 import { PlanningAssistantV2Controller } from './controllers/planning-assistant-v2.controller';
+import { MobileActivityApplyController } from './controllers/mobile-activity-apply.controller';
+import { MobileAccommodationApplyController } from './controllers/mobile-accommodation-apply.controller';
 import { McpAgentLoopController } from './controllers/mcp-agent-loop.controller';
 import { PlanningAssistantV2Service } from './services/planning-assistant-v2.service';
 import { SmartRouterService } from './services/smart-router.service';
@@ -46,6 +48,10 @@ import { RailModule } from '../../../mcp/rail.module';
 import { RailDirectModule } from '../../../mcp/rail-direct.module';
 import { TransitousDirectModule } from '../../../mcp/transitous-direct.module';
 import { BookingComModule } from '../../../mcp/booking-com.module';
+import { FliggyDirectModule } from '../../../mcp/fliggy-direct.module';
+import { XiaohongshuDirectModule } from '../../../mcp/xiaohongshu-direct.module';
+import { ActivityDirectModule } from '../../../mcp/activity-direct.module';
+import { CarRentalDirectModule } from '../../../mcp/car-rental-direct.module';
 import { GoogleCalendarModule } from '../../../mcp/google-calendar.module';
 import { ItineraryItemsModule } from '../../../itinerary-items/itinerary-items.module';
 import { EffectivePlanExecutionModule } from '../../../decision-runtime/execution/effective-plan-execution.module';
@@ -91,6 +97,10 @@ const throttlerConfig = disableThrottler
     RailDirectModule, // Rail Direct API（无需认证，v6.db.transport.rest）
     TransitousDirectModule, // Transitous MOTIS API（欧洲 fallback，55+ 国 GTFS）
     BookingComModule, // Booking.com 租车服务
+    FliggyDirectModule, // 飞猪 FlyAI（国内酒店/门票/机票/租车/美食）
+    XiaohongshuDirectModule, // 小红书社区体验
+    ActivityDirectModule, // 活动/门票（海外/目录回落）
+    CarRentalDirectModule, // 租车 Direct（Browserbase/目录回落）
     GoogleCalendarModule, // Google Calendar MCP 服务（日历管理）
     ItineraryItemsModule,
     EffectivePlanExecutionModule,
@@ -99,6 +109,8 @@ const throttlerConfig = disableThrottler
   controllers: [
     PlanningAssistantController, // V1 接口（保留，向后兼容）
     PlanningAssistantV2Controller, // V2 接口（新设计）
+    MobileActivityApplyController, // mobile 别名：activities/apply
+    MobileAccommodationApplyController, // mobile 别名：accommodations/apply
     McpAgentLoopController, // 原生 Tool Calling + MCP 闭环（实验）
   ],
   providers: [

@@ -1,0 +1,18 @@
+{
+  "schemaId": "tripnara.environment.modifiers@v1",
+  "modifiers": [
+    {
+      "modifierId": "CN_DRIVING_ENVIRONMENT",
+      "domain": "driving",
+      "semanticKeys": ["EXCESSIVE_DAILY_LOAD"],
+      "parameters": {
+        "baseSafeHours": 7,
+        "defaultSpeedKmH": 55,
+        "maxDailyKmComfort": 350,
+        "maxDailyKmStretch": 220,
+        "maxDailyKmMountain": 180,
+        "noteZh": "与 COUNTRY_PACKS.CN 驾驶阈值对齐；川藏山路按 180km 控程。"
+      }
+    }
+  ]
+}

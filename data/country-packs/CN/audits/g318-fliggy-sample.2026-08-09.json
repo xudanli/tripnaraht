@@ -1,0 +1,207 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "sampledAt": "2026-08-09T06:27:34.080Z",
+    "corridor": "cn.route.g318",
+    "disclaimer": "飞猪实时抽样快照，仅供校对与票价区间校准；非门市官方价、非承诺库存。",
+    "checkIn": "2026-08-21",
+    "checkOut": "2026-08-22"
+  },
+  "summary": {
+    "queries": 4,
+    "okCount": 4,
+    "priceSamples": 10,
+    "priceMin": 157,
+    "priceMax": 661
+  },
+  "samples": [
+    {
+      "id": "mugecuo_ticket_keyword",
+      "query": "康定木格措门票",
+      "ok": true,
+      "latency_ms": 1520,
+      "activities": [
+        {
+          "title": "康定情歌（木格措）风景区",
+          "price": null,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F2wb6bF",
+          "reasonZh": "飞猪可订门票/体验（Based on fly.ai real-time results）"
+        },
+        {
+          "title": "[康定情歌（木格措）风景区-大门票+观光车]",
+          "price": null,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F2KJXB3",
+          "reasonZh": "飞猪可订门票/体验（Based on fly.ai real-time results）"
+        },
+        {
+          "title": "[康定情歌（木格措）风景区-大门票+观光车]成人票",
+          "price": null,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F4U7A6W",
+          "reasonZh": "飞猪可订门票/体验（Based on fly.ai real-time results）"
+        },
+        {
+          "title": "[康定情歌（木格措）风景区-大门票+观光车]",
+          "price": null,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F0XkqFS",
+          "reasonZh": "飞猪可订门票/体验（Based on fly.ai real-time results）"
+        },
+        {
+          "title": "[康定情歌（木格措）风景区-药池沸泉票]",
+          "price": null,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F3fWuDD",
+          "reasonZh": "飞猪可订门票/体验（Based on fly.ai real-time results）"
+        }
+      ],
+      "hotels": [
+        {
+          "title": "康定情歌（木格措）风景区",
+          "price": null,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F2wb6bF"
+        },
+        {
+          "title": "[康定情歌（木格措）风景区-大门票+观光车]",
+          "price": null,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F2KJXB3"
+        },
+        {
+          "title": "[康定情歌（木格措）风景区-大门票+观光车]成人票",
+          "price": null,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F4U7A6W"
+        }
+      ],
+      "counts": {
+        "activities": 6,
+        "hotels": 6,
+        "carRentals": 0
+      }
+    },
+    {
+      "id": "mugecuo_poi",
+      "cityName": "康定",
+      "keyword": "木格措",
+      "ok": true,
+      "latency_ms": 626,
+      "activities": [
+        {
+          "title": "康定情歌（木格措）风景区",
+          "price": null,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F3Yvi7M",
+          "reasonZh": "飞猪可订门票/体验（Based on fly.ai real-time results）"
+        },
+        {
+          "title": "木格错",
+          "price": null,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F0O9dws",
+          "reasonZh": "飞猪可订门票/体验（Based on fly.ai real-time results）"
+        },
+        {
+          "title": "木格措栈道",
+          "price": null,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F1W897W",
+          "reasonZh": "飞猪可订门票/体验（Based on fly.ai real-time results）"
+        }
+      ]
+    },
+    {
+      "id": "kangding_hotel",
+      "destName": "康定",
+      "checkInDate": "2026-08-21",
+      "checkOutDate": "2026-08-22",
+      "ok": true,
+      "latency_ms": 1467,
+      "hotels": [
+        {
+          "title": "汉庭康定318国道酒店",
+          "priceLabel": "¥378",
+          "price": 378,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F03WChF"
+        },
+        {
+          "title": "甘孜鱼子民宿(康定店)",
+          "priceLabel": "¥338",
+          "price": 338,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F0q0fIh"
+        },
+        {
+          "title": "康定曲宗民宿",
+          "priceLabel": "¥179",
+          "price": 179,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F1w7Ga6"
+        },
+        {
+          "title": "卡尔宗·庄园",
+          "priceLabel": "¥295",
+          "price": 295,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F4TiTLl"
+        },
+        {
+          "title": "康定绿松民宿",
+          "priceLabel": "¥251",
+          "price": 251,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F0x0dny"
+        }
+      ]
+    },
+    {
+      "id": "litang_hotel",
+      "destName": "理塘",
+      "checkInDate": "2026-08-21",
+      "checkOutDate": "2026-08-22",
+      "ok": true,
+      "latency_ms": 2632,
+      "hotels": [
+        {
+          "title": "理塘精美酒店",
+          "priceLabel": "¥157",
+          "price": 157,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F1Zy17O"
+        },
+        {
+          "title": "理塘牧雪星酒店",
+          "priceLabel": "¥661",
+          "price": 661,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F3ueMOA"
+        },
+        {
+          "title": "汉庭甘孜理塘318国道酒店",
+          "priceLabel": "¥477",
+          "price": 477,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F3Esl0q"
+        },
+        {
+          "title": "理塘都市118酒店",
+          "priceLabel": "¥262",
+          "price": 262,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F0QUzQr"
+        },
+        {
+          "title": "理塘仓央嘉措情歌酒店",
+          "priceLabel": "¥400",
+          "price": 400,
+          "currency": "CNY",
+          "url": "https://router.feizhu.com/multi/webview?url=https%3A%2F%2Frouter.feizhu.com%2Fws%2F12jXV0"
+        }
+      ]
+    }
+  ]
+}

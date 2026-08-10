@@ -323,12 +323,14 @@ export class ArrangeItineraryController {
   @ApiOperation({
     summary: '决策依据卡（发生了什么 + 上下文六格）',
     description:
-      '聚合 trip conflicts 路段/缓冲、行程项停留与预约、午餐锚点；供规划工作台问题说明卡渲染。',
+      '聚合 trip conflicts 路段/缓冲、行程项停留与预约、午餐锚点；供规划工作台问题说明卡渲染。' +
+      '决策空间传 problemId（或误把 dc_/dp_ 塞进 conflictId 亦可解析，不 404）。',
   })
   async getDecisionBasis(
     @Param('tripId') tripId: string,
     @Query('conflictId') conflictId?: string,
     @Query('proposalId') proposalId?: string,
+    @Query('problemId') problemId?: string,
     @CurrentUser() user?: CurrentUserPayload,
   ) {
     try {
@@ -337,6 +339,7 @@ export class ArrangeItineraryController {
         await this.decisionBasis.getBasis(tripId, {
           conflictId: conflictId?.trim() || undefined,
           proposalId: proposalId?.trim() || undefined,
+          problemId: problemId?.trim() || undefined,
         }),
       );
     } catch (e) {

@@ -331,6 +331,8 @@ export class PlacesService {
       distance: Math.round(row.distance_meters), // 取整
       address: row.address,
       rating: row.rating,
+      description: row.description ?? null,
+      metadata: row.metadata,
       // 提取 JSONB 里的关键信息到顶层，方便前端直接用
       isOpen: isOpen,
       tags: meta?.facilities?.payment || [],
@@ -1075,7 +1077,7 @@ export class PlacesService {
 
     const rawResults = await this.prisma.$queryRaw<RawPlaceResult[]>`
       SELECT 
-        p.id, p."nameCN", p."nameEN", p.metadata, p.address, p.rating, p.category,
+        p.id, p."nameCN", p."nameEN", p.metadata, p.address, p.rating, p.category, p.description,
         ${lat && lng ? Prisma.sql`ST_Distance(
           p.location,
           ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography

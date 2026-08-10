@@ -1,0 +1,366 @@
+{
+  "at": "2026-08-09T17:16:15.780Z",
+  "dryRun": false,
+  "source": "osm-overpass",
+  "routeArg": "duku",
+  "routes": [
+    "cn.route.duku"
+  ],
+  "radiusM": 20000,
+  "limitPerAnchor": 15,
+  "queries": [
+    "fuel",
+    "charging",
+    "parking",
+    "highway_services",
+    "supermarket",
+    "convenience",
+    "toilets",
+    "car_repair",
+    "camping",
+    "hospital",
+    "toll",
+    "sanitary_dump"
+  ],
+  "candidateCount": 111,
+  "byCanonicalType": {
+    "TOLL_BOOTH": 16,
+    "FUEL_STATION": 36,
+    "SUPERMARKET": 3,
+    "PARKING": 35,
+    "REST_STOP": 1,
+    "HIGHWAY_SERVICES": 6,
+    "CONVENIENCE_STORE": 4,
+    "HOSPITAL": 4,
+    "TOILETS": 3,
+    "CAMPING_EQUIPPED": 1,
+    "EV_CHARGING": 1,
+    "CAMPING": 1
+  },
+  "created": 111,
+  "updated": 0,
+  "skipped": 0,
+  "errors": [],
+  "sample": [
+    {
+      "osmKey": "node/8919673692",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/8919673696",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/8919673701",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/8919673700",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/2599290113",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/2599290155",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/8919673766",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/8919673767",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/8019981822",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/8019981823",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/5960633585",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/5960633477",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/2404925631",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/2404925748",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/1019534754",
+      "nameCN": "TOLL_BOOTH",
+      "canonicalType": "TOLL_BOOTH",
+      "category": "SERVICE",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/664901415",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/1097257514",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/813217078",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/813217075",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/1097257318",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/1097259840",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/8606635648",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/806445036",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/806445038",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/8602943381",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/806445033",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/315109226",
+      "nameCN": "Sinopeс",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/813216670",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/813216676",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/813216673",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/4504934195",
+      "nameCN": "SUPERMARKET",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/4794371610",
+      "nameCN": "友好时尚购物中心",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/315035740",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/6223550019",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "node/6223550020",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/315345818",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/927360495",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/315051688",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/1111890764",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    },
+    {
+      "osmKey": "way/315509182",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "独山子",
+      "routeId": "cn.route.duku"
+    }
+  ]
+}

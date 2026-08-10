@@ -24,10 +24,55 @@ export async function runOptimizePhase(
   const planDraft = decisionState.tripState?.planDraft as Itinerary | undefined;
   const fatigue = host.computeOptimizeFatigue(planDraft);
 
+  // TMR CONSUME：metadata → DSO systemState（供 CGUS soft / contribution 证明）
+  const metaHints = (
+    state.metadata as { travelMemoryDecisionHints?: unknown } | undefined
+  )?.travelMemoryDecisionHints;
+  let optimizeInput = decisionState;
+  if (
+    Array.isArray(metaHints) &&
+    metaHints.length > 0 &&
+    !decisionState.systemState?.travelMemoryDecisionHints?.length
+  ) {
+    optimizeInput = {
+      ...decisionState,
+      systemState: {
+        ...(decisionState.systemState ?? {
+          requestId: state.request_id ?? decisionState.requestId ?? '',
+        }),
+        travelMemoryDecisionHints: metaHints as NonNullable<
+          typeof decisionState.systemState
+        >['travelMemoryDecisionHints'],
+      },
+    };
+  }
+
   const { newState, optimizationHints: hints } = await host.decisionKernel.executeOptimize(
-    decisionState,
+    optimizeInput,
     { fatigue },
   );
+
+  if (hints?.memoryDecisionTrace && state.metadata) {
+    (state.metadata as Record<string, unknown>).memory_decision_trace =
+      hints.memoryDecisionTrace;
+    const consumeObs = (state.metadata as Record<string, unknown>)
+      .travel_memory_consume;
+    if (consumeObs && typeof consumeObs === 'object') {
+      (state.metadata as Record<string, unknown>).travel_memory_consume = {
+        ...(consumeObs as Record<string, unknown>),
+        contributionUsed: hints.memoryDecisionTrace.memoryContribution.used,
+        contributionEligible: true,
+        influenceKinds:
+          hints.memoryDecisionTrace.memoryContribution.influence.map(
+            (i) => i.influence,
+          ),
+      };
+    }
+  }
+  if (hints?.tripShadowPair && state.metadata) {
+    (state.metadata as Record<string, unknown>).trip_shadow_pair =
+      hints.tripShadowPair;
+  }
 
   const summarizeOptimizeOutputs = (): string => {
     if (!hints) return '本轮未产出数值型优化结论（可能跳过或降级）。';

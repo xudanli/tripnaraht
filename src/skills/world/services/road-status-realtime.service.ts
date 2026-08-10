@@ -60,6 +60,12 @@ export interface RoadStatus {
     windSpeedMs?: number;
     temperatureC?: number;
   };
+  /** Optional snow-plow service band (Gagnaveita / winter knowledge pack) */
+  plow?: {
+    ruleCode?: string;
+    serviceBand: 'DAILY' | 'REDUCED' | 'NOT_PLOWED' | 'UNKNOWN';
+    delayRangeMin?: [number, number];
+  };
   confidence?: number;
   seasonalFallback?: boolean;
 }

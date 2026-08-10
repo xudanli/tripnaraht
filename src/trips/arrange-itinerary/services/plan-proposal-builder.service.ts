@@ -24,8 +24,10 @@ import type {
 } from '../types/plan-proposal.types';
 import {
   buildDayDateTime,
+  formatDayClockTime,
   resolveTripDayByIndex,
 } from '../../utils/arrange-itinerary-day.util';
+import { resolveTripTimezone } from '../../../common/utils/destination-timezone.util';
 import { extractPlaceMeta } from '../../attraction-explore/utils/attraction-explore-place.util';
 import { PlanProposalContextService } from './plan-proposal-context.service';
 import { PlanProposalValidationService } from './plan-proposal-validation.service';
@@ -47,6 +49,15 @@ import {
   planProposalAddsToDayItems,
 } from '../../../decision-runtime/solver/projection/plan-proposal-adds-to-day-items.util';
 import { projectSchemePreview } from '../utils/scheme-preview.projection.util';
+import { enrichPlanProposalWithUwcPreview } from '../utils/plan-proposal-uwc-preview.util';
+import {
+  assignAutoArrangeCandidatesToDays,
+  filterAutoArrangeCandidates,
+  meanCentroid,
+  parseAutoArrangeTripContext,
+  type AutoArrangeDayAnchor,
+} from '../utils/auto-arrange-trip-context.util';
+import { loadPlaceCoordinatesBatch } from '../../attraction-explore/utils/attraction-explore-place-coordinates.util';
 
 @Injectable()
 export class PlanProposalBuilderService {
@@ -110,10 +121,11 @@ export class PlanProposalBuilderService {
       ...draft,
       decisionPack: await this.decisionPack.buildForProposal(draft),
     };
-    return {
+    const withScheme: PlanProposal = {
       ...withPack,
       schemePreview: projectSchemePreview(withPack),
     };
+    return enrichPlanProposalWithUwcPreview(this.prisma, withScheme);
   }
 
   async buildPlaceCandidateProposal(input: {
@@ -133,9 +145,11 @@ export class PlanProposalBuilderService {
     const tripDays = await this.loadTripDays(input.tripId);
     const tripDay = resolveTripDayByIndex(tripDays, input.body.dayIndex);
     const dwell = extractPlaceMeta(candidate.Place).suggestedDwellMinutes ?? 90;
+    const timezone = await this.loadTripTimezone(input.tripId);
     const window = await this.resolveTimeWindow({
       tripDayId: tripDay.id,
       dayDate: tripDay.date,
+      timezone,
       startTime: input.body.startTime,
       endTime: input.body.endTime,
       defaultDurationMinutes: dwell,
@@ -143,8 +157,8 @@ export class PlanProposalBuilderService {
       anchorItemId: input.body.anchorItemId,
     });
 
-    const startLabel = this.formatTime(window.startTime);
-    const endLabel = this.formatTime(window.endTime);
+    const startLabel = this.formatTime(window.startTime, timezone);
+    const endLabel = this.formatTime(window.endTime, timezone);
 
     const changes: PlanProposalChange[] = [
       {
@@ -260,17 +274,6 @@ export class PlanProposalBuilderService {
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     });
 
-    const priorityRank: Record<string, number> = {
-      must_go: 0,
-      very_interested: 1,
-      alternative: 2,
-    };
-    rows.sort(
-      (a, b) =>
-        (priorityRank[a.priority] ?? 9) - (priorityRank[b.priority] ?? 9) ||
-        a.sortOrder - b.sortOrder,
-    );
-
     const tripDays = await this.loadTripDays(input.tripId);
     if (rows.length === 0) {
       throw new BadRequestException({
@@ -287,60 +290,149 @@ export class PlanProposalBuilderService {
       });
     }
 
-    const preferDayOffset =
-      input.dayIndex != null && input.dayIndex >= 1
-        ? Math.min(input.dayIndex - 1, tripDays.length - 1)
-        : 0;
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: input.tripId },
+      select: { metadata: true, destination: true },
+    });
+    const ctx = parseAutoArrangeTripContext(trip?.metadata);
+
+    const scheduledItems = await this.prisma.itineraryItem.findMany({
+      where: { TripDay: { tripId: input.tripId } },
+      select: {
+        placeId: true,
+        startTime: true,
+        endTime: true,
+        tripDayId: true,
+      },
+    });
+    const alreadyScheduledPlaceIds = new Set(
+      scheduledItems.map((i) => i.placeId).filter((id): id is number => typeof id === 'number' && id > 0),
+    );
+
+    const { kept, dropped } = filterAutoArrangeCandidates({
+      candidates: rows.map((r) => ({
+        id: r.id,
+        placeId: r.placeId,
+        priority: r.priority,
+        sortOrder: r.sortOrder,
+        nameCN: r.Place.nameCN,
+        nameEN: r.Place.nameEN,
+      })),
+      ctx,
+      alreadyScheduledPlaceIds,
+    });
+
+    if (kept.length === 0) {
+      const reasons = [...new Set(dropped.map((d) => d.reason))].join(', ');
+      throw new BadRequestException({
+        code: 'NO_CONTEXT_COMPATIBLE_CANDIDATES',
+        errorCode: 'NO_CONTEXT_COMPATIBLE_CANDIDATES',
+        message:
+          `候选与当前行程上下文不兼容（${reasons || 'filtered'}）。` +
+          `请添加符合路线范围（${ctx.routeScope ?? '当前区域'}）且非 F 路/高地的景点后再生成草案。`,
+        dropped: dropped.slice(0, 12),
+      });
+    }
+
+    const placeIdsForCoords = [
+      ...kept.map((c) => c.placeId),
+      ...scheduledItems.map((i) => i.placeId).filter((id): id is number => typeof id === 'number'),
+    ];
+    const coordsByPlaceId = await loadPlaceCoordinatesBatch(this.prisma, placeIdsForCoords);
+
     const eveningCap = input.options?.respectNoNightDrive === false ? 20 : 17;
     const morningStart = (dayDate: Date) => {
       if (!input.options?.preferWeekendBuffer) return 9;
-      const weekday = DateTime.fromJSDate(dayDate, { zone: 'utc' }).weekday; // 1=Mon … 7=Sun
+      const weekday = DateTime.fromJSDate(dayDate, { zone: 'utc' }).weekday;
       return weekday >= 6 ? 10 : 9;
     };
 
-    let dayIndex = preferDayOffset;
-    let slotHour = morningStart(tripDays[dayIndex % tripDays.length]!.date);
-    const changes: PlanProposalChange[] = [];
+    const dayAnchors: AutoArrangeDayAnchor[] = tripDays.map((td, idx) => {
+      const dayNumber = idx + 1;
+      const dayItems = scheduledItems.filter((i) => i.tripDayId === td.id);
+      const points = dayItems
+        .map((i) => (i.placeId != null ? coordsByPlaceId.get(i.placeId) : null))
+        .filter((p): p is NonNullable<typeof p> => Boolean(p));
+      let occupiedUntilHour = morningStart(td.date);
+      for (const item of dayItems) {
+        const end = item.endTime ?? item.startTime;
+        if (end) {
+          const h = DateTime.fromJSDate(end, { zone: 'utc' }).hour;
+          if (Number.isFinite(h)) occupiedUntilHour = Math.max(occupiedUntilHour, h);
+        }
+      }
+      const themeKey = String(dayNumber);
+      const theme =
+        ctx.dayThemes?.[themeKey] ??
+        ctx.dayThemes?.[String(dayNumber)] ??
+        undefined;
+      return {
+        dayNumber,
+        date: td.date,
+        centroid: meanCentroid(points),
+        theme,
+        occupiedUntilHour,
+      };
+    });
 
+    const dwellMinutesByPlaceId = new Map<number, number>();
     for (const row of rows) {
-      const tripDay = tripDays[dayIndex % tripDays.length]!;
-      const dayNumber = (dayIndex % tripDays.length) + 1;
-      const dwell = extractPlaceMeta(row.Place).suggestedDwellMinutes ?? 90;
-      const startTime = `${String(slotHour).padStart(2, '0')}:00`;
-      const endHour = slotHour + Math.max(1, Math.ceil(dwell / 60));
-      const endTime = `${String(Math.min(endHour, 23)).padStart(2, '0')}:00`;
+      dwellMinutesByPlaceId.set(
+        row.placeId,
+        extractPlaceMeta(row.Place).suggestedDwellMinutes ?? 90,
+      );
+    }
 
+    const assignments = assignAutoArrangeCandidatesToDays({
+      candidates: kept,
+      days: dayAnchors,
+      preferDayNumber: input.dayIndex,
+      eveningCapHour: eveningCap,
+      morningStartHour: morningStart,
+      coordsByPlaceId,
+      dwellMinutesByPlaceId,
+    });
+
+    const changes: PlanProposalChange[] = [];
+    for (const a of assignments) {
       changes.push({
         operation: 'ADD',
-        candidateId: row.id,
-        placeId: row.placeId,
-        dayIndex: dayNumber,
-        startTime,
-        endTime,
-        label: row.Place.nameCN,
+        candidateId: a.candidate.id,
+        placeId: a.candidate.placeId,
+        dayIndex: a.dayNumber,
+        startTime: a.startTime,
+        endTime: a.endTime,
+        label: a.candidate.nameCN || a.candidate.nameEN || '活动',
         itemType: ItemType.ACTIVITY,
-        note: `[景点探索] ${row.Place.nameCN}`,
+        note: `[景点探索] ${a.candidate.nameCN || a.candidate.nameEN || a.candidate.placeId}`,
         removeFromCandidates: true,
       });
       changes.push({
         operation: 'REMOVE_CANDIDATE',
-        candidateId: row.id,
-        dayIndex: dayNumber,
-        label: row.Place.nameCN,
+        candidateId: a.candidate.id,
+        dayIndex: a.dayNumber,
+        label: a.candidate.nameCN || a.candidate.nameEN || '活动',
       });
-
-      slotHour = endHour;
-      if (slotHour >= eveningCap) {
-        dayIndex += 1;
-        slotHour = morningStart(tripDays[dayIndex % tripDays.length]!.date);
-      }
     }
 
     const sourcePayload: Record<string, unknown> = {
       candidateIds: input.candidateIds ?? [],
       dayIndex: input.dayIndex,
       options: input.options,
+      contextFilter: {
+        routeScope: ctx.routeScope,
+        excludeFRoad: ctx.excludeFRoad,
+        excludeHighlands: ctx.excludeHighlands,
+        kept: kept.length,
+        dropped: dropped.length,
+        droppedSample: dropped.slice(0, 8),
+      },
     };
+
+    const dropNote =
+      dropped.length > 0
+        ? `已按行程上下文排除 ${dropped.length} 个不兼容候选（区域/F路/已排）`
+        : null;
 
     const proposal = await this.build({
       tripId: input.tripId,
@@ -348,13 +440,16 @@ export class PlanProposalBuilderService {
       intent: 'AUTO_ARRANGE',
       source: { type: 'auto_arrange', payload: sourcePayload },
       changes,
-      benefits: { itemsAdded: rows.length },
+      benefits: { itemsAdded: kept.length },
       tradeoffs: [
         input.dayIndex != null
-          ? `优先落入第 ${input.dayIndex} 天起分配，确认后可再微调`
-          : '自动编排按优先级均匀分配到各天，确认后可再微调',
+          ? `优先落入第 ${input.dayIndex} 天附近，并按已排行程地理邻域分配`
+          : '按路线范围与已排行程地理邻域自动分配，确认后可再微调',
+        ...(dropNote ? [dropNote] : []),
       ],
-      answer: `已为 ${rows.length} 个候选生成自动编排草案，请预览后确认写入。`,
+      answer: `已为 ${kept.length} 个与行程上下文兼容的候选生成自动编排草案${
+        dropped.length ? `（另排除 ${dropped.length} 个不兼容项）` : ''
+      }，请预览后确认写入。`,
     });
 
     return this.attachAutoArrangeOrtToolsShadow(proposal, changes);
@@ -655,6 +750,7 @@ export class PlanProposalBuilderService {
     benefits?: PlanProposalBenefits;
   }> {
     const tripDays = await this.loadTripDays(tripId);
+    const timezone = await this.loadTripTimezone(tripId);
     const candidates = await this.prisma.tripAttractionExploreCandidate.findMany({
       where: { tripId },
       include: { Place: true },
@@ -670,7 +766,7 @@ export class PlanProposalBuilderService {
     for (const tripDay of targetDays) {
       const dayNum =
         tripDays.findIndex((d) => d.id === tripDay.id) + 1;
-      const gap = await this.findLargestGap(tripDay.id, tripDay.date);
+      const gap = await this.findLargestGap(tripDay.id, tripDay.date, timezone);
       if (!gap || gap.durationMinutes < 90) continue;
 
       const candidate = candidates[changes.length];
@@ -686,8 +782,8 @@ export class PlanProposalBuilderService {
         candidateId: candidate.id,
         placeId: candidate.placeId,
         dayIndex: dayNum,
-        startTime: this.formatTime(gap.start),
-        endTime: this.formatTime(end),
+        startTime: this.formatTime(gap.start, timezone),
+        endTime: this.formatTime(end, timezone),
         label: candidate.Place.nameCN,
         itemType: ItemType.ACTIVITY,
         note: `[补全空档] ${candidate.Place.nameCN}`,
@@ -722,6 +818,7 @@ export class PlanProposalBuilderService {
     movableItems?: DayVrptwItemInput[];
   }> {
     const tripDays = await this.loadTripDays(tripId);
+    const timezone = await this.loadTripTimezone(tripId);
     const targetDay = dayIndex
       ? resolveTripDayByIndex(tripDays, dayIndex)
       : tripDays[0];
@@ -796,10 +893,10 @@ export class PlanProposalBuilderService {
           operation: 'MOVE',
           itemId: item.id,
           dayIndex: dayNum,
-          from: `第 ${dayNum} 天 ${this.formatTime(item.startTime)}`,
-          to: `第 ${dayNum} 天 ${this.formatTime(start)}`,
-          startTime: this.formatTime(start),
-          endTime: this.formatTime(end),
+          from: `第 ${dayNum} 天 ${this.formatTime(item.startTime, timezone)}`,
+          to: `第 ${dayNum} 天 ${this.formatTime(start, timezone)}`,
+          startTime: this.formatTime(start, timezone),
+          endTime: this.formatTime(end, timezone),
           label: item.Place?.nameCN ?? item.note ?? '活动',
         });
       }
@@ -858,6 +955,7 @@ export class PlanProposalBuilderService {
     benefits?: PlanProposalBenefits;
   }> {
     const tripDays = await this.loadTripDays(tripId);
+    const timezone = await this.loadTripTimezone(tripId);
     const targetDay = dayIndex
       ? resolveTripDayByIndex(tripDays, dayIndex)
       : tripDays[Math.min(1, tripDays.length - 1)];
@@ -896,31 +994,47 @@ export class PlanProposalBuilderService {
     ];
 
     const lastItem = movableItems[0];
-    if (lastItem?.startTime && lastItem.endTime && dayNum < tripDays.length) {
+    // UWC same-day REDUCE_INTENSITY: shorten last activity on the *same* day
+    // (cross-day relocate is out of M2 step-4 slice — see m2-contracts/REDUCE_INTENSITY.md).
+    if (lastItem?.startTime && lastItem.endTime) {
       const itemStart = lastItem.startTime;
-      const itemEnd = lastItem.endTime;
+      const shortenedEnd = '15:00';
       changes.push({
         operation: 'MOVE',
         itemId: lastItem.id,
-        dayIndex: dayNum + 1,
-        from: `第 ${dayNum} 天 ${this.formatTime(itemStart)}`,
-        to: `第 ${dayNum + 1} 天 10:00`,
-        startTime: '10:00',
-        endTime: this.formatTime(itemEnd),
+        dayIndex: dayNum,
+        from: `第 ${dayNum} 天 ${this.formatTime(itemStart, timezone)}–${this.formatTime(lastItem.endTime, timezone)}`,
+        to: `第 ${dayNum} 天 ${this.formatTime(itemStart, timezone)}–${shortenedEnd}`,
+        startTime: this.formatTime(itemStart, timezone),
+        endTime: shortenedEnd,
         label: lastItem.Place?.nameCN ?? lastItem.note ?? '活动',
       });
     }
 
     return {
       changes,
-      tradeoffs: ['增加休息空档，并将最低优先级活动移至相邻日期（如有）'],
+      tradeoffs: [
+        '增加同日休息空档，并缩短当日最低优先级活动时段为休息让路（如有可移动活动）',
+      ],
       benefits: { fatigueScoreChange: -12 },
     };
+  }
+
+  private async loadTripTimezone(tripId: string): Promise<string> {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { destination: true, metadata: true },
+    });
+    return resolveTripTimezone({
+      destination: trip?.destination,
+      metadata: trip?.metadata,
+    });
   }
 
   private async findLargestGap(
     tripDayId: string,
     dayDate: Date,
+    timezone: string = 'utc',
   ): Promise<{ start: Date; durationMinutes: number } | null> {
     const items = await this.prisma.itineraryItem.findMany({
       where: { tripDayId },
@@ -928,8 +1042,8 @@ export class PlanProposalBuilderService {
       select: { startTime: true, endTime: true },
     });
 
-    const dayStart = buildDayDateTime(dayDate, '09:00');
-    const dayEnd = buildDayDateTime(dayDate, '18:00');
+    const dayStart = buildDayDateTime(dayDate, '09:00', timezone);
+    const dayEnd = buildDayDateTime(dayDate, '18:00', timezone);
     const points =
       items.length > 0
         ? items.flatMap((item) => [
@@ -976,21 +1090,23 @@ export class PlanProposalBuilderService {
   private async resolveTimeWindow(input: {
     tripDayId: string;
     dayDate: Date;
+    timezone?: string;
     startTime?: string;
     endTime?: string;
     defaultDurationMinutes: number;
     insertMode: 'append' | 'before' | 'after';
     anchorItemId?: string;
   }): Promise<{ startTime: Date; endTime: Date }> {
+    const tz = input.timezone || 'utc';
     if (input.startTime && input.endTime) {
       return {
-        startTime: buildDayDateTime(input.dayDate, input.startTime),
-        endTime: buildDayDateTime(input.dayDate, input.endTime),
+        startTime: buildDayDateTime(input.dayDate, input.startTime, tz),
+        endTime: buildDayDateTime(input.dayDate, input.endTime, tz),
       };
     }
 
     if (input.startTime) {
-      const start = buildDayDateTime(input.dayDate, input.startTime);
+      const start = buildDayDateTime(input.dayDate, input.startTime, tz);
       return {
         startTime: start,
         endTime: DateTime.fromJSDate(start, { zone: 'utc' })
@@ -1010,7 +1126,7 @@ export class PlanProposalBuilderService {
       if (!anchor) throw new NotFoundException('锚点行程项不存在');
       const anchorStart = anchor.startTime
         ? DateTime.fromJSDate(anchor.startTime, { zone: 'utc' })
-        : DateTime.fromJSDate(buildDayDateTime(input.dayDate, '09:00'), { zone: 'utc' });
+        : DateTime.fromJSDate(buildDayDateTime(input.dayDate, '09:00', tz), { zone: 'utc' });
       const anchorEnd = anchor.endTime
         ? DateTime.fromJSDate(anchor.endTime, { zone: 'utc' })
         : anchorStart.plus({ minutes: input.defaultDurationMinutes });
@@ -1029,7 +1145,7 @@ export class PlanProposalBuilderService {
     const last = dayItems[dayItems.length - 1];
     const start = last?.endTime
       ? DateTime.fromJSDate(last.endTime, { zone: 'utc' }).plus({ minutes: 15 }).toJSDate()
-      : buildDayDateTime(input.dayDate, '09:00');
+      : buildDayDateTime(input.dayDate, '09:00', tz);
 
     return {
       startTime: start,
@@ -1039,7 +1155,7 @@ export class PlanProposalBuilderService {
     };
   }
 
-  private formatTime(value: Date): string {
-    return DateTime.fromJSDate(value, { zone: 'utc' }).toFormat('HH:mm');
+  private formatTime(value: Date, timezone: string = 'utc'): string {
+    return formatDayClockTime(value, timezone);
   }
 }

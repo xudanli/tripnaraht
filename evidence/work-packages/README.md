@@ -18,6 +18,14 @@
 
 RFC: `evidence/rfc/RFC-ORTools-Authoritative-Promotion.md` — **INTERNAL_REVIEW**, **Shadow retained**, authoritative Apply **not** authorized.
 
+## Active product work packages (post-EWP)
+
+| ID | Topic | Status |
+|----|-------|--------|
+| [NARA-LOOK-P0](./NARA-LOOK-P0/README.md) | NARA Look field observation (camera → assessment → Preview) | **OQ CLOSED · S1 Entry APPROVED** |
+| [UWC-01](./UWC-01-unified-writeback-contract/) | Unified Writeback Contract | In progress |
+| [AGENT-HARNESS-P0](./AGENT-HARNESS-P0/) | Arrange / Confirm harness | Active |
+
 ## Next process step
 
 `POST_EWP_DECISION_GATE.md` — internal EL/TA/QA review before opening scoped tickets.  

@@ -31,6 +31,7 @@ import { CacheService } from '../../../../common/cache/cache.service';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { EffectivePlanWriteGuardService } from '../../../../decision-runtime/execution/effective-plan-write-guard.service';
 import { assertPlanMutationAllowedOrThrow } from '../../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
+import { runBootstrapPlanSeedWithAuthority } from '../../../../decision-runtime/execution/bootstrap-plan-seed-authority.util';
 import { randomUUID } from 'crypto';
 import { createHash } from 'crypto';
 import { SessionNotFoundException, SessionExpiredException, DestinationRequiredException } from '../exceptions/planning-assistant.exceptions';
@@ -67,17 +68,27 @@ import {
   resolveAccommodationDisplayName,
 } from '../../../utils/accommodation-apply-coalesce.util';
 import {
-  buildAccommodationPlaceMetadata,
   formatAccommodationCoordsNoteLine,
-  isGooglePlaceId,
   resolveAccommodationCoordinates,
 } from '../../../utils/accommodation-place.util';
+import { upsertAccommodationPlaceForApply } from '../../../utils/upsert-accommodation-place.util';
+import { upsertActivityPlaceForApply } from '../../../utils/upsert-activity-place.util';
+import {
+  coalesceActivityForApply,
+  resolveActivityDisplayName,
+} from '../../../utils/activity-apply-coalesce.util';
 import { normalizeAccommodationForApply } from '../../../utils/route-run-accommodation-apply.util';
+import { Prisma } from '@prisma/client';
 import { CostCategory } from '../../../../itinerary-items/dto/item-cost.dto';
 import {
   ApplyAccommodationToItineraryRequestDto,
   ApplyAccommodationToItineraryResponseDto,
 } from '../dto/v2/apply-accommodation-to-itinerary.dto';
+import {
+  ApplyActivityToItineraryRequestDto,
+  ApplyActivityToItineraryResponseDto,
+} from '../dto/v2/apply-activity-to-itinerary.dto';
+import type { ActivityItemDto } from '../dto/v2/shared/activity-item.dto';
 import { DateTime } from 'luxon';
 import { AgentService } from '../../../services/agent.service';
 import type { RouteAndRunRequestDto } from '../../../dto/route-and-run.dto';
@@ -6468,6 +6479,7 @@ ${combinedText}`;
 
   /**
    * 将推荐住宿写入行程时间轴（入住日 TripDay 上的 REST 项）
+   * 用户点选卡片 CTA 视为确认写，走 ALS execute 授权（与 bootstrap seed / mobile planning 一致）。
    */
   async applyAccommodationToItinerary(
     tripId: string,
@@ -6480,23 +6492,43 @@ ${combinedText}`;
       });
     }
 
-    assertPlanMutationAllowedOrThrow(
+    return runBootstrapPlanSeedWithAuthority(
       this.effectivePlanWriteGuard,
       'PlanningAssistantV2Service.applyAccommodationToItinerary',
+      () => this.applyAccommodationToItineraryAuthorized(tripId, dto),
     );
+  }
+
+  private async applyAccommodationToItineraryAuthorized(
+    tripId: string,
+    dto: ApplyAccommodationToItineraryRequestDto,
+  ): Promise<ApplyAccommodationToItineraryResponseDto> {
+    const hasInlineCard = Boolean(dto.accommodation || dto.accommodationCard);
+    const sessionId =
+      String(dto.sessionId ?? '').trim() ||
+      (hasInlineCard ? `route-run-apply:${tripId}` : '');
+    if (!sessionId) {
+      throw new BadRequestException({
+        message: 'sessionId or accommodationCard required',
+        messageCN: '请传 sessionId，或直接传 accommodationCard（route_and_run 卡片快照）',
+      });
+    }
 
     let sessionItem: AccommodationItemDto | undefined;
-    let sessionState = await this.planningAssistantService.getSessionState(dto.sessionId).catch(() => null);
-    if (!sessionState) {
-      await this.ensureSessionExists(dto.sessionId);
-      sessionState = await this.planningAssistantService.getSessionState(dto.sessionId);
+    let sessionState = await this.planningAssistantService.getSessionState(sessionId).catch(() => null);
+    if (!sessionState && !hasInlineCard) {
+      await this.ensureSessionExists(sessionId);
+      sessionState = await this.planningAssistantService.getSessionState(sessionId);
+    } else if (!sessionState && hasInlineCard) {
+      // 有卡片快照时可跳过会话；尽量不阻塞 apply
+      await this.ensureSessionExists(sessionId).catch(() => undefined);
+      sessionState = await this.planningAssistantService.getSessionState(sessionId).catch(() => null);
     }
     const sessionList = sessionState?.lastAccommodations ?? [];
     if (
       sessionState?.lastAccommodationTripId &&
       sessionState.lastAccommodationTripId !== tripId &&
-      !dto.accommodation &&
-      !dto.accommodationCard
+      !hasInlineCard
     ) {
       throw new BadRequestException({
         message: 'Accommodation list is for a different trip',
@@ -6504,7 +6536,7 @@ ${combinedText}`;
       });
     }
     sessionItem = sessionList[dto.accommodationIndex];
-    if (!dto.accommodation && !dto.accommodationCard && !sessionItem) {
+    if (!hasInlineCard && !sessionItem) {
       if (!sessionState) {
         throw new NotFoundException({
           message: 'Session not found',
@@ -6584,15 +6616,22 @@ ${combinedText}`;
         select: { id: true },
       });
       for (const row of existingRest) {
-        await this.itineraryItemsService.remove(row.id);
+        await this.itineraryItemsService!.remove(row.id);
         replacedCount++;
       }
     }
 
     const { startTime, endTime } = this.buildAccommodationStayTimes(checkIn, checkOut);
-    const placeId = await this.resolvePlaceIdForAppliedAccommodation(accommodation, displayName);
+    const tripDest = await this.prisma.trip
+      .findUnique({ where: { id: tripId }, select: { destination: true } })
+      .catch(() => null);
+    const placeId = await this.resolvePlaceIdForAppliedAccommodation(
+      accommodation,
+      displayName,
+      tripDest?.destination ?? null,
+    );
 
-    const created = await this.itineraryItemsService.create({
+    const created = await this.itineraryItemsService!.create({
       tripDayId: tripDay.id,
       ...(placeId != null ? { placeId } : {}),
       ...(!placeId
@@ -6661,67 +6700,364 @@ ${combinedText}`;
     return lines.join('\n');
   }
 
-  /** 为 MCP 住宿创建/复用 Place，写入 PostGIS 坐标供地图与交通计算使用 */
+  /**
+   * 为 MCP/飞猪住宿创建或复用 Place（OTA 外键幂等）。
+   * 飞猪无坐标也可入库；有地址时再尝试 geocode 补点。
+   */
   private async resolvePlaceIdForAppliedAccommodation(
     accommodation: AccommodationItemDto,
     displayName: string,
+    cityHint?: string | null,
   ): Promise<number | undefined> {
     if (!this.prisma) return undefined;
 
+    let enriched = accommodation;
     let coords = resolveAccommodationCoordinates(accommodation);
     if (!coords && accommodation.address?.trim() && this.googleMapsDirectService) {
       coords = await this.tryGeocodeAddressForAccommodation(accommodation.address.trim());
+      if (coords) {
+        enriched = {
+          ...accommodation,
+          location: { lat: coords.lat, lng: coords.lng },
+          listing_lat: coords.lat,
+          listing_lng: coords.lng,
+        };
+      }
     }
-    if (!coords) return undefined;
 
     try {
-      const googlePlaceId =
-        accommodation.source === 'hotel' && isGooglePlaceId(accommodation.id)
-          ? accommodation.id.trim()
-          : undefined;
-
-      if (googlePlaceId) {
-        const existing = await this.prisma.place.findUnique({
-          where: { googlePlaceId },
-          select: { id: true },
-        });
-        if (existing) {
-          await this.prisma.$executeRaw`
-            UPDATE "Place"
-            SET location = ST_SetSRID(ST_MakePoint(${coords.lng}, ${coords.lat}), 4326)
-            WHERE id = ${existing.id}
-          `;
-          return existing.id;
-        }
-      }
-
-      const place = await this.prisma.place.create({
-        data: {
-          uuid: randomUUID(),
-          nameCN: displayName,
-          nameEN: accommodation.nameEN ?? accommodation.name,
-          category: 'HOTEL',
-          address: accommodation.address ?? null,
-          googlePlaceId: googlePlaceId ?? null,
-          rating: accommodation.rating ?? 0,
-          metadata: {
-            ...buildAccommodationPlaceMetadata(accommodation),
-            coordinates: [coords.lng, coords.lat],
-          } as any,
-          updatedAt: new Date(),
+      return await upsertAccommodationPlaceForApply(
+        {
+          findByGooglePlaceId: async (googlePlaceId) =>
+            this.prisma!.place.findUnique({
+              where: { googlePlaceId },
+              select: { id: true },
+            }),
+          findByExternalRef: async (provider, externalId) => {
+            const rows = await this.prisma!.$queryRaw<Array<{ id: number }>>`
+              SELECT id FROM "Place"
+              WHERE metadata->>'externalSource' = ${provider}
+                AND metadata->>'externalId' = ${externalId}
+              ORDER BY id ASC
+              LIMIT 1
+            `;
+            return rows[0] ?? null;
+          },
+          createPlace: async (data) =>
+            this.prisma!.place.create({
+              data: {
+                uuid: data.uuid,
+                nameCN: data.nameCN,
+                nameEN: data.nameEN,
+                category: data.category,
+                address: data.address,
+                googlePlaceId: data.googlePlaceId,
+                rating: data.rating,
+                cityId: data.cityId,
+                metadata: data.metadata as Prisma.InputJsonValue,
+                dataSource: data.dataSource,
+                updatedAt: new Date(),
+              },
+              select: { id: true },
+            }),
+          updatePlaceRow: async (args) => {
+            await this.prisma!.place.update({
+              where: { id: args.id },
+              data: {
+                nameCN: args.nameCN,
+                nameEN: args.nameEN,
+                address: args.address,
+                ...(args.rating != null ? { rating: args.rating } : {}),
+                ...(args.cityId != null ? { cityId: args.cityId } : {}),
+                metadata: args.metadata as Prisma.InputJsonValue,
+                dataSource: args.dataSource,
+                updatedAt: new Date(),
+              },
+            });
+            if (
+              typeof args.lat === 'number' &&
+              typeof args.lng === 'number' &&
+              Number.isFinite(args.lat) &&
+              Number.isFinite(args.lng)
+            ) {
+              await this.prisma!.$executeRaw`
+                UPDATE "Place"
+                SET location = ST_SetSRID(ST_MakePoint(${args.lng}, ${args.lat}), 4326)
+                WHERE id = ${args.id}
+              `;
+            }
+          },
+          setLocation: async (id, lat, lng) => {
+            await this.prisma!.$executeRaw`
+              UPDATE "Place"
+              SET location = ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)
+              WHERE id = ${id}
+            `;
+          },
+          resolveCityId: async (hint) => this.resolveCityIdHintForAccommodation(hint),
         },
-      });
-
-      await this.prisma.$executeRaw`
-        UPDATE "Place"
-        SET location = ST_SetSRID(ST_MakePoint(${coords.lng}, ${coords.lat}), 4326)
-        WHERE id = ${place.id}
-      `;
-
-      return place.id;
+        enriched,
+        displayName,
+        { cityHint },
+      );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       this.logger.warn(`resolvePlaceIdForAppliedAccommodation failed: ${msg}`);
+      return undefined;
+    }
+  }
+
+  /** 按城名/目的地松散解析 City.id（CN 优先）；失败返回 null，不阻断 apply */
+  private async resolveCityIdHintForAccommodation(
+    hint: string | null | undefined,
+  ): Promise<number | null> {
+    const raw = String(hint ?? '').trim();
+    if (!raw || !this.prisma) return null;
+    // 目的地常为 CN / 中国 — 不当作城市名
+    if (/^(CN|CHN|China|中国)$/i.test(raw)) return null;
+    const cityToken =
+      raw.match(/([\u4e00-\u9fff]{2,8})(?:市|县|区|州)?/)?.[1] ||
+      raw.split(/[\s,，/]/)[0]?.trim();
+    if (!cityToken || cityToken.length < 2) return null;
+    try {
+      const hit = await this.prisma.city.findFirst({
+        where: {
+          OR: [
+            { nameCN: cityToken },
+            { nameCN: { contains: cityToken } },
+            { name: cityToken },
+          ],
+        },
+        select: { id: true },
+        orderBy: { id: 'asc' },
+      });
+      return hit?.id ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 将活动/门票推荐卡片写入行程时间轴（ACTIVITY 项 + OTA Place upsert）
+   */
+  async applyActivityToItinerary(
+    tripId: string,
+    dto: ApplyActivityToItineraryRequestDto,
+  ): Promise<ApplyActivityToItineraryResponseDto> {
+    if (!this.itineraryItemsService || !this.prisma) {
+      throw new BadRequestException({
+        message: 'Itinerary service unavailable',
+        messageCN: '行程服务不可用，无法加入活动',
+      });
+    }
+
+    return runBootstrapPlanSeedWithAuthority(
+      this.effectivePlanWriteGuard,
+      'PlanningAssistantV2Service.applyActivityToItinerary',
+      () => this.applyActivityToItineraryAuthorized(tripId, dto),
+    );
+  }
+
+  private async applyActivityToItineraryAuthorized(
+    tripId: string,
+    dto: ApplyActivityToItineraryRequestDto,
+  ): Promise<ApplyActivityToItineraryResponseDto> {
+    const hasInlineCard = Boolean(dto.activity || dto.activityCard);
+    if (!hasInlineCard) {
+      throw new BadRequestException({
+        message: 'activity or activityCard required',
+        messageCN: '请传入 activity / activityCard（活动预订卡 applySnapshot）',
+      });
+    }
+
+    let activity = coalesceActivityForApply(dto.activityCard ?? null, null);
+    if (dto.activity) {
+      activity = coalesceActivityForApply(dto.activity, activity);
+    }
+
+    const displayName = resolveActivityDisplayName(activity);
+    if (displayName === 'Activity' || !String(activity.id ?? '').trim()) {
+      throw new BadRequestException({
+        message: 'Activity name/id required',
+        messageCN: '缺少活动名称或 OTA id，请传入 activityCard 后重试',
+      });
+    }
+
+    const tripDay = await this.resolveTripDayForActivityApply(tripId, dto, activity);
+    if (!tripDay) {
+      throw new BadRequestException({
+        message: 'No trip day available for activity',
+        messageCN: '行程中找不到可写入的日期，请确认行程日或传入 dayNumber/date',
+      });
+    }
+
+    const dayYmd = DateTime.fromJSDate(tripDay.date, { zone: 'utc' }).toISODate() ?? '';
+    const start = DateTime.fromISO(`${dayYmd}T10:00:00.000Z`, { zone: 'utc' });
+    const end = start.plus({ hours: 2 });
+    const tripDest = await this.prisma.trip
+      .findUnique({ where: { id: tripId }, select: { destination: true } })
+      .catch(() => null);
+    const placeId = await this.resolvePlaceIdForAppliedActivity(
+      activity,
+      displayName,
+      tripDest?.destination ?? null,
+    );
+
+    const created = await this.itineraryItemsService!.create({
+      tripDayId: tripDay.id,
+      ...(placeId != null ? { placeId } : {}),
+      ...(!placeId
+        ? {
+            placeName: displayName,
+            address: activity.address,
+          }
+        : {}),
+      type: ItemType.ACTIVITY,
+      startTime: start.toISO()!,
+      endTime: end.toISO()!,
+      note: this.buildActivityItineraryDetailNote(activity),
+      externalUrl: activity.url,
+      costCategory: CostCategory.ACTIVITIES,
+      costNote: activity.priceLabel,
+      forceCreate: true,
+    });
+
+    const messageCN = `已将「${displayName}」加入行程${dayYmd ? `（${dayYmd}）` : ''}。`;
+    return {
+      success: true,
+      itineraryItemId: created.id,
+      tripDayId: tripDay.id,
+      message: `Added "${displayName}" to the trip.`,
+      messageCN,
+      ...(placeId != null ? { placeId } : {}),
+    };
+  }
+
+  private async resolveTripDayForActivityApply(
+    tripId: string,
+    dto: ApplyActivityToItineraryRequestDto,
+    activity: ActivityItemDto,
+  ): Promise<{ id: string; date: Date } | null> {
+    if (!this.prisma) return null;
+    const dateYmd = (dto.date ?? activity.date)?.split('T')[0];
+    if (dateYmd) {
+      const byDate = await this.prisma.tripDay.findFirst({
+        where: {
+          tripId,
+          date: {
+            gte: new Date(`${dateYmd}T00:00:00.000Z`),
+            lt: new Date(`${addDaysYmd(dateYmd, 1)}T00:00:00.000Z`),
+          },
+        },
+        select: { id: true, date: true },
+      });
+      if (byDate) return byDate;
+    }
+
+    const days = await this.prisma.tripDay.findMany({
+      where: { tripId },
+      orderBy: { date: 'asc' },
+      select: { id: true, date: true },
+    });
+    if (!days.length) return null;
+    const dayNumber = dto.dayNumber ?? activity.associatedDayNumber;
+    if (typeof dayNumber === 'number' && dayNumber >= 1 && dayNumber <= days.length) {
+      return days[dayNumber - 1] ?? null;
+    }
+    return days[0] ?? null;
+  }
+
+  private buildActivityItineraryDetailNote(activity: ActivityItemDto): string {
+    const lines = [
+      activity.category === 'SPECIAL_EXPERIENCE' ? '特色体验' : '门票/景点',
+      activity.source === 'fliggy' || activity.bookingProvider === 'fliggy' ? '飞猪可订' : undefined,
+      activity.priceLabel ? `参考价: ${activity.priceLabel}` : undefined,
+      activity.reasonZh,
+      activity.otaRef
+        ? `OTA: ${activity.otaRef.provider}/${activity.otaRef.externalId}`
+        : undefined,
+    ].filter(Boolean);
+    return lines.join('\n');
+  }
+
+  private async resolvePlaceIdForAppliedActivity(
+    activity: ActivityItemDto,
+    displayName: string,
+    cityHint?: string | null,
+  ): Promise<number | undefined> {
+    if (!this.prisma) return undefined;
+    try {
+      return await upsertActivityPlaceForApply(
+        {
+          findByExternalRef: async (provider, externalId) => {
+            const rows = await this.prisma!.$queryRaw<Array<{ id: number }>>`
+              SELECT id FROM "Place"
+              WHERE metadata->>'externalSource' = ${provider}
+                AND metadata->>'externalId' = ${externalId}
+              ORDER BY id ASC
+              LIMIT 1
+            `;
+            return rows[0] ?? null;
+          },
+          createPlace: async (data) =>
+            this.prisma!.place.create({
+              data: {
+                uuid: data.uuid,
+                nameCN: data.nameCN,
+                nameEN: data.nameEN,
+                category: data.category,
+                address: data.address,
+                googlePlaceId: data.googlePlaceId,
+                rating: data.rating,
+                cityId: data.cityId,
+                metadata: data.metadata as Prisma.InputJsonValue,
+                dataSource: data.dataSource,
+                updatedAt: new Date(),
+              },
+              select: { id: true },
+            }),
+          updatePlaceRow: async (args) => {
+            await this.prisma!.place.update({
+              where: { id: args.id },
+              data: {
+                nameCN: args.nameCN,
+                nameEN: args.nameEN,
+                address: args.address,
+                ...(args.cityId != null ? { cityId: args.cityId } : {}),
+                metadata: args.metadata as Prisma.InputJsonValue,
+                dataSource: args.dataSource,
+                updatedAt: new Date(),
+              },
+            });
+            if (
+              typeof args.lat === 'number' &&
+              typeof args.lng === 'number' &&
+              Number.isFinite(args.lat) &&
+              Number.isFinite(args.lng)
+            ) {
+              await this.prisma!.$executeRaw`
+                UPDATE "Place"
+                SET location = ST_SetSRID(ST_MakePoint(${args.lng}, ${args.lat}), 4326)
+                WHERE id = ${args.id}
+              `;
+            }
+          },
+          setLocation: async (id, lat, lng) => {
+            await this.prisma!.$executeRaw`
+              UPDATE "Place"
+              SET location = ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)
+              WHERE id = ${id}
+            `;
+          },
+          resolveCityId: async (hint) => this.resolveCityIdHintForAccommodation(hint),
+        },
+        activity,
+        displayName,
+        { cityHint },
+      );
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.warn(`resolvePlaceIdForAppliedActivity failed: ${msg}`);
       return undefined;
     }
   }

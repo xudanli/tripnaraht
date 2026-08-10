@@ -8,7 +8,7 @@
  * Contract deltas since (1) are indexed in OPENAPI_CONTRACT_DELTA_INDEX_REL.
  */
 
-export const BFF_CLIENT_CONTRACT_INDEX_VERSION = '1.1.0' as const;
+export const BFF_CLIENT_CONTRACT_INDEX_VERSION = '1.2.0' as const;
 
 /** Historical fact-pack OpenAPI generation commit (v1 freeze). Not the sole BFF-1 pin. */
 export const FACT_PACK_OPENAPI_FREEZE_COMMIT =
@@ -100,6 +100,15 @@ export const BFF_CLIENT_CONTRACT_INDEX: readonly BffClientContractRow[] = [
     notes: 'delivery_verdict including FLAWED_DRAFT / VERIFIED_WITH_WARNINGS',
   },
   {
+    id: 'conversation_turn_result',
+    surface: 'route_and_run ConversationTurnResult',
+    kind: 'delivery_contract',
+    path: 'src/agent/delivery/FRONTEND_CONVERSATION_TURN_RESULT.md',
+    transport: 'HTTP+SSE',
+    freshnessField: 'conversation_turn_result.schema_id',
+    notes: 'Unified domain cards; Chat/iOS render envelope only; dual-write with legacy payload fields',
+  },
+  {
     id: 'flawed_draft_delivery',
     surface: 'Flawed draft FE delivery',
     kind: 'delivery_contract',
@@ -180,6 +189,39 @@ export const BFF_CLIENT_CONTRACT_INDEX: readonly BffClientContractRow[] = [
     path: ROUTE_AND_RUN_OPTIONS_OPENAPI_FREEZE_REL,
     transport: 'openapi',
     notes: `execution_mode / allow_flawed_draft_narrate (C027); lives on ENGINEERING_BASELINE=${ENGINEERING_BASELINE_COMMIT.slice(0, 9)}`,
+  },
+  {
+    id: 'uwc_1e_web_ios_handoff',
+    surface: 'UWC-1e Web/iOS write protocol',
+    kind: 'handoff',
+    path: 'src/decision-runtime/execution/authoritative-write/UWC_1E_WEB_IOS_HANDOFF.md',
+    transport: 'HTTP /api',
+    freshnessField: 'sealed expectedVersion / previewHash (Apply via commitGate only)',
+    notes: 'Preview→Confirm→Apply; pages must not call Apply',
+  },
+  {
+    id: 'uwc_1e_web_sample_client',
+    surface: 'UWC-1e Web sample TS client',
+    kind: 'sample_ts_client',
+    path: 'src/trips/dto/frontend-uwc-1e-api-client.ts',
+    transport: 'sample',
+    notes: 'createUwc1eClient + pageApi; first-batch remind/same-day/PlanVersion-only',
+  },
+  {
+    id: 'uwc_1e_ios_sample_client',
+    surface: 'UWC-1e iOS sample TS client',
+    kind: 'sample_ts_client',
+    path: 'src/trips/dto/frontend-uwc-1e-ios-api-client.ts',
+    transport: 'sample',
+    notes: 'Identical protocol to Web; productSurface=ios',
+  },
+  {
+    id: 'uwc_1e_client_contract_matrix',
+    surface: 'UWC-1e client contract matrix',
+    kind: 'delivery_contract',
+    path: 'src/agent/contracts/uwc-1e-client-contract.matrix.ts',
+    transport: 'docs',
+    notes: 'Hard rules: no page Apply, immutable tokens, no auto-undo/mixed/Iceland',
   },
 ] as const;
 

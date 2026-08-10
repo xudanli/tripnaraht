@@ -27,6 +27,7 @@ import { HikingDemoModule } from '../hiking-demo/hiking-demo.module';
 import { HikingDetailOverrideController } from './hiking-detail-override.controller';
 import { TransportModule } from '../transport/transport.module';
 import { IdentityGovernanceModule } from '../identity-governance/identity-governance.module';
+import { EffectivePlanExecutionModule } from '../decision-runtime/execution/effective-plan-execution.module';
 
 // 检查是否在 MCP 模式下
 const isMcpMode = process.argv.some(arg => arg.includes('mcp-skills-server')) ||
@@ -61,6 +62,7 @@ class MockRedisService {
     HikingDemoModule,
     TransportModule,
     IdentityGovernanceModule,
+    EffectivePlanExecutionModule,
     forwardRef(() => DecisionModule), // 用于RhythmMatchingService和ThreeLayerExplanationService - 使用 forwardRef 避免循环依赖
     SharedMemoryModule,
   ],

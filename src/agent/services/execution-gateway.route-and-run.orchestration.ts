@@ -3,7 +3,7 @@ import type { TripRunDsoCheckpointPayload } from './trip-run-manager.service';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
 import { mergeTripIdAliasesIntoRouteAndRunRequest } from '../utils/route-and-run-trip-id-merge.util';
 import { signalsFromRequest } from '../utils/orchestration-signals.util';
-import { routePolicy } from '../utils/orchestration-policy.util';
+import { resolveGatewayRoutePolicy } from '../routing/request-router.facade';
 import { MetricsRecorder } from '../utils/agent-metrics.util';
 import {
   createDeadline,
@@ -46,10 +46,10 @@ import {
 import { isTripIndependentRouteAndRunEntry } from '../utils/route-and-run-trip-independent-entry.util';
 import { DecisionRuntimeKernelService } from '../runtime/decision-runtime-kernel.service';
 import type { DecisionRuntimeTickBundle } from '../runtime/decision-runtime-kernel.types';
+import { tryBuildItineraryDayViewFastPath } from './itinerary-day-view-fast-path.util';
 import { buildOrchestrationGovernanceLimitsEcho } from '../orchestration/orchestration-governance-matrix.constants';
 import {
   applyRouteClassForkInPlace,
-  applyRouteClassForkPolicyOverrides,
   readRouteClassForkFromRequest,
 } from '../routing/route-and-run-route-class-fork.util';
 import { buildRouteObservabilityRoutingEcho } from '../routing/mirror-route-and-run-observability.util';
@@ -69,11 +69,51 @@ import {
   buildSilentVoteCreateSuggestedOperation,
   isSilentVoteCreateIntentMessage,
 } from '../utils/trip-consultation-suggested-operations.util';
+import {
+  buildTeamFitnessSubmissionStatusAnswer,
+  isTeamFitnessSubmissionStatusQuery,
+  loadTeamFitnessSubmissionStatuses,
+} from '../utils/team-fitness-submission-status.util';
 import type { ProcessFairnessOrchestrationHint } from '../../trips/process-fairness/types/process-fairness-orchestration.types';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TripInsightService } from '../../trips/services/trip-insight.service';
 import { TripMetricsService } from '../../trips/services/trip-metrics.service';
 import { PreferenceRoundOrchestratorService } from '../../trips/process-fairness/services/preference-round-orchestrator.service';
+import {
+  attachConversationTurnToRouteAndRunResponse,
+  attachGuideToPlanSessionToRequest,
+  buildTripConversationContextSnapshot,
+  detectGuideToPlanImportIntentHint,
+  resolveGuideToPlanSessionForConversation,
+} from '../delivery/conversation';
+import { tryBuildDecisionSupportFastPath } from './decision-support-fast-path.util';
+import { tryBuildLiveExecutionFastPath } from './live-execution-fast-path.util';
+import type { ModeLock } from './orchestration-stability.util';
+
+/** ModeLock 仅绑定未完成 planning operation；完成/失败即清除，禁止 trip session 粘性。 */
+function commitModeLockForRouteResult(
+  modeLock: ModeLock | undefined,
+  ctx: StabilityContext,
+  mode: OrchestrationMode,
+  result?: RouteAndRunResponseDto | null,
+  admitted?: boolean,
+): void {
+  if (!modeLock) return;
+  if (!ctx.modeLockOperationId || !admitted) {
+    modeLock.clear(ctx);
+    return;
+  }
+  const status = String(result?.result?.status ?? '').toUpperCase();
+  const unfinished =
+    status === 'NEED_MORE_INFO' ||
+    status === 'NEED_CONSENT' ||
+    status === 'NEED_CONFIRMATION';
+  if (unfinished) {
+    modeLock.set(ctx, mode);
+  } else {
+    modeLock.clear(ctx);
+  }
+}
 
 export async function runRouteAndRunMainChain(
   agent: AgentService,
@@ -81,6 +121,11 @@ export async function runRouteAndRunMainChain(
   request: RouteAndRunRequestDto,
 ): Promise<RouteAndRunResponseDto> {
   const $ = agent as any;
+  /** 查看指定日：跳过 Memory Hydrate / Governance / DOS（避免读库短路仍付 ~3s prepare 税） */
+  const dayViewFast = await tryBuildItineraryDayViewFastPath($, request, Date.now());
+  if (dayViewFast) {
+    return dayViewFast;
+  }
   const kernel = $.decisionRuntimeKernel as DecisionRuntimeKernelService | undefined;
   if (!kernel) {
     throw new Error('DecisionRuntimeKernelService is not configured');
@@ -234,6 +279,117 @@ async function runRouteAndRunTickBody(
     let deadline = createDeadline(Math.max(1000, Math.min(maxSeconds * 1000, 120_000))); // 默认30s，最大120s
 
     const requestHash = $.hashRequest(request);
+    const admissionForLock = (() => {
+      try {
+        const {
+          evaluatePlanningAdmissionForRequest,
+          resolvePlanningOperationLockId,
+        } = require('../routing/planning-admission-gate.util') as typeof import('../routing/planning-admission-gate.util');
+        const {
+          compileAgentTaskContractForRequest,
+          projectAgentTaskContractForTrace,
+        } = require('../harness/compile-agent-task-contract.util') as typeof import('../harness/compile-agent-task-contract.util');
+        const {
+          assertRuntimeTransition,
+        } = require('../harness/hardening/runtime-transition.contract') as typeof import('../harness/hardening/runtime-transition.contract');
+        const {
+          buildAgentTurnTrace,
+          projectAgentTurnTraceForObservability,
+        } = require('../harness/hardening/agent-turn-trace.util') as typeof import('../harness/hardening/agent-turn-trace.util');
+        const {
+          projectTravelWorldStateForTurn,
+          echoTravelWorldStateObservability,
+          readTravelWorldStateSeedFromOptions,
+          readOutcomeReconciliationFromOptions,
+          appendOutcomeToTravelEventLedger,
+        } = require('../state-learning/attach-state-learning.util') as typeof import('../state-learning/attach-state-learning.util');
+        const admission = evaluatePlanningAdmissionForRequest(request);
+        const taskContract = compileAgentTaskContractForRequest(request);
+        const previousRuntime = (request.options as { harness_previous_runtime?: string } | undefined)
+          ?.harness_previous_runtime as import('../harness/hardening/runtime-transition.contract').HarnessRuntimeId | undefined;
+        const transition = previousRuntime
+          ? assertRuntimeTransition({
+              from: previousRuntime,
+              to: taskContract.taskType,
+              explicitEscalation:
+                (request.options as { harness_explicit_escalation?: boolean } | undefined)
+                  ?.harness_explicit_escalation === true,
+              newTaskId:
+                (request.options as { harness_new_task_id?: boolean } | undefined)
+                  ?.harness_new_task_id === true,
+              strongConfirmation:
+                (request.options as { harness_strong_confirmation?: boolean } | undefined)
+                  ?.harness_strong_confirmation === true,
+            })
+          : { ok: true as const, rule: 'no_previous' };
+        if (!transition.ok) {
+          $.logger.warn(
+            `[AgentService] Runtime transition denied: ${previousRuntime}->${taskContract.taskType} reason=${(transition as any).reason} request_id=${request.request_id}`,
+          );
+        }
+        const agentTurnTrace = projectAgentTurnTraceForObservability(
+          buildAgentTurnTrace({
+            contract: taskContract,
+            runtimeSelected: taskContract.taskType,
+            runtimePrevious: previousRuntime,
+            transitionOk: transition.ok,
+            transitionReason: transition.ok ? transition.rule : (transition as any).reason,
+            resultStatus: 'ADMITTED',
+            appliedToItinerary: false,
+            unauthorizedWriteAttempt: false,
+          }),
+        );
+        const travelWorldState = projectTravelWorldStateForTurn({
+          tripId: request.trip_id,
+          contract: taskContract,
+          seed: readTravelWorldStateSeedFromOptions(
+            request.options as Record<string, unknown> | undefined,
+          ),
+        });
+        const travelWorldStateEcho = echoTravelWorldStateObservability(travelWorldState);
+        let outcomeEcho: Record<string, unknown> | undefined;
+        const outcomeReq = readOutcomeReconciliationFromOptions(
+          request.options as Record<string, unknown> | undefined,
+        );
+        if (outcomeReq && request.trip_id?.trim()) {
+          const appended = appendOutcomeToTravelEventLedger({
+            tripId: request.trip_id.trim(),
+            outcome: {
+              ...outcomeReq,
+              turnId: outcomeReq.turnId ?? taskContract.turnId,
+            },
+          });
+          outcomeEcho = appended.observability;
+        }
+        const opId = resolvePlanningOperationLockId({
+          planningOperationId: (request.options as { planning_operation_id?: string } | undefined)
+            ?.planning_operation_id,
+          admitted: taskContract.allowFullPlanning || admission.admitted,
+          requestId: request.request_id,
+        });
+        return {
+          admission,
+          opId,
+          taskContract,
+          taskContractTrace: projectAgentTaskContractForTrace(taskContract),
+          agentTurnTrace,
+          travelWorldStateEcho,
+          outcomeEcho,
+          runtimeTransitionOk: transition.ok,
+        };
+      } catch {
+        return {
+          admission: undefined,
+          opId: undefined as string | undefined,
+          taskContract: undefined,
+          taskContractTrace: undefined as Record<string, unknown> | undefined,
+          agentTurnTrace: undefined as Record<string, unknown> | undefined,
+          travelWorldStateEcho: undefined as Record<string, unknown> | undefined,
+          outcomeEcho: undefined as Record<string, unknown> | undefined,
+          runtimeTransitionOk: true,
+        };
+      }
+    })();
     const stabilityCtx: StabilityContext = {
       requestId: request.request_id,
       userId: request.user_id,
@@ -243,6 +399,7 @@ async function runRouteAndRunTickBody(
       startTs: startTime,
       snapshotId: memory.snapshotId,
       snapshotVersion: memory.snapshotVersion,
+      modeLockOperationId: admissionForLock.opId,
     };
 
     const fallback = new FallbackGuard();
@@ -329,6 +486,25 @@ async function runRouteAndRunTickBody(
         await $.routeContextEnricher?.maybeInjectTripWishlistContext(request);
         await $.routeContextEnricher?.maybeInjectTripIntentDigestContext(request);
         await $.routeContextEnricher?.maybeInjectUserStandingSummary(request);
+
+        // Phase 6：导入意图 → 挂载已有 Guide-to-Plan session（不扩意图词典）
+        if (detectGuideToPlanImportIntentHint(resolveRouteAndRunUserMessage(request))) {
+          const prisma =
+            $.prisma ?? $.moduleRef?.get?.(PrismaService, { strict: false });
+          if (prisma) {
+            const g2p = await resolveGuideToPlanSessionForConversation({
+              prisma,
+              tripId: request.trip_id,
+              userId: request.user_id,
+            });
+            if (g2p) {
+              attachGuideToPlanSessionToRequest(
+                request as unknown as Record<string, unknown>,
+                g2p,
+              );
+            }
+          }
+        }
       }
 
       const activeTripAnalysis = await tryBuildActiveTripAnalysisFastPath($, request, startTime);
@@ -348,6 +524,21 @@ async function runRouteAndRunTickBody(
       const silentVoteCreate = tryBuildSilentVoteCreateFastPath(request, startTime);
       if (silentVoteCreate) {
         return silentVoteCreate;
+      }
+
+      const fitnessStatus = await tryBuildTeamFitnessSubmissionStatusFastPath($, request, startTime);
+      if (fitnessStatus) {
+        return fitnessStatus;
+      }
+
+      const liveExecution = await tryBuildLiveExecutionFastPath($, request, startTime);
+      if (liveExecution) {
+        return liveExecution;
+      }
+
+      const decisionSupport = await tryBuildDecisionSupportFastPath($, request, startTime);
+      if (decisionSupport) {
+        return decisionSupport;
       }
 
       // === 稳定化层：检查 Deadline ===
@@ -441,20 +632,22 @@ async function runRouteAndRunTickBody(
         }
       }
 
-      // 2. 基于 Feature Flags 和信号进行策略决策（集成 ModeLock 和 Circuit Breaker）
-      let decision = routePolicy(
-        process.env,
-        request.options,
+      // 2. L1 RequestRouter：routePolicy + route_class_fork（ModeLock / Circuit Breaker）
+      const decision = resolveGatewayRoutePolicy({
+        env: process.env,
+        options: request.options,
         signals,
-        stabilityCtx,
-        $.modeLock,
-        {
+        stabilityContext: stabilityCtx,
+        modeLock: $.modeLock,
+        breakers: {
           sm: $.breakerSM,
           dyn: $.breakerDyn,
           legacy: $.breakerLegacy,
         },
-      );
-      decision = applyRouteClassForkPolicyOverrides(decision, routeClassFork);
+        routeClassFork,
+        message: request.message,
+        tripId: request.trip_id,
+      });
 
       const modeLockActive = Boolean(stabilityCtx && $.modeLock?.get(stabilityCtx));
       let shadowRoutingEval: import('../routing/routing-classifier-eval.types').ShadowRoutingEvalV1 | undefined;
@@ -491,14 +684,36 @@ async function runRouteAndRunTickBody(
           decision,
         });
       }
-      const routeObservabilityEcho = buildRouteObservabilityRoutingEcho({
-        routeClassFork,
-        routeClassEval: shadowRouteClassEval,
-        shadowRoutingEval,
-      });
+      const routeObservabilityEcho = {
+        ...buildRouteObservabilityRoutingEcho({
+          routeClassFork,
+          routeClassEval: shadowRouteClassEval,
+          shadowRoutingEval,
+        }),
+        ...(admissionForLock.taskContractTrace
+          ? { agent_task_contract: admissionForLock.taskContractTrace }
+          : {}),
+        ...(admissionForLock.agentTurnTrace
+          ? { agent_turn_trace: admissionForLock.agentTurnTrace }
+          : {}),
+        ...(admissionForLock.travelWorldStateEcho
+          ? { travel_world_state: admissionForLock.travelWorldStateEcho }
+          : {}),
+        ...(admissionForLock.outcomeEcho
+          ? { outcome_reconciliation: admissionForLock.outcomeEcho }
+          : {}),
+        ...(admissionForLock.runtimeTransitionOk === false
+          ? { runtime_transition_ok: false }
+          : {}),
+      };
       
       // 调试日志：记录路由决策
       $.logger.log(`[AgentService] 路由决策: mode=${decision.mode}, reason=${decision.reason}`);
+      if (admissionForLock.taskContract) {
+        $.logger.log(
+          `[AgentService] TaskContract: type=${admissionForLock.taskContract.taskType} authority=${admissionForLock.taskContract.authority} allowFullPlanning=${admissionForLock.taskContract.allowFullPlanning} reason=${admissionForLock.taskContract.planningAdmissionReason}`,
+        );
+      }
       $.logger.log(`[AgentService] 匹配规则: ${decision.matchedRules.join(', ')}`);
       $.logger.log(`[AgentService] 熔断器状态: SM=${$.breakerSM.canPass()}, Dynamic=${$.breakerDyn.canPass()}, Legacy=${$.breakerLegacy.canPass()}`);
       // 结构化日志（固定化字段，用于打点/聚合）
@@ -535,6 +750,29 @@ async function runRouteAndRunTickBody(
       const silentVoteLatePath = tryBuildSilentVoteCreateFastPath(request, startTime);
       if (silentVoteLatePath) {
         return silentVoteLatePath;
+      }
+
+      const fitnessStatusLatePath = await tryBuildTeamFitnessSubmissionStatusFastPath(
+        $,
+        request,
+        startTime,
+      );
+      if (fitnessStatusLatePath) {
+        return fitnessStatusLatePath;
+      }
+
+      const liveExecutionLatePath = await tryBuildLiveExecutionFastPath($, request, startTime);
+      if (liveExecutionLatePath) {
+        return liveExecutionLatePath;
+      }
+
+      const decisionSupportLatePath = await tryBuildDecisionSupportFastPath(
+        $,
+        request,
+        startTime,
+      );
+      if (decisionSupportLatePath) {
+        return decisionSupportLatePath;
       }
 
       const dryRunLedger = request.options?.dry_run === true;
@@ -863,7 +1101,13 @@ async function runRouteAndRunTickBody(
           memory,
         );
         if (agenticFastPath) {
-          $.modeLock.set(stabilityCtx, decision.mode);
+          commitModeLockForRouteResult(
+            $.modeLock,
+            stabilityCtx,
+            decision.mode,
+            agenticFastPath,
+            Boolean(admissionForLock.taskContract?.allowFullPlanning ?? admissionForLock.admission?.admitted),
+          );
           if (tripRunId && $.tripRunManager) {
             try {
               await $.tripRunManager.completeTripRun(tripRunId, {
@@ -906,8 +1150,13 @@ async function runRouteAndRunTickBody(
         });
 
         const res = await execMode(decision.mode);
-        // 成功：记录 ModeLock
-        $.modeLock.set(stabilityCtx, decision.mode);
+        commitModeLockForRouteResult(
+          $.modeLock,
+          stabilityCtx,
+          decision.mode,
+          res,
+          Boolean(admissionForLock.taskContract?.allowFullPlanning ?? admissionForLock.admission?.admitted),
+        );
         
         // === 更新 TripRun 为 COMPLETED ===
         if (tripRunId && $.tripRunManager) {
@@ -1029,7 +1278,13 @@ async function runRouteAndRunTickBody(
                 /* best-effort: 重试前对齐负向约束 overlay */
               }
               const res = await execMode(decision.mode, recoveryInvocation);
-              $.modeLock.set(stabilityCtx, decision.mode);
+              commitModeLockForRouteResult(
+                $.modeLock,
+                stabilityCtx,
+                decision.mode,
+                res,
+                Boolean(admissionForLock.taskContract?.allowFullPlanning ?? admissionForLock.admission?.admitted),
+              );
               if (tripRunId && $.tripRunManager) {
                 try {
                   await $.tripRunManager.completeTripRun(tripRunId, {
@@ -1161,8 +1416,13 @@ async function runRouteAndRunTickBody(
           try {
             finalMode = nextMode;
             const res = await execMode(nextMode);
-            // 成功：记录 ModeLock
-            $.modeLock.set(stabilityCtx, nextMode);
+            commitModeLockForRouteResult(
+              $.modeLock,
+              stabilityCtx,
+              nextMode,
+              res,
+              Boolean(admissionForLock.taskContract?.allowFullPlanning ?? admissionForLock.admission?.admitted),
+            );
             
             // === 更新 TripRun 为 COMPLETED ===
             if (tripRunId && $.tripRunManager) {
@@ -1417,6 +1677,125 @@ export async function tryBuildTeamStructuredDiscussionFastPath(
 }
 
 /**
+ * 「谁还没有提交体能信息」：查协作者体能问卷提交状态，不下发全量规划。
+ */
+export async function tryBuildTeamFitnessSubmissionStatusFastPath(
+  agent: any,
+  request: RouteAndRunRequestDto,
+  startTime: number,
+): Promise<RouteAndRunResponseDto | null> {
+  const tripId = request.trip_id?.trim();
+  const message = resolveRouteAndRunUserMessage(request);
+  if (!tripId || !isTeamFitnessSubmissionStatusQuery(message)) {
+    return null;
+  }
+
+  const prisma = agent.prisma ?? agent.moduleRef?.get?.(PrismaService, { strict: false });
+  if (!prisma) {
+    agent.logger?.warn?.(
+      '[TeamFitnessSubmissionStatusFastPath] Prisma unavailable; skipping fast path',
+    );
+    return null;
+  }
+
+  let tripName: string | null = null;
+  let members: Awaited<ReturnType<typeof loadTeamFitnessSubmissionStatuses>>['members'] = [];
+  try {
+    const loaded = await loadTeamFitnessSubmissionStatuses(prisma, tripId);
+    tripName = loaded.tripName;
+    members = loaded.members;
+  } catch (error: any) {
+    agent.logger?.warn?.(
+      `[TeamFitnessSubmissionStatusFastPath] load failed: ${error?.message ?? error}`,
+    );
+    return null;
+  }
+
+  const answerText = buildTeamFitnessSubmissionStatusAnswer({ tripName, members });
+  const missing = members.filter((m) => !m.submitted);
+  const latencyMs = Date.now() - startTime;
+  const response = {
+    request_id: request.request_id,
+    route: {
+      route: 'SYSTEM1_API',
+      confidence: 0.95,
+      reasons: ['TEAM_FITNESS_SUBMISSION_STATUS_FAST_PATH'],
+      required_capabilities: ['team_fitness_status'],
+      consent_required: false,
+      budget: { max_seconds: 5, max_steps: 0, max_browser_steps: 0 },
+      ui_hint: {
+        mode: 'fast',
+        status: 'done',
+        message: missing.length ? '仍有成员未提交体能评估' : '成员体能评估已齐',
+      },
+    },
+    result: {
+      status: 'OK',
+      answer_text: answerText,
+      payload: {
+        trip_id: tripId,
+        ui_surface: 'consultation',
+        team_fitness_submission_status: {
+          missing_count: missing.length,
+          submitted_count: members.length - missing.length,
+          members: members.map((m) => ({
+            user_id: m.userId,
+            display_name: m.displayName,
+            role: m.role,
+            submitted: m.submitted,
+            fitness_level: m.fitnessLevel ?? null,
+          })),
+        },
+      },
+    },
+    ui_state: {
+      phase: 'DONE',
+      ui_status: 'done',
+      active_skill: null,
+      pending_question: null,
+    },
+    explain: {
+      decision_log: [
+        {
+          request_id: request.request_id,
+          step: 'INTAKE',
+          actor: 'Orchestrator',
+          inputs_summary: message.slice(0, 200),
+          outputs_summary: `team_fitness_submission_status missing=${missing.length}/${members.length}`,
+          evidence_refs: [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'TEAM_FITNESS_SUBMISSION_STATUS',
+            missing_user_ids: missing.map((m) => m.userId),
+          },
+        } as DecisionLogEntry,
+      ],
+    },
+    observability: {
+      latency_ms: latencyMs,
+      router_ms: 0,
+      system_mode: 'SYSTEM1',
+      tool_calls: 0,
+      browser_steps: 0,
+      tokens_est: 0,
+      cost_est_usd: 0,
+      fallback_used: false,
+      orchestration_mode_final: 'TEAM_FITNESS_SUBMISSION_STATUS_FAST_PATH',
+    },
+  } as unknown as RouteAndRunResponseDto;
+
+  return attachConversationTurnToRouteAndRunResponse(response, {
+    context: buildTripConversationContextSnapshot({
+      trip_id: tripId,
+      today_ymd: new Date().toISOString().slice(0, 10),
+      fitness_pending_count: missing.length,
+      fitness_submitted_count: members.length - missing.length,
+      member_count: members.length,
+    }),
+  });
+}
+
+/**
  * 「发起投票」：不下发 route_and_run 深规划，只返回 SilentVoteCreateDialog 的 client_navigation CTA。
  */
 export function tryBuildSilentVoteCreateFastPath(
@@ -1433,7 +1812,7 @@ export function tryBuildSilentVoteCreateFastPath(
     return null;
   }
   const latencyMs = Date.now() - startTime;
-  return {
+  const response = {
     request_id: request.request_id,
     route: {
       route: 'SYSTEM1_API',
@@ -1451,7 +1830,7 @@ export function tryBuildSilentVoteCreateFastPath(
     result: {
       status: 'OK',
       answer_text:
-        '可以发起团队匿名投票。请点击下方「发起投票」打开创建面板（选项与截止时间由你确认后提交）。',
+        '可以发起团队匿名投票。请点击下方「发起投票」打开创建面板（选项与截止时间由你确认后提交）。若未看到按钮，请到本行程「成员 / 团队协作」→ Silent Vote 手动发起。',
       payload: {
         trip_id: tripId,
         ui_surface: 'consultation',
@@ -1493,6 +1872,13 @@ export function tryBuildSilentVoteCreateFastPath(
       orchestration_mode_final: 'SILENT_VOTE_CREATE_FAST_PATH',
     },
   } as unknown as RouteAndRunResponseDto;
+
+  return attachConversationTurnToRouteAndRunResponse(response, {
+    context: buildTripConversationContextSnapshot({
+      trip_id: tripId,
+      today_ymd: new Date().toISOString().slice(0, 10),
+    }),
+  });
 }
 
 async function tryBuildActiveTripAnalysisFastPath(

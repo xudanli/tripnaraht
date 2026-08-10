@@ -15,12 +15,21 @@ export const SKILL_NAME_TO_AGENTIC_MCP_TOOLS: Record<string, readonly string[]> 
   'readiness.assess': ['weather.getCurrentWeather', 'weather.getWeatherByDatetimeRange'],
   'readiness.generateChecklist': ['exa.webSearch', 'weather.getCurrentWeather'],
   'readiness.summarizeRisks': ['exa.webSearch', 'exa.webSearchAdvanced'],
+  'experience.communityEvidence': [
+    'xiaohongshu.search_feeds',
+    'xiaohongshu.get_feed_detail',
+    'xiaohongshu.user_profile',
+  ],
 };
 
 /** 非标准 skill id → MCP service 前缀（展开为白名单内所有 `prefix.*` 工具） */
 export const SKILL_ALIAS_TO_AGENTIC_MCP_SERVICE: Record<string, string> = {
   weather_service: 'weather',
   exa_search: 'exa',
+  xhs_search: 'xiaohongshu',
+  xiaohongshu_search: 'xiaohongshu',
+  fliggy_search: 'fliggy',
+  flyai_search: 'fliggy',
 };
 
 /**
@@ -105,10 +114,16 @@ export const PHASE_AGENTIC_MCP_CAP: Record<string, readonly string[]> = {
     'weather.getWeatherByDatetimeRange',
     'exa.webSearch',
     'exa.webSearchAdvanced',
+    'xiaohongshu.search_feeds',
+    'xiaohongshu.get_feed_detail',
     'hotel.search',
     'hotel.getDetails',
     'rail.searchRoutes',
     'rail.getSchedule',
+    'fliggy.search_hotel',
+    'fliggy.search_poi',
+    'fliggy.search_flight',
+    'fliggy.keyword_search',
   ],
   adjustment: [
     'weather.getCurrentWeather',
@@ -118,6 +133,10 @@ export const PHASE_AGENTIC_MCP_CAP: Record<string, readonly string[]> = {
     'hotel.search',
     'hotel.getDetails',
     'exa.webSearch',
+    'fliggy.search_hotel',
+    'fliggy.search_poi',
+    'fliggy.search_flight',
+    'fliggy.keyword_search',
   ],
   repair: [
     'weather.getCurrentWeather',
@@ -131,8 +150,18 @@ export const PHASE_AGENTIC_MCP_CAP: Record<string, readonly string[]> = {
     'exa.webSearch',
     'exa.webSearchAdvanced',
     'exa.deepSearch',
+    'xiaohongshu.search_feeds',
+    'xiaohongshu.get_feed_detail',
+    'xiaohongshu.user_profile',
+    'xiaohongshu.list_feeds',
   ],
-  countrypack: ['exa.webSearch', 'exa.webSearchAdvanced', 'exa.deepSearch'],
+  countrypack: [
+    'exa.webSearch',
+    'exa.webSearchAdvanced',
+    'exa.deepSearch',
+    'xiaohongshu.search_feeds',
+    'xiaohongshu.get_feed_detail',
+  ],
 };
 
 export interface AgenticMcpEmergencyConstraints {

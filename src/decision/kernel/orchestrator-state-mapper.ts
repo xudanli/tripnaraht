@@ -111,6 +111,8 @@ export function orchestratorStateToDecisionStatePatch(
     patch.environmentState = extractEnvironmentFromResearchData(os.research_data, os.trip_plan_request);
   }
 
+  const tripMetadataFromOs =
+    (os.metadata as { trip_metadata?: Record<string, unknown> } | undefined)?.trip_metadata;
   patch.systemState = {
     requestId: os.request_id,
     currentPhase: os.current_step,
@@ -125,6 +127,19 @@ export function orchestratorStateToDecisionStatePatch(
       : os.gate_result?.persona_closure_audit
         ? { personaClosureAudit: os.gate_result.persona_closure_audit }
         : {}),
+    ...(tripMetadataFromOs && typeof tripMetadataFromOs === 'object'
+      ? { tripMetadata: tripMetadataFromOs }
+      : {}),
+    ...(() => {
+      const hints = (os.metadata as { travelMemoryDecisionHints?: unknown } | undefined)
+        ?.travelMemoryDecisionHints;
+      return Array.isArray(hints) && hints.length > 0
+        ? {
+            travelMemoryDecisionHints:
+              hints as import('../../travel-memory/context-assembly/selective-consume.util').TravelMemoryDecisionHintV1[],
+          }
+        : {};
+    })(),
   };
 
   const metaInput: DecisionMetaInput = {
@@ -177,6 +192,9 @@ export function buildPatchFromDSOPrimary(
   const earlyAck = Boolean(
     dso.systemState?.earlyWarningAcknowledged || (os.metadata as any)?.early_warning_acknowledged,
   );
+  const tripMetadataPrimary =
+    (os.metadata as { trip_metadata?: Record<string, unknown> } | undefined)?.trip_metadata ??
+    dso.systemState?.tripMetadata;
   patch.systemState = {
     requestId: patch.requestId ?? os.request_id ?? '',
     currentPhase: os.current_step,
@@ -195,6 +213,24 @@ export function buildPatchFromDSOPrimary(
         : os.gate_result?.persona_closure_audit
           ? { personaClosureAudit: os.gate_result.persona_closure_audit }
           : {}),
+    ...(tripMetadataPrimary && typeof tripMetadataPrimary === 'object'
+      ? { tripMetadata: tripMetadataPrimary }
+      : {}),
+    ...(() => {
+      if (dso.systemState?.travelMemoryDecisionHints?.length) {
+        return {
+          travelMemoryDecisionHints: dso.systemState.travelMemoryDecisionHints,
+        };
+      }
+      const hints = (os.metadata as { travelMemoryDecisionHints?: unknown } | undefined)
+        ?.travelMemoryDecisionHints;
+      return Array.isArray(hints) && hints.length > 0
+        ? {
+            travelMemoryDecisionHints:
+              hints as import('../../travel-memory/context-assembly/selective-consume.util').TravelMemoryDecisionHintV1[],
+          }
+        : {};
+    })(),
   };
 
   patch.decisionMeta = dso.decisionMeta ?? fromO.decisionMeta;

@@ -1,22 +1,16 @@
 /**
- * ClaudeOrchestratorService — executeGateEvalStep（降级路径）回归
+ * executeGateEvalStep（降级路径）回归 — 经 gate-eval-step.runner。
  * 覆盖准备度导致的 BLOCK / NEED_USER_CONFIRM（与 GateEvalExecutorService 行为对齐）
  */
 
-import { Test, TestingModule } from '@nestjs/testing';
-import { ClaudeOrchestratorService } from './claude-orchestrator.service';
-import { LlmService } from '../../llm/services/llm.service';
+import { executeGateEvalStep } from '../orchestration/graph/nodes/gate-eval-step.runner';
+import type { GateEvalStepHost } from '../orchestration/graph/nodes/gate-eval-step.host';
 import { LlmProvider } from '../../llm/dto/llm-request.dto';
-import { ReadinessService } from '../../trips/readiness/services/readiness.service';
-import { UserDecisionService } from '../../trips/readiness/services/user-decision.service';
-import { FailureRiskPredictionService } from '../../skills/world/services/failure-risk-prediction.service';
 import { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
 import { AgentContext } from '../interfaces/claude-orchestration.interface';
 import { OrchestratorState, TripPlanRequest } from '../interfaces/trip-plan.interface';
-import { PrismaService } from '../../prisma/prisma.service';
-import { RagRealityPolicyGateService } from '../../rag/services/rag-reality-policy-gate.service';
 
-describe('ClaudeOrchestratorService — executeGateEvalStep (readiness)', () => {
+describe('executeGateEvalStep (readiness) via gate-eval-step.runner', () => {
   const baseTrip: TripPlanRequest = {
     request_id: 'orch-gate-1',
     origin: 'Tokyo',
@@ -59,37 +53,23 @@ describe('ClaudeOrchestratorService — executeGateEvalStep (readiness)', () => 
     };
   });
 
-  async function createOrchestrator(opts: { userDecision?: boolean }) {
-    const providers: any[] = [
-      ClaudeOrchestratorService,
-      {
-        provide: LlmService,
-        useValue: {
-          getDefaultProvider: jest.fn().mockReturnValue(LlmProvider.ANTHROPIC),
-          callLlmWithSchema: jest.fn(),
-        },
-      },
-      { provide: PrismaService, useValue: {} },
-      {
-        provide: RagRealityPolicyGateService,
-        useValue: {
-          resolve: jest.fn().mockReturnValue({ scope: 'full', policy: {} }),
-          mergeChunkRetrievalParams: jest.fn((p: unknown) => p),
-        },
-      },
-      { provide: ReadinessService, useValue: readinessMock },
-      /** 守卫为真时才执行失败风险预测分支（服务本体在此步骤内未被调用） */
-      { provide: FailureRiskPredictionService, useValue: {} },
-    ];
-    if (opts.userDecision) {
-      providers.push({ provide: UserDecisionService, useValue: {} });
-    }
-    const module: TestingModule = await Test.createTestingModule({ providers }).compile();
-    return module.get<ClaudeOrchestratorService>(ClaudeOrchestratorService);
+  function makeHost(opts: { userDecision?: boolean } = {}): GateEvalStepHost {
+    return {
+      logger: { log: jest.fn(), warn: jest.fn(), debug: jest.fn(), error: jest.fn() },
+      readinessService: readinessMock,
+      userDecisionService: opts.userDecision ? {} : undefined,
+      failureRiskPredictionService: {},
+      extractTripContextFromState: jest.fn(() => ({
+        traveler: {},
+        trip: {},
+        itinerary: { countries: ['JP'] },
+      })),
+      generateDecisionStepForStep: jest.fn(async () => undefined),
+    };
   }
 
   it('准备度仅有硬阻断且无 UserDecisionService 时应 BLOCK，并写入 gate_result.violations', async () => {
-    const orchestrator = await createOrchestrator({ userDecision: false });
+    const host = makeHost({ userDecision: false });
     readinessMock.checkFromDestination.mockResolvedValue({
       findings: [
         {
@@ -100,7 +80,8 @@ describe('ClaudeOrchestratorService — executeGateEvalStep (readiness)', () => 
     });
 
     const state = minimalState(baseTrip);
-    await (orchestrator as any).executeGateEvalStep(
+    await executeGateEvalStep(
+      host,
       minimalRequest(),
       minimalContext(),
       state,
@@ -116,7 +97,7 @@ describe('ClaudeOrchestratorService — executeGateEvalStep (readiness)', () => 
   });
 
   it('准备度含 userDecision.questions 且注入 UserDecisionService 时应 NEED_USER_CONFIRM', async () => {
-    const orchestrator = await createOrchestrator({ userDecision: true });
+    const host = makeHost({ userDecision: true });
     readinessMock.checkFromDestination.mockResolvedValue({
       findings: [
         {
@@ -135,7 +116,8 @@ describe('ClaudeOrchestratorService — executeGateEvalStep (readiness)', () => 
     });
 
     const state = minimalState(baseTrip);
-    await (orchestrator as any).executeGateEvalStep(
+    await executeGateEvalStep(
+      host,
       minimalRequest(),
       minimalContext(),
       state,
@@ -152,7 +134,7 @@ describe('ClaudeOrchestratorService — executeGateEvalStep (readiness)', () => 
   });
 
   it('准备度 blocker 含 userDecision.questions 为空数组时应 BLOCK（不升级为 NEED_USER_CONFIRM）', async () => {
-    const orchestrator = await createOrchestrator({ userDecision: true });
+    const host = makeHost({ userDecision: true });
     readinessMock.checkFromDestination.mockResolvedValue({
       findings: [
         {
@@ -169,7 +151,8 @@ describe('ClaudeOrchestratorService — executeGateEvalStep (readiness)', () => 
     });
 
     const state = minimalState(baseTrip);
-    await (orchestrator as any).executeGateEvalStep(
+    await executeGateEvalStep(
+      host,
       minimalRequest(),
       minimalContext(),
       state,
@@ -181,7 +164,7 @@ describe('ClaudeOrchestratorService — executeGateEvalStep (readiness)', () => 
   });
 
   it('userDecision 仅 question.prompt、无 text 时仍 NEED_USER_CONFIRM 且透传 prompt', async () => {
-    const orchestrator = await createOrchestrator({ userDecision: true });
+    const host = makeHost({ userDecision: true });
     readinessMock.checkFromDestination.mockResolvedValue({
       findings: [
         {
@@ -200,7 +183,8 @@ describe('ClaudeOrchestratorService — executeGateEvalStep (readiness)', () => 
     });
 
     const state = minimalState(baseTrip);
-    await (orchestrator as any).executeGateEvalStep(
+    await executeGateEvalStep(
+      host,
       minimalRequest(),
       minimalContext(),
       state,
@@ -214,7 +198,7 @@ describe('ClaudeOrchestratorService — executeGateEvalStep (readiness)', () => 
   });
 
   it('失败风险预测 HIGH 且无用户决策问题时应 BLOCK（需 route_direction_id）', async () => {
-    const orchestrator = await createOrchestrator({ userDecision: false });
+    const host = makeHost({ userDecision: false });
     readinessMock.checkFromDestination.mockResolvedValue({ findings: [] });
 
     const trip = { ...baseTrip, request_id: 'orch-gate-risk' };
@@ -232,7 +216,8 @@ describe('ClaudeOrchestratorService — executeGateEvalStep (readiness)', () => 
       route_direction_id: 'rd-1',
     } as RouteAndRunRequestDto;
 
-    await (orchestrator as any).executeGateEvalStep(
+    await executeGateEvalStep(
+      host,
       req,
       { requestId: trip.request_id, userId: 'u1' },
       state,

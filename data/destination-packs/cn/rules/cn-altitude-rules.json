@@ -1,0 +1,43 @@
+{
+  "schemaId": "tripnara.destination.rules@v1",
+  "rules": [
+    {
+      "ruleId": "CN_ALTITUDE_ACCLIMATIZE_WARN",
+      "semanticKey": "ALTITUDE_ACCLIMATIZATION_REQUIRED",
+      "appliesWhen": { "country": "CN" },
+      "conditions": [
+        {
+          "field": "altitude.meters",
+          "operator": "GTE",
+          "value": 3000
+        }
+      ],
+      "result": {
+        "verdict": "WARNING",
+        "reasonCode": "ALTITUDE_ACCLIMATIZATION_REQUIRED",
+        "constraintCode": "ALTITUDE_GATE",
+        "overridable": true,
+        "messageZh": "过夜或途经海拔≥3000m：禁止无适应安排下连续急升；川西前段勿一日冲高原。"
+      }
+    },
+    {
+      "ruleId": "CN_ALTITUDE_EVIDENCE_MISSING_WARN",
+      "semanticKey": "ALTITUDE_ACCLIMATIZATION_REQUIRED",
+      "appliesWhen": { "country": "CN", "regions": ["sichuan", "xizang"] },
+      "conditions": [
+        {
+          "field": "altitude.evidence",
+          "operator": "EQ",
+          "value": "MISSING"
+        }
+      ],
+      "result": {
+        "verdict": "WARNING",
+        "reasonCode": "ALTITUDE_EVIDENCE_MISSING",
+        "constraintCode": "ALTITUDE_GATE",
+        "overridable": true,
+        "messageZh": "高原区域缺少 DEM/海拔证据，不得静默当作平原；须提示适应与缓升。"
+      }
+    }
+  ]
+}

@@ -19,6 +19,7 @@ import {
 import { QueryRewriteMetricsService } from '../../agent/services/query-rewrite-metrics.service';
 import { bindQueryRewriteDownstreamSafe } from '../../agent/utils/query-rewrite-metrics-bind.util';
 import { inferEntityResolutionCountryCode } from '../../canonical-poi-resolution/adapters/cpre-entity-resolution.bridge';
+import { extractPoiSearchEvidenceFields } from './map-place-to-poi-search-record.util';
 
 export interface PoiSearchInput extends SkillInput {
   query: string;
@@ -52,6 +53,13 @@ export interface PoiSearchOutput extends SkillOutput {
     category?: string;
     address?: string;
     evidence_id: string;
+    /** Place.description / LLM enrich 文案 */
+    description?: string;
+    visitTipCN?: string;
+    tags?: string[];
+    duration_minutes?: number;
+    estimated_duration_min?: number;
+    level?: string;
   }>;
 }
 
@@ -223,6 +231,11 @@ export class PoiSearchSkill implements Skill<PoiSearchInput, PoiSearchOutput> {
               typeof r.metadata?.canonical_poi_id === 'string'
                 ? r.metadata.canonical_poi_id
                 : undefined;
+            const evidence = extractPoiSearchEvidenceFields({
+              description: (r as { description?: string | null }).description,
+              metadata: r.metadata,
+              category: r.category,
+            });
             return {
               poi_id: canonicalPoiId ?? String(r.id),
               name: r.nameCN || r.nameEN || r.name,
@@ -235,6 +248,7 @@ export class PoiSearchSkill implements Skill<PoiSearchInput, PoiSearchOutput> {
                 r.source === 'cpre' && canonicalPoiId
                   ? `cpre_${canonicalPoiId}_${Date.now()}`
                   : `poi_${r.id}_${Date.now()}`,
+              ...evidence,
             };
           });
       } catch (error: any) {
@@ -253,17 +267,25 @@ export class PoiSearchSkill implements Skill<PoiSearchInput, PoiSearchOutput> {
           limit,
         );
 
-        pois = searchResults.map((place: any, index: number) => ({
-          poi_id: String(place.id || place.place_id || `poi_${index}`),
-          name: place.name || place.nameCN || place.nameEN || '未知地点',
-          nameCN: place.nameCN ?? undefined,
-          nameEN: place.nameEN ?? undefined,
-          coordinates:
-            place.geo || (place.lat && place.lng ? { lat: place.lat, lng: place.lng } : undefined),
-          category: place.category ?? undefined,
-          address: place.address ?? undefined,
-          evidence_id: `poi_${place.id || place.place_id || index}_${Date.now()}`,
-        }));
+        pois = searchResults.map((place: any, index: number) => {
+          const evidence = extractPoiSearchEvidenceFields({
+            description: place.description,
+            metadata: place.metadata,
+            category: place.category,
+          });
+          return {
+            poi_id: String(place.id || place.place_id || `poi_${index}`),
+            name: place.name || place.nameCN || place.nameEN || '未知地点',
+            nameCN: place.nameCN ?? undefined,
+            nameEN: place.nameEN ?? undefined,
+            coordinates:
+              place.geo || (place.lat && place.lng ? { lat: place.lat, lng: place.lng } : undefined),
+            category: place.category ?? undefined,
+            address: place.address ?? undefined,
+            evidence_id: `poi_${place.id || place.place_id || index}_${Date.now()}`,
+            ...evidence,
+          };
+        });
       } catch (error: any) {
         this.logger.error(`PlacesService 搜索失败: ${error?.message}`);
       }

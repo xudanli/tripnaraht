@@ -10,6 +10,7 @@ import {
 } from './agentic-tool-side-effect.util';
 import type { PartialMutationEnvelope } from './canonical-mutation-commit-guard.util';
 import { validateMutationAuthority } from './canonical-mutation-commit-guard.util';
+import { agenticMutationMissingDecisionId } from './legacy-runtime-write-guard.util';
 import type { MutationDenialReasonCode } from './mutation-authority-envelope-v1.types';
 
 export type AgenticToolMutationGateInput = {
@@ -101,7 +102,7 @@ export function evaluateAgenticToolMutationGate(
     };
   }
 
-  // TRIP_MUTATION — must pass full envelope validation
+  // TRIP_MUTATION — Authority Consistency: Decision ID required before envelope deep-check
   const envelope: PartialMutationEnvelope = input.mutationAuthorityEnvelope ?? {
     tripId: tripId ?? '',
     decisionId: '',
@@ -118,6 +119,30 @@ export function evaluateAgenticToolMutationGate(
       orchestrationMode: 'Agentic',
     },
   };
+
+  if (
+    agenticMutationMissingDecisionId({
+      mutatesPlan: true,
+      decisionId: envelope.decisionId,
+    })
+  ) {
+    if (!isAgenticMutationWriteGuardEnforce()) {
+      return { allowed: true, sideEffect, reasonCodes: [] };
+    }
+    const reasonCodes: MutationDenialReasonCode[] = [
+      'MUTATION_DENIED_DECISION_AUTHORITY_MISSING',
+    ];
+    return {
+      allowed: false,
+      sideEffect,
+      reasonCodes,
+      holdEnvelope: buildMutationBlockedEnvelope(
+        input.mcpToolName,
+        sideEffect,
+        reasonCodes,
+      ),
+    };
+  }
 
   const validation = validateMutationAuthority(envelope);
   if (validation.allowed && !isAgenticMutationWriteGuardEnforce()) {

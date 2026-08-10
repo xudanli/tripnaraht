@@ -123,6 +123,33 @@ describe('async-resume-authority', () => {
     expect(guardPayload?.statusV2?.decision?.status).toBe('CONFLICTED');
   });
 
+  it('ADVICE_ONLY itinerary_adjust draft does not append authority failure to answer_text', () => {
+    const response: RouteAndRunResponseDto = {
+      ...asyncResponseWithTimeline(),
+      result: {
+        ...asyncResponseWithTimeline().result,
+        answer_text: '按您的改排要求，只调整了第 6 天。',
+        payload: {
+          ...asyncResponseWithTimeline().result.payload,
+          itinerary_adjust_result: {
+            execution_mode: 'ADVICE_ONLY',
+            applied: false,
+            target_date_iso: '2026-08-20',
+          },
+        },
+      },
+    };
+    const guarded = applyAsyncMutationCommitGuard({
+      request: baseRequest(),
+      response,
+      authoritySnapshot: null,
+      currentTripVersion: undefined,
+      stage: 'commit',
+    });
+    expect(guarded.result.answer_text).toBe('按您的改排要求，只调整了第 6 天。');
+    expect((guarded.result.payload as any)?.canonical_mutation_guard).toBeUndefined();
+  });
+
   it('commit allows when version and evidence still valid', () => {
     const snapshot = buildDurableAuthoritySnapshotV1({
       request: baseRequest(),

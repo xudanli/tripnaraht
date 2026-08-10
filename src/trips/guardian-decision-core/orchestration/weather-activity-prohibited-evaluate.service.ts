@@ -27,6 +27,13 @@ import { assertGuardianPayloadHasNoDecisionFields } from '../policy/write-permis
 import type { Rfc001ConstraintAssertion } from '../contracts/guardian-outputs.types';
 import { buildMinimalEvaluateWorld } from './minimal-evaluate-world.util';
 import { resolveTripDestinationCountry } from '../../../decision-runtime/packs/loader/country-pack-registry.util';
+import { buildWeatherActivityDecisionScope } from '../../../decision-runtime/builders/build-weather-activity-decision-scope';
+import { evaluateDecisionScopeBoundRun } from '../../../decision-runtime/verification/evaluate-decision-scope.util';
+import {
+  buildWeatherOutdoorStormScopeSignals,
+  mergeAuthorityDecisionScopeIntoTripMetadata,
+} from './authority-decision-scope-signals.util';
+import { toInputJsonValue } from '../../budget-os/utils/prisma-json.util';
 
 export interface WeatherActivityProhibitedEvaluateInput {
   tripId: string;
@@ -189,21 +196,88 @@ export class WeatherActivityProhibitedEvaluateService {
       );
     }
 
+    const decisionScope = buildWeatherActivityDecisionScope({
+      snapshotId: problem.worldStateSnapshotId,
+      tripId,
+      affectedPlanItemIds: impact.affectedPlanItemIds,
+      affectedDayIndex: impact.dayIndex,
+    });
+
+    // Soft verify indoor REPLACE_ITEM stays inside scope (fail → log; do not abort evaluate).
+    for (const itemId of impact.affectedPlanItemIds) {
+      const scopeCheck = evaluateDecisionScopeBoundRun({
+        tripId,
+        scope: decisionScope,
+        consumers: [
+          { name: 'decision', snapshotId: decisionScope.snapshotId },
+          { name: 'solver', snapshotId: problem.worldStateSnapshotId },
+          { name: 'verification', snapshotId: decisionScope.snapshotId },
+        ],
+        candidate: {
+          actionType: 'REPLACE_ITEM',
+          targetObjectIds: [itemId],
+        },
+      });
+      if (!scopeCheck.ok) {
+        this.logger.warn(
+          `weather DecisionScope mismatch trip=${tripId} reasons=${scopeCheck.reasons.join(';')}`,
+        );
+      }
+    }
+
     workspace = await this.workspaceService.save(tripId, {
       ...workspace,
       constraintAssertions,
       loadAssessments,
       repairCandidates,
+      decisionScope,
       revision: workspace.revision + 1,
       status: 'COLLECTING',
     });
 
     workspace = await this.workspaceService.markReady(tripId, workspace.workspaceId);
 
+    await this.stampAuthorityDecisionScopeSignals(tripId, {
+      decisionScope,
+      worldStateSnapshotId: problem.worldStateSnapshotId,
+      affectedPlanItemIds: impact.affectedPlanItemIds,
+      weatherAffectedDayIndex: impact.dayIndex,
+      problemId: problem.problemId,
+      workspaceId: workspace.workspaceId,
+    });
+
     this.logger.debug(
       `weather evaluate trip=${tripId} workspace=${workspace.workspaceId} assertions=${constraintAssertions.length}`,
     );
 
     return workspace;
+  }
+
+  /** Persist scope binding for ConstraintEngine ON_FOR_SELECTED / isFeasible reuse. */
+  private async stampAuthorityDecisionScopeSignals(
+    tripId: string,
+    input: {
+      decisionScope: import('../../../decision-runtime/contracts/decision-scope.types').DecisionScope;
+      worldStateSnapshotId: string;
+      affectedPlanItemIds: string[];
+      weatherAffectedDayIndex?: number;
+      problemId: string;
+      workspaceId: string;
+    },
+  ): Promise<void> {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { metadata: true },
+    });
+    const prev =
+      trip?.metadata && typeof trip.metadata === 'object'
+        ? (trip.metadata as Record<string, unknown>)
+        : {};
+    const signals = buildWeatherOutdoorStormScopeSignals(input);
+    const metadata = mergeAuthorityDecisionScopeIntoTripMetadata(prev, signals);
+    await this.prisma.trip.update({
+      where: { id: tripId },
+      data: { metadata: toInputJsonValue(metadata) },
+    });
   }
 }

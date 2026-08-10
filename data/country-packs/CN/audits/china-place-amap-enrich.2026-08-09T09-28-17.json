@@ -1,0 +1,2004 @@
+{
+  "metadata": {
+    "mode": "missing-amap",
+    "dryRun": false,
+    "candidates": 200,
+    "ok": 198,
+    "fail": 2,
+    "sampledAt": "2026-08-09T09:28:17.077Z"
+  },
+  "results": [
+    {
+      "id": 4802,
+      "nameCN": "莲花山景区",
+      "ok": false,
+      "error": "amap_miss"
+    },
+    {
+      "id": 7019,
+      "nameCN": "玛纳斯国家湿地公园雁飞台景区",
+      "ok": false,
+      "error": "amap_miss"
+    },
+    {
+      "id": 7283,
+      "nameCN": "益阳奥林匹克公园",
+      "ok": true,
+      "amapId": "B02E100JQJ",
+      "amapName": "益阳奥林匹克公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "康富南路30号"
+    },
+    {
+      "id": 7284,
+      "nameCN": "湘潭彭德怀纪念馆",
+      "ok": true,
+      "amapId": "B02DC0183S",
+      "amapName": "彭德怀纪念馆",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "乌石镇乌石村"
+    },
+    {
+      "id": 7285,
+      "nameCN": "郴州市汝城福泉山庄",
+      "ok": true,
+      "amapId": "B02DF00W0O",
+      "amapName": "汝城温泉福泉汤谷",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "热水镇"
+    },
+    {
+      "id": 7286,
+      "nameCN": "长沙市大围山国家森林公园",
+      "ok": true,
+      "amapId": "B02DB0698W",
+      "amapName": "大围山国家森林公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "大围山镇"
+    },
+    {
+      "id": 7287,
+      "nameCN": "万福温泉国际旅游度假区",
+      "ok": true,
+      "amapId": "B02E8003H6",
+      "amapName": "万福温泉",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "长张高速公路慈利东互通处"
+    },
+    {
+      "id": 7288,
+      "nameCN": "郴州市莽山旅游区",
+      "ok": true,
+      "amapId": "B0L3M1PMFV",
+      "amapName": "莽山旅游区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "郴州市"
+    },
+    {
+      "id": 7289,
+      "nameCN": "永州市九嶷山舜帝陵景区",
+      "ok": true,
+      "amapId": "B02EA002EY",
+      "amapName": "舜帝陵景点",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "九嶷山瑶族乡"
+    },
+    {
+      "id": 7290,
+      "nameCN": "张家界市龙王洞旅游区",
+      "ok": true,
+      "amapId": "B02E800CM5",
+      "amapName": "龙王洞",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "518省道"
+    },
+    {
+      "id": 7291,
+      "nameCN": "株洲市茶陵云阳山景区",
+      "ok": true,
+      "amapId": "B02DD0PX3M",
+      "amapName": "云阳山景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "云阳街道办事处滨江社区"
+    },
+    {
+      "id": 7292,
+      "nameCN": "永州市祁阳浯溪碑林景区",
+      "ok": true,
+      "amapId": "B0FFGG0UZ4",
+      "amapName": "浯溪碑林风景名胜区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "浯溪街道浯溪街道浯溪南路108号"
+    },
+    {
+      "id": 7293,
+      "nameCN": "怀化市中国人民抗日战争胜利受降纪念馆",
+      "ok": true,
+      "amapId": "B02E90PPBD",
+      "amapName": "中国人民抗日战争胜利受降纪念馆",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "七里桥320国道"
+    },
+    {
+      "id": 7294,
+      "nameCN": "常德市柳叶湖旅游度假区",
+      "ok": true,
+      "amapId": "B02E001Y9N",
+      "amapName": "湖南常德柳叶湖旅游度假区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "柳叶大道1号"
+    },
+    {
+      "id": 7295,
+      "nameCN": "郴州市万华岩旅游区",
+      "ok": true,
+      "amapId": "B02DF009VQ",
+      "amapName": "万华岩风景名胜区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "万华岩镇坦山村"
+    },
+    {
+      "id": 7296,
+      "nameCN": "娄底市梅山龙宫景区",
+      "ok": true,
+      "amapId": "B02E200MEW",
+      "amapName": "梅山龙宫",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "油溪乡高桥村"
+    },
+    {
+      "id": 7297,
+      "nameCN": "娄底市双峰曾国藩故居旅游区",
+      "ok": true,
+      "amapId": "B02E200MF1",
+      "amapName": "曾国藩故居",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "荷叶镇富托村"
+    },
+    {
+      "id": 7305,
+      "nameCN": "郴州市龙女景区",
+      "ok": true,
+      "amapId": "B0FFG4F63U",
+      "amapName": "郴州市龙女景区停车场",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "市郊乡铜坑湖村温泉路"
+    },
+    {
+      "id": 7308,
+      "nameCN": "长沙生态动物园",
+      "ok": true,
+      "amapId": "B02DB0TUSP",
+      "amapName": "长沙生态动物园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "芙蓉南路四段729号"
+    },
+    {
+      "id": 7309,
+      "nameCN": "湖南省森林植物园",
+      "ok": true,
+      "amapId": "B0FFK80Y09",
+      "amapName": "湖南省森林植物园-侗寨鼓楼",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "植物园路111号湖南省植物园内(西侧)"
+    },
+    {
+      "id": 7310,
+      "nameCN": "石燕湖生态旅游景区",
+      "ok": true,
+      "amapId": "B02DB06997",
+      "amapName": "长沙石燕湖生态旅游景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "跳马镇"
+    },
+    {
+      "id": 7311,
+      "nameCN": "长沙市宁乡紫龙湾旅游区",
+      "ok": true,
+      "amapId": "B0FFG1ABFK",
+      "amapName": "紫龙湾温泉度假区(暂停开放)",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "灰汤镇汤泉社区将军路2号(原宁南村)"
+    },
+    {
+      "id": 7312,
+      "nameCN": "湘潭市湘乡东山书院旅游区",
+      "ok": true,
+      "amapId": "B02DC01871",
+      "amapName": "东山书院",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "书院路1号"
+    },
+    {
+      "id": 7313,
+      "nameCN": "怀化市通道万佛山旅游景区",
+      "ok": true,
+      "amapId": "B0FFHOPHOB",
+      "amapName": "万佛山景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "临口镇太平岩村"
+    },
+    {
+      "id": 7314,
+      "nameCN": "长沙市沩山密印景区",
+      "ok": true,
+      "amapId": "B0FFIOSQB7",
+      "amapName": "沩山密印景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "沩山风景名胜区内"
+    },
+    {
+      "id": 7315,
+      "nameCN": "岳阳市君山野生荷花世界旅游区",
+      "ok": true,
+      "amapId": "B0FFHRZOQW",
+      "amapName": "芙蓉国里君山野生荷花世界",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "306省道和君荷大道的交叉口附近"
+    },
+    {
+      "id": 7316,
+      "nameCN": "永州市双牌阳明山旅游区",
+      "ok": true,
+      "amapId": "B02EA017YD",
+      "amapName": "阳明山国家森林公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "双牌阳明山林场246乡道"
+    },
+    {
+      "id": 7318,
+      "nameCN": "娄底市紫鹊界梯田景区",
+      "ok": true,
+      "amapId": "B02E20NE8W",
+      "amapName": "紫鹊界梯田景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "水车镇"
+    },
+    {
+      "id": 7320,
+      "nameCN": "株洲市方特欢乐世界",
+      "ok": true,
+      "amapId": "B02DD0PQO0",
+      "amapName": "株洲方特欢乐世界",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "华强路1号"
+    },
+    {
+      "id": 7321,
+      "nameCN": "株洲市神农城炎帝文化主题公园",
+      "ok": true,
+      "amapId": "B0FFH2AUR5",
+      "amapName": "神农城炎帝文化主题公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "天台山路的顶端"
+    },
+    {
+      "id": 7322,
+      "nameCN": "湘西州芙蓉镇景区",
+      "ok": true,
+      "amapId": "B0FFG7P1JN",
+      "amapName": "芙蓉镇景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "芙蓉路南150米"
+    },
+    {
+      "id": 7323,
+      "nameCN": "岳阳市平江纪念馆",
+      "ok": true,
+      "amapId": "B02DA02YN9",
+      "amapName": "湘鄂赣革命根据地纪念馆",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "城关镇三犊源路63号"
+    },
+    {
+      "id": 7324,
+      "nameCN": "岳阳市张谷英旅游区",
+      "ok": true,
+      "amapId": "B02DA01BW9",
+      "amapName": "张谷英景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "张谷英镇"
+    },
+    {
+      "id": 7325,
+      "nameCN": "长沙市洋湖湿地景区",
+      "ok": true,
+      "amapId": "B02DB0W7IB",
+      "amapName": "洋湖国家湿地公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "洋湖大道680号"
+    },
+    {
+      "id": 7326,
+      "nameCN": "长沙市关山旅游区",
+      "ok": true,
+      "amapId": "B0FFGKDX2O",
+      "amapName": "关山旅游区游客服务中心",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "关山村"
+    },
+    {
+      "id": 7327,
+      "nameCN": "郴州市九龙江国家森林公园",
+      "ok": true,
+      "amapId": "B02DF01NLI",
+      "amapName": "湖南九龙江国家森林公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "三江口瑶族镇三江口街"
+    },
+    {
+      "id": 7338,
+      "nameCN": "西湖牧业景区",
+      "ok": true,
+      "amapId": "B0J04HNPR2",
+      "amapName": "西湖牧业景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "西洲乡西湖管理区西洲乡黄泥湖村游客接待中心"
+    },
+    {
+      "id": 7339,
+      "nameCN": "津市灵犀茶油庄园景区",
+      "ok": true,
+      "amapId": "B0IR9ZOI9T",
+      "amapName": "灵犀茶油庄园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "毛里湖镇花桥村毛里湖植物园"
+    },
+    {
+      "id": 7340,
+      "nameCN": "安化县青云洞·云上九歌溶洞景区",
+      "ok": true,
+      "amapId": "B02E10MJV1",
+      "amapName": "青云洞·云上九歌",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "益阳市"
+    },
+    {
+      "id": 7341,
+      "nameCN": "桃江县桃花江竹海景区",
+      "ok": true,
+      "amapId": "B0IAZO59S3",
+      "amapName": "桃花江竹海",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "桃花江镇洪山竹海"
+    },
+    {
+      "id": 7342,
+      "nameCN": "南县洞庭罗文涂鸦艺术景区",
+      "ok": true,
+      "amapId": "B0FFLH2RYF",
+      "amapName": "洞庭罗文涂鸦艺术景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "滨江路"
+    },
+    {
+      "id": 7343,
+      "nameCN": "江永县千家峒景区",
+      "ok": true,
+      "amapId": "B0FFGRN1HP",
+      "amapName": "千家峒景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "永州市"
+    },
+    {
+      "id": 7344,
+      "nameCN": "森林植物园景区",
+      "ok": true,
+      "amapId": "B0FFGO1NV1",
+      "amapName": "森林植物园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "南平东路"
+    },
+    {
+      "id": 7345,
+      "nameCN": "双牌县花千谷·月湖景区",
+      "ok": true,
+      "amapId": "B0LAHUIPKK",
+      "amapName": "花千谷·月湖景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "泷泊国际慢城花千谷售票处北侧"
+    },
+    {
+      "id": 7346,
+      "nameCN": "祁阳市唐家山景区",
+      "ok": true,
+      "amapId": "B0KU9SHF91",
+      "amapName": "唐家山景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "长塘水库"
+    },
+    {
+      "id": 7347,
+      "nameCN": "零陵区周家大院景区",
+      "ok": true,
+      "amapId": "B0FFFRUU3C",
+      "amapName": "永州周家大院",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "富家桥镇涧岩头村"
+    },
+    {
+      "id": 7348,
+      "nameCN": "安江农校杂交水稻纪念园景区",
+      "ok": true,
+      "amapId": "B0I25A96T9",
+      "amapName": "湖南省安江杂交水稻国家公园(建设中)",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "安江农校纪念园旁"
+    },
+    {
+      "id": 7349,
+      "nameCN": "芷江县唯楚酒庄观光体验园景区",
+      "ok": true,
+      "amapId": "B0FFJGVC3N",
+      "amapName": "唯楚酒庄",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "舞水路198号"
+    },
+    {
+      "id": 7350,
+      "nameCN": "涟源市博盛生态体验园景区",
+      "ok": true,
+      "amapId": "B0FFG6IM9S",
+      "amapName": "博盛生态体验园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "博盛生态体验园东门旁"
+    },
+    {
+      "id": 7352,
+      "nameCN": "花垣县古苗河百瀑大峡谷景区",
+      "ok": true,
+      "amapId": "B0FFJBNPDD",
+      "amapName": "古苗河大峡谷景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "塔里"
+    },
+    {
+      "id": 7353,
+      "nameCN": "衡阳耒阳市蔡伦纪念园景区",
+      "ok": true,
+      "amapId": "B02DE02WKC",
+      "amapName": "蔡伦纪念园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "人民路68号对面"
+    },
+    {
+      "id": 7354,
+      "nameCN": "衡阳珠晖区湘南学联纪念馆景区",
+      "ok": true,
+      "amapId": "B0I0ZAB7R5",
+      "amapName": "湘南学联纪念馆",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "江东粤汉马路1号湘南学联旧址廉政文化基地"
+    },
+    {
+      "id": 7355,
+      "nameCN": "衡阳雁峰区回雁峰旅游区",
+      "ok": true,
+      "amapId": "B02DE03GQJ",
+      "amapName": "回雁峰景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "雁峰街道雁峰路与蒸阳南路交汇处"
+    },
+    {
+      "id": 7356,
+      "nameCN": "衡阳衡南县岐山旅游区",
+      "ok": true,
+      "amapId": "B02DE02WP4",
+      "amapName": "岐山旅游区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "岐山镇"
+    },
+    {
+      "id": 7357,
+      "nameCN": "长沙县三珍虎园景区",
+      "ok": true,
+      "amapId": "B0FFG8YLJC",
+      "amapName": "三珍虎园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "金井镇脱甲村向北许家屋场金福路1号"
+    },
+    {
+      "id": 7366,
+      "nameCN": "永州金洞三公垒瀑布群景区",
+      "ok": true,
+      "amapId": "B0HRPC6043",
+      "amapName": "金洞三公垒瀑布群",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "金洞镇桐子山村"
+    },
+    {
+      "id": 7368,
+      "nameCN": "怀化沅陵县龙兴讲寺景区",
+      "ok": true,
+      "amapId": "B02E9017GI",
+      "amapName": "龙兴讲寺",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "沅陵镇施家巷10号"
+    },
+    {
+      "id": 7369,
+      "nameCN": "怀化麻阳县代远文化旅游景区",
+      "ok": true,
+      "amapId": "B0FFKLQ1BZ",
+      "amapName": "滕代远故居(代远文化旅游景区)",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "滕代远故居游客中心南侧90米"
+    },
+    {
+      "id": 7635,
+      "nameCN": "抗美援朝纪念馆",
+      "ok": true,
+      "amapId": "B019F02R34",
+      "amapName": "抗美援朝纪念馆",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "山上街7号"
+    },
+    {
+      "id": 7636,
+      "nameCN": "鸭绿江风景名胜区",
+      "ok": true,
+      "amapId": "B019F0063B",
+      "amapName": "鸭绿江风景名胜区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "滨江中路"
+    },
+    {
+      "id": 7637,
+      "nameCN": "凤城市大梨树生态农业观光旅游区",
+      "ok": true,
+      "amapId": "B0HKLSP7SO",
+      "amapName": "大梨树生态农业观光旅游区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "大梨树生态旅游区"
+    },
+    {
+      "id": 7638,
+      "nameCN": "天桥沟景区",
+      "ok": true,
+      "amapId": "B019F00SJW",
+      "amapName": "丹东天桥沟景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "天桥沟"
+    },
+    {
+      "id": 7639,
+      "nameCN": "凤城市凤凰山风景区",
+      "ok": true,
+      "amapId": "B019F00SJX",
+      "amapName": "凤凰山",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "凤山经济管理区凤凰大道与凤山路交汇处"
+    },
+    {
+      "id": 7640,
+      "nameCN": "天华山森林公园",
+      "ok": true,
+      "amapId": "B019F00SJV",
+      "amapName": "天华山森林公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "灌水镇天华村"
+    },
+    {
+      "id": 7641,
+      "nameCN": "东港市大鹿岛景区",
+      "ok": true,
+      "amapId": "B019F0159Q",
+      "amapName": "大鹿岛",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "东港市"
+    },
+    {
+      "id": 7643,
+      "nameCN": "蒲石河森林公园景区",
+      "ok": true,
+      "amapId": "B019F0P4D1",
+      "amapName": "蒲石河森林公园(暂停开放)",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "赛马镇东甸村(距凤城115公里,距本溪120公里,距丹东165公里)"
+    },
+    {
+      "id": 7644,
+      "nameCN": "锦州东方欢乐王国水世界",
+      "ok": true,
+      "amapId": "B0FFJ385KP",
+      "amapName": "东方欢乐王国水世界",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "滨海大街二段1号(笔架山景区东侧)"
+    },
+    {
+      "id": 7645,
+      "nameCN": "锦州世博园",
+      "ok": true,
+      "amapId": "B01A0149XH",
+      "amapName": "锦州世博园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "世园路1号"
+    },
+    {
+      "id": 7646,
+      "nameCN": "锦州北普陀山景区",
+      "ok": true,
+      "amapId": "B01A00HXEH",
+      "amapName": "锦州北普陀山风景名胜区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "重观路1号"
+    },
+    {
+      "id": 7647,
+      "nameCN": "锦州市博物馆",
+      "ok": true,
+      "amapId": "B01A000EYB",
+      "amapName": "锦州市博物馆",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "北三里1号"
+    },
+    {
+      "id": 7648,
+      "nameCN": "北镇大朝阳温泉山城旅游区",
+      "ok": true,
+      "amapId": "B0FFGG43T5",
+      "amapName": "大朝阳温泉度假区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "观音阁街道城西观音阁街河洼村大朝阳山城"
+    },
+    {
+      "id": 7649,
+      "nameCN": "北镇大芦花风景区",
+      "ok": true,
+      "amapId": "B01A00IIDI",
+      "amapName": "大芦花景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "鲍家乡桃园村"
+    },
+    {
+      "id": 7650,
+      "nameCN": "北镇市医巫闾山风景区",
+      "ok": true,
+      "amapId": "B0FFFDEUS2",
+      "amapName": "医巫闾山",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "北镇市"
+    },
+    {
+      "id": 7651,
+      "nameCN": "辽沈战役纪念馆",
+      "ok": true,
+      "amapId": "B01A000ON9",
+      "amapName": "辽沈战役纪念馆",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "重庆路36号"
+    },
+    {
+      "id": 7652,
+      "nameCN": "锦州市笔架山风景区",
+      "ok": true,
+      "amapId": "B0FFH0Y1D3",
+      "amapName": "锦州市笔架山风景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "渤海大街1号"
+    },
+    {
+      "id": 7653,
+      "nameCN": "锦州岩井寺风景区",
+      "ok": true,
+      "amapId": "B01A014LUT",
+      "amapName": "岩井寺风景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "209省道"
+    },
+    {
+      "id": 7654,
+      "nameCN": "锦州市辽西九华山风景区",
+      "ok": true,
+      "amapId": "B0FFH5S9F6",
+      "amapName": "九华山公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "商业街与环城路交汇处以南"
+    },
+    {
+      "id": 7655,
+      "nameCN": "东方华地城湿地温泉旅游度假区",
+      "ok": true,
+      "amapId": "B0MUDDICUB",
+      "amapName": "东方华地城湿地温泉旅游度假区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "东方华地城湿地温泉旅游度假区"
+    },
+    {
+      "id": 7656,
+      "nameCN": "北镇青岩寺风景区",
+      "ok": true,
+      "amapId": "B01A00I8R7",
+      "amapName": "青岩寺风景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "常兴店镇观军场村"
+    },
+    {
+      "id": 7657,
+      "nameCN": "义县奉国寺景区",
+      "ok": true,
+      "amapId": "B01A0006NG",
+      "amapName": "奉国寺",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "东街18号"
+    },
+    {
+      "id": 7658,
+      "nameCN": "仙人岛白沙湾黄金海岸景区",
+      "ok": true,
+      "amapId": "B01A10IHKU",
+      "amapName": "白沙湾黄金海岸",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "归州镇西"
+    },
+    {
+      "id": 7659,
+      "nameCN": "辽宁团山国家级海洋公园景区",
+      "ok": true,
+      "amapId": "B01A10HUYL",
+      "amapName": "辽宁团山国家级海洋公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "团山管理区北海村"
+    },
+    {
+      "id": 7660,
+      "nameCN": "营口虹溪谷旅游度假区",
+      "ok": true,
+      "amapId": "B0I1LBCTYH",
+      "amapName": "营口虹溪谷旅游度假区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "华庭酒店南侧150米"
+    },
+    {
+      "id": 7661,
+      "nameCN": "盖州市万福赤山旅游景区",
+      "ok": true,
+      "amapId": "B01A10HY0X",
+      "amapName": "赤山风景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "万福镇"
+    },
+    {
+      "id": 7662,
+      "nameCN": "鲅鱼圈区月亮湖公园",
+      "ok": true,
+      "amapId": "B01A10HXMU",
+      "amapName": "月亮湖公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "红海街道辽东湾大街南段"
+    },
+    {
+      "id": 7663,
+      "nameCN": "鲅鱼圈区望儿山景区",
+      "ok": true,
+      "amapId": "B01A1003UT",
+      "amapName": "望儿山",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "熊岳镇望儿山村"
+    },
+    {
+      "id": 7664,
+      "nameCN": "海棠山风景区",
+      "ok": true,
+      "amapId": "B01A204GMV",
+      "amapName": "海棠山风景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "大板镇大板村西北2公里处"
+    },
+    {
+      "id": 7665,
+      "nameCN": "瑞应寺风景区",
+      "ok": true,
+      "amapId": "B01A204GLW",
+      "amapName": "瑞应寺",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "佛寺镇佛寺村本街"
+    },
+    {
+      "id": 7666,
+      "nameCN": "宝地温泉康养旅游度假区",
+      "ok": true,
+      "amapId": "B0MUDDICUB",
+      "amapName": "东方华地城湿地温泉旅游度假区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "宝地温泉康养旅游度假区"
+    },
+    {
+      "id": 7667,
+      "nameCN": "黄家沟旅游度假区",
+      "ok": true,
+      "amapId": "B0FFIOBYDH",
+      "amapName": "黄家沟旅游度假区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "黄家沟村"
+    },
+    {
+      "id": 7668,
+      "nameCN": "万人坑死难矿工纪念馆景区",
+      "ok": true,
+      "amapId": "B0FFHS62VC",
+      "amapName": "阜新万人坑死难矿工纪念馆",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "新园街1号"
+    },
+    {
+      "id": 7669,
+      "nameCN": "德力格尔草原风景区",
+      "ok": true,
+      "amapId": "B0I0BUG2WF",
+      "amapName": "德力格尔草原风景区停车场",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "德力格尔草原风景区游客中心西侧200米"
+    },
+    {
+      "id": 7670,
+      "nameCN": "乌兰木图山风景区",
+      "ok": true,
+      "amapId": "B01A20025E",
+      "amapName": "乌兰木图山",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "宫八线"
+    },
+    {
+      "id": 7671,
+      "nameCN": "辽阳市雷锋纪念馆",
+      "ok": true,
+      "amapId": "B01A301II1",
+      "amapName": "弓长岭区雷锋纪念馆",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "安平街"
+    },
+    {
+      "id": 7672,
+      "nameCN": "佟二堡购物旅游区",
+      "ok": true,
+      "amapId": "B0K2T7W148",
+      "amapName": "佟二堡海宁皮革城购物旅游景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "佟二堡镇皮草东大街25号"
+    },
+    {
+      "id": 7673,
+      "nameCN": "辽宁汤河国际温泉旅游度假区",
+      "ok": true,
+      "amapId": "B0M67AWFC3",
+      "amapName": "辽宁汤河国际温泉旅游度假区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "双泉街与安土路交叉口东北60米"
+    },
+    {
+      "id": 7674,
+      "nameCN": "辽阳市广佑寺景区",
+      "ok": true,
+      "amapId": "B01A300205",
+      "amapName": "白塔公园-辽阳广佑寺景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "中华大街93-1号"
+    },
+    {
+      "id": 7675,
+      "nameCN": "辽阳市太子河历史文化风光带景区",
+      "ok": true,
+      "amapId": "B0G2MBTZEE",
+      "amapName": "太子河历史文化风光带",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "太子河西路与东四道街交叉口东南340米"
+    },
+    {
+      "id": 7676,
+      "nameCN": "辽阳博物馆景区",
+      "ok": true,
+      "amapId": "B01A300R7E",
+      "amapName": "辽阳博物馆",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "襄平街道文圣街道中心路2号"
+    },
+    {
+      "id": 7677,
+      "nameCN": "辽阳龙石风景旅游区",
+      "ok": true,
+      "amapId": "B01A301JNK",
+      "amapName": "辽阳龙石风景旅游区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "东环路39号"
+    },
+    {
+      "id": 7678,
+      "nameCN": "铁岭市蒸汽机车博物馆",
+      "ok": true,
+      "amapId": "B019A0SERM",
+      "amapName": "中国·铁煤蒸汽机车博物馆",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "晓明镇中共调兵山市晓明镇委员会东侧"
+    },
+    {
+      "id": 7679,
+      "nameCN": "铁岭莲花湿地景区",
+      "ok": true,
+      "amapId": "B019A05GUR",
+      "amapName": "莲花湖湿地公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "铁岭莲花湿地景区"
+    },
+    {
+      "id": 7680,
+      "nameCN": "西丰城子山风景区",
+      "ok": true,
+      "amapId": "B0K6BSDC1F",
+      "amapName": "城子山景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "城子山售票处南侧"
+    },
+    {
+      "id": 7681,
+      "nameCN": "大黑山景区",
+      "ok": true,
+      "amapId": "B019B0AOU2",
+      "amapName": "大黑山景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "凤祥路"
+    },
+    {
+      "id": 7683,
+      "nameCN": "浴龙谷温泉度假区",
+      "ok": true,
+      "amapId": "B0FFIH7W4X",
+      "amapName": "浴龙谷温泉度假区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "207省道"
+    },
+    {
+      "id": 7684,
+      "nameCN": "朝阳牛河梁国家考古遗址公园",
+      "ok": true,
+      "amapId": "B0FFKDRB3S",
+      "amapName": "牛河梁国家考古遗址公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "张福店村3-75"
+    },
+    {
+      "id": 7685,
+      "nameCN": "凤凰山景区",
+      "ok": true,
+      "amapId": "B01A502091",
+      "amapName": "朝阳凤凰山风景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "凌凤街道凤凰山"
+    },
+    {
+      "id": 7686,
+      "nameCN": "辽宁朝阳鸟化石国家地质公园景区",
+      "ok": true,
+      "amapId": "B01A505NOM",
+      "amapName": "辽宁朝阳鸟化石国家地质公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "龙鸟大街100号"
+    },
+    {
+      "id": 7687,
+      "nameCN": "朝阳化石谷景区",
+      "ok": true,
+      "amapId": "B0FFGEZPYP",
+      "amapName": "朝阳化石谷",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "传奇路1号"
+    },
+    {
+      "id": 7688,
+      "nameCN": "千佛洞风景区",
+      "ok": true,
+      "amapId": "B01A50759R",
+      "amapName": "千佛洞风景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "南双庙镇"
+    },
+    {
+      "id": 7689,
+      "nameCN": "喀左县凌河第一湾景区",
+      "ok": true,
+      "amapId": "B0FFG6QYC9",
+      "amapName": "凌河第一湾",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "水泉镇南亮子村和羊角沟乡上窝铺村交接处"
+    },
+    {
+      "id": 7690,
+      "nameCN": "盘锦辽河碑林景区",
+      "ok": true,
+      "amapId": "B01AB00BMH",
+      "amapName": "辽河碑林公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "胜利街道胜利街281号"
+    },
+    {
+      "id": 7691,
+      "nameCN": "兴隆台区广厦艺术街",
+      "ok": true,
+      "amapId": "B0FFG7JKZJ",
+      "amapName": "广厦艺术街",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "渤海街道兴隆台街和石化路交汇处"
+    },
+    {
+      "id": 7692,
+      "nameCN": "金帛滩海洋乐园",
+      "ok": true,
+      "amapId": "B0FFF37Z0E",
+      "amapName": "金帛滩海洋乐园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "辽东湾新区好望角"
+    },
+    {
+      "id": 7693,
+      "nameCN": "盘锦苇海●鼎翔生态旅游度假区",
+      "ok": true,
+      "amapId": "B01AB0HTEK",
+      "amapName": "鼎翔生态旅游区苇海蟹滩风景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "鼎翔路13号鼎翔生态旅游区"
+    },
+    {
+      "id": 7694,
+      "nameCN": "盘锦特产博物园景区",
+      "ok": true,
+      "amapId": "B0FFIANFDT",
+      "amapName": "盘锦特产博物园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "305国道"
+    },
+    {
+      "id": 7695,
+      "nameCN": "盘锦中尧七彩庄园",
+      "ok": true,
+      "amapId": "B0FFGJHO3K",
+      "amapName": "中尧七彩庄园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "大洼骨科医院西北侧240米"
+    },
+    {
+      "id": 7696,
+      "nameCN": "北旅田园·黑风关古镇景区",
+      "ok": true,
+      "amapId": "B0GKG56MD7",
+      "amapName": "黑风关古镇旅游区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "新立镇俪都二期南门西100米"
+    },
+    {
+      "id": 7697,
+      "nameCN": "龙湾海滨风景区",
+      "ok": true,
+      "amapId": "B01AD00494",
+      "amapName": "龙湾海滨风景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "海滨路南段12号(海滨南路1路终点站)"
+    },
+    {
+      "id": 7698,
+      "nameCN": "兴城市欢乐龙湾景区",
+      "ok": true,
+      "amapId": "B0I149BIUN",
+      "amapName": "欢乐龙湾",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "欢乐龙湾温泉水乐园售票处东南侧"
+    },
+    {
+      "id": 7699,
+      "nameCN": "灵山景区",
+      "ok": true,
+      "amapId": "B01FE036ZN",
+      "amapName": "灵山胜境",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "马山镇古竹路18号"
+    },
+    {
+      "id": 7700,
+      "nameCN": "银泰水星海洋乐园景区",
+      "ok": true,
+      "amapId": "B0FFFSX4QL",
+      "amapName": "银泰水星",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "滨海大道28号"
+    },
+    {
+      "id": 7701,
+      "nameCN": "九门口长城景区",
+      "ok": true,
+      "amapId": "B01AD146QR",
+      "amapName": "九门口景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "长城管理处"
+    },
+    {
+      "id": 7702,
+      "nameCN": "兴城市觉华岛旅游度假区",
+      "ok": true,
+      "amapId": "B01AD0HVZN",
+      "amapName": "觉华岛",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "菊花岛乡"
+    },
+    {
+      "id": 7703,
+      "nameCN": "龙潭大峡谷自然风景区",
+      "ok": true,
+      "amapId": "B01AD00BQT",
+      "amapName": "龙潭大峡谷自然风景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "老达杖子乡贾杖子村"
+    },
+    {
+      "id": 7704,
+      "nameCN": "兴城海滨风景区",
+      "ok": true,
+      "amapId": "B01AD0HY9C",
+      "amapName": "兴城海滨旅游景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "滨海路28号"
+    },
+    {
+      "id": 7705,
+      "nameCN": "葫芦古镇",
+      "ok": true,
+      "amapId": "B01AD0HWA3",
+      "amapName": "葫芦古镇",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "北港镇北港实验学校对面"
+    },
+    {
+      "id": 7706,
+      "nameCN": "兴城市古城景区",
+      "ok": true,
+      "amapId": "B01AD0HY3R",
+      "amapName": "兴城古城",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "古城街道"
+    },
+    {
+      "id": 7707,
+      "nameCN": "皇家海洋乐园",
+      "ok": true,
+      "amapId": "B019D0NYQU",
+      "amapName": "皇家海洋乐园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "沈抚示范区高湾经济开发区高阳路3号"
+    },
+    {
+      "id": 7708,
+      "nameCN": "丰远热高乐园景区",
+      "ok": true,
+      "amapId": "B0FFGX5ZHF",
+      "amapName": "热高乐园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "高湾经济开发区高望路1号"
+    },
+    {
+      "id": 8130,
+      "nameCN": "阳高县大泉山生态旅游区",
+      "ok": true,
+      "amapId": "B016000J9H",
+      "amapName": "大泉山",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "阳高县"
+    },
+    {
+      "id": 8131,
+      "nameCN": "应县木塔景区",
+      "ok": true,
+      "amapId": "B015D00MZ0",
+      "amapName": "应县木塔",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "应县迎宾北路"
+    },
+    {
+      "id": 8132,
+      "nameCN": "右玉县右玉生态旅游景区",
+      "ok": true,
+      "amapId": "B015D00CS9",
+      "amapName": "右玉县",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "右玉县"
+    },
+    {
+      "id": 8133,
+      "nameCN": "朔城区崇福寺景区",
+      "ok": true,
+      "amapId": "B015D007RS",
+      "amapName": "崇福寺",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "东大街94号"
+    },
+    {
+      "id": 8134,
+      "nameCN": "怀仁市金沙滩生态旅游景区",
+      "ok": true,
+      "amapId": "B015D000O8",
+      "amapName": "怀仁市金沙滩生态旅游区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "206省道宋庄村"
+    },
+    {
+      "id": 8135,
+      "nameCN": "偏关县红门口地下长城景区",
+      "ok": true,
+      "amapId": "B0J3AZNLBA",
+      "amapName": "红门口地下长城景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "水泉乡苏北线与长城1号路交叉口西北60米"
+    },
+    {
+      "id": 8136,
+      "nameCN": "繁峙县憨山文化旅游景区",
+      "ok": true,
+      "amapId": "B0HUFRXBT3",
+      "amapName": "憨山文化旅游景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "砂河镇155县道太原牙科旁"
+    },
+    {
+      "id": 8137,
+      "nameCN": "偏关县老牛湾景区",
+      "ok": true,
+      "amapId": "B0KUB7UL40",
+      "amapName": "偏关县老牛湾景区-观景台",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "黄河1号路与长城1号路交叉口西北80米"
+    },
+    {
+      "id": 8138,
+      "nameCN": "忻府区忻州古城",
+      "ok": true,
+      "amapId": "B0FFKEPDL8",
+      "amapName": "忻州古城",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "秀容街道南关大街(南城门楼)"
+    },
+    {
+      "id": 8139,
+      "nameCN": "宁武县汾河源头景区",
+      "ok": true,
+      "amapId": "B015E00KPK",
+      "amapName": "汾河源头",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "芦芽山游客中心往北300米"
+    },
+    {
+      "id": 8140,
+      "nameCN": "宁武县万年冰洞景区",
+      "ok": true,
+      "amapId": "B015E00BIA",
+      "amapName": "万年冰洞",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "涔山乡麻地沟村"
+    },
+    {
+      "id": 8141,
+      "nameCN": "宁武县芦芽山景区",
+      "ok": true,
+      "amapId": "B015E006HI",
+      "amapName": "芦芽山旅游度假区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "忻五线"
+    },
+    {
+      "id": 8142,
+      "nameCN": "原平市天涯山景区",
+      "ok": true,
+      "amapId": "B015E0N3P7",
+      "amapName": "天涯山风景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "310省道北200米"
+    },
+    {
+      "id": 8143,
+      "nameCN": "定襄县河边民俗博物馆景区",
+      "ok": true,
+      "amapId": "B015E0N24J",
+      "amapName": "忻州河边民俗博物馆",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "河边镇河一村"
+    },
+    {
+      "id": 8144,
+      "nameCN": "岢岚县宋家沟景区",
+      "ok": true,
+      "amapId": "B0H23RRMC2",
+      "amapName": "宋家沟景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "宋家沟镇"
+    },
+    {
+      "id": 8145,
+      "nameCN": "忻府区禹王洞风景区",
+      "ok": true,
+      "amapId": "B015E004RU",
+      "amapName": "禹王洞",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "西张乡霸沟"
+    },
+    {
+      "id": 8146,
+      "nameCN": "繁峙县滹源景区",
+      "ok": true,
+      "amapId": "B0FFIGGUTI",
+      "amapName": "滹源景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "繁城镇南关村"
+    },
+    {
+      "id": 8147,
+      "nameCN": "忻府区云中河景区",
+      "ok": true,
+      "amapId": "B0FFH8VCTJ",
+      "amapName": "云中河水上公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "凤栖东街"
+    },
+    {
+      "id": 8148,
+      "nameCN": "静乐县天柱山景区",
+      "ok": true,
+      "amapId": "B0HRLC1T94",
+      "amapName": "天柱山景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "天柱路1号"
+    },
+    {
+      "id": 8149,
+      "nameCN": " 临县碛口景区",
+      "ok": true,
+      "amapId": "B0166016HB",
+      "amapName": "碛口国家级风景名胜区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "碛口镇035乡道"
+    },
+    {
+      "id": 8150,
+      "nameCN": "兴县蔡家崖晋绥文化景区",
+      "ok": true,
+      "amapId": "BZCUOP001K",
+      "amapName": "蔡家崖收费站(S46静兴高速出口)",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "兴县"
+    },
+    {
+      "id": 8151,
+      "nameCN": " 临县义居寺景区",
+      "ok": true,
+      "amapId": "B016600GWX",
+      "amapName": "义居寺",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "037乡道与248省道交叉口西南500米"
+    },
+    {
+      "id": 8152,
+      "nameCN": "交城县玄中寺景区",
+      "ok": true,
+      "amapId": "B016600LKL",
+      "amapName": "玄中寺",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "石壁山中"
+    },
+    {
+      "id": 8153,
+      "nameCN": "孝义市孝河湿地公园",
+      "ok": true,
+      "amapId": "B0FFGXCHNC",
+      "amapName": "山西孝河湿地公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "高阳镇市区西部时代大道三皇庙对面"
+    },
+    {
+      "id": 8154,
+      "nameCN": "孝义市胜溪湖森林公园",
+      "ok": true,
+      "amapId": "B01660MRL6",
+      "amapName": "胜溪湖森林公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "时代大道"
+    },
+    {
+      "id": 8155,
+      "nameCN": "汾阳市汾酒文化景区",
+      "ok": true,
+      "amapId": "B0FFHUI5JR",
+      "amapName": "汾酒文化景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "杏花村"
+    },
+    {
+      "id": 8156,
+      "nameCN": "方山县北武当山风景名胜区",
+      "ok": true,
+      "amapId": "B0FFFA9WYO",
+      "amapName": "北武当山风景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "北武当镇旅游路西100米"
+    },
+    {
+      "id": 8157,
+      "nameCN": "汾阳市贾家庄文化生态旅游区",
+      "ok": true,
+      "amapId": "B0I10C4GAF",
+      "amapName": "贾家庄文化生态旅游区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "汾阳市贾家庄文化生态旅游区"
+    },
+    {
+      "id": 8158,
+      "nameCN": "孝义市三皇庙景区",
+      "ok": true,
+      "amapId": "B01660NFNV",
+      "amapName": "三皇庙",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "新义街道孝汾大道与时代大道交汇处东北角"
+    },
+    {
+      "id": 8159,
+      "nameCN": "交城县卦山景区",
+      "ok": true,
+      "amapId": "B016601579",
+      "amapName": "交城卦山景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "卦山路"
+    },
+    {
+      "id": 8160,
+      "nameCN": "孝义市金龙山文化旅游景区",
+      "ok": true,
+      "amapId": "B0FFI949AA",
+      "amapName": "金龙山风景名胜区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "高阳镇下吐京村西"
+    },
+    {
+      "id": 8161,
+      "nameCN": "兴县黑茶山四八烈士纪念地景区",
+      "ok": true,
+      "amapId": "B0L31OW2BC",
+      "amapName": "黑茶山",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "带王庙南侧200米"
+    },
+    {
+      "id": 8162,
+      "nameCN": "离石区白马仙洞景区",
+      "ok": true,
+      "amapId": "B0166007QV",
+      "amapName": "白马仙洞",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "吴城镇上王营庄村"
+    },
+    {
+      "id": 8163,
+      "nameCN": "榆次区小西沟文旅康养小镇",
+      "ok": true,
+      "amapId": "B0MRV1EI8G",
+      "amapName": "小西沟文旅康养小镇",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "晋·财神小镇"
+    },
+    {
+      "id": 8164,
+      "nameCN": "榆次区后沟古村景区",
+      "ok": true,
+      "amapId": "B01620N90Y",
+      "amapName": "后沟古村景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "东赵乡019乡道后沟村(近古村落售票处)"
+    },
+    {
+      "id": 8165,
+      "nameCN": "榆次区乌金山景区",
+      "ok": true,
+      "amapId": "B016200JPK",
+      "amapName": "乌金山国家森林公园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "河沙沟东"
+    },
+    {
+      "id": 8166,
+      "nameCN": "灵石县石膏山风景区",
+      "ok": true,
+      "amapId": "B01620N90X",
+      "amapName": "石膏山风景名胜区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "南关镇峪口村"
+    },
+    {
+      "id": 8167,
+      "nameCN": "介休市张壁古堡景区",
+      "ok": true,
+      "amapId": "B016200N0B",
+      "amapName": "张壁古堡",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "龙凤镇张壁村"
+    },
+    {
+      "id": 8168,
+      "nameCN": "榆次区九龙国际文化生态旅游区",
+      "ok": true,
+      "amapId": "B015F0IRSZ",
+      "amapName": "九龙国际文化生态旅游园区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "乌金山镇河口村"
+    },
+    {
+      "id": 8169,
+      "nameCN": "榆次区榆次老城景区",
+      "ok": true,
+      "amapId": "B016200RYG",
+      "amapName": "榆次老城",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "府兴路225号"
+    },
+    {
+      "id": 8170,
+      "nameCN": "灵石县王家大院民居艺术馆",
+      "ok": true,
+      "amapId": "B016200MX2",
+      "amapName": "山西灵石王家大院",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "静升镇静升村"
+    },
+    {
+      "id": 8171,
+      "nameCN": "平遥县镇国寺景区",
+      "ok": true,
+      "amapId": "B016200M9Q",
+      "amapName": "镇国寺",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "郝洞村"
+    },
+    {
+      "id": 8172,
+      "nameCN": "榆次区常家庄园",
+      "ok": true,
+      "amapId": "B016200BJX",
+      "amapName": "常家庄园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "914县道"
+    },
+    {
+      "id": 8173,
+      "nameCN": "平遥县双林寺景区",
+      "ok": true,
+      "amapId": "B016200M7A",
+      "amapName": "双林寺",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "双林正街28号"
+    },
+    {
+      "id": 8174,
+      "nameCN": "灵石县红崖峡谷景区",
+      "ok": true,
+      "amapId": "B01620N4M6",
+      "amapName": "红崖峡谷景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "小柏沟村东"
+    },
+    {
+      "id": 8175,
+      "nameCN": "昔阳县大寨景区",
+      "ok": true,
+      "amapId": "B0FFHFK4AM",
+      "amapName": "大寨游客中心",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "留马线与342县道交叉口东150米"
+    },
+    {
+      "id": 8176,
+      "nameCN": "左权县麻田八路军总部纪念馆景区",
+      "ok": true,
+      "amapId": "B016200QSB",
+      "amapName": "麻田八路军总部纪念馆",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "麻田镇麻田村境内"
+    },
+    {
+      "id": 8177,
+      "nameCN": "左权县太行龙泉旅游区",
+      "ok": true,
+      "amapId": "B0FFGH643B",
+      "amapName": "太行龙泉旅游区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "Z075附近"
+    },
+    {
+      "id": 8178,
+      "nameCN": "祁县昭馀古城茶商文化旅游区",
+      "ok": true,
+      "amapId": "B016200SBP",
+      "amapName": "昭馀古城",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "东大街26号"
+    },
+    {
+      "id": 8179,
+      "nameCN": "榆次区潇河莲花湾景区",
+      "ok": true,
+      "amapId": "B0GR9SPMGZ",
+      "amapName": "潇河莲花湾",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "锦东大道潇河文艺小镇"
+    },
+    {
+      "id": 8180,
+      "nameCN": "盂县藏山旅游风景区",
+      "ok": true,
+      "amapId": "B0161007NB",
+      "amapName": "藏山旅游风景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "十八公里处苌池镇藏山村东"
+    },
+    {
+      "id": 8181,
+      "nameCN": "城区阳泉记忆·1947文化园",
+      "ok": true,
+      "amapId": "B0HRVRZRBG",
+      "amapName": "阳泉记忆·1947文化园",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "南庄路118号"
+    },
+    {
+      "id": 8182,
+      "nameCN": "城区小河古村评梅景区",
+      "ok": true,
+      "amapId": "B0H3D7U29A",
+      "amapName": "小河古村评梅景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "义井街道河小线与阳铝街交叉口南60米"
+    },
+    {
+      "id": 8183,
+      "nameCN": "盂县华北奕丰生态园",
+      "ok": true,
+      "amapId": "B0I3F1ZC54",
+      "amapName": "盂县华北奕丰生态园景区游客接待中心",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "华北奕丰生态园农家乐西侧90米"
+    },
+    {
+      "id": 8184,
+      "nameCN": "郊区桃林沟景区",
+      "ok": true,
+      "amapId": "B0FFFFT72Q",
+      "amapName": "桃林沟景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "平坦镇桃林沟村"
+    },
+    {
+      "id": 8185,
+      "nameCN": "郊区翠枫山自然风景区",
+      "ok": true,
+      "amapId": "B01610085N",
+      "amapName": "翠枫山自然风景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "后峪村翠枫山"
+    },
+    {
+      "id": 8186,
+      "nameCN": "平定县娘子关景区",
+      "ok": true,
+      "amapId": "B0161005FS",
+      "amapName": "娘子关",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "娘子关镇315省道阳泉水帘洞瀑布"
+    },
+    {
+      "id": 8187,
+      "nameCN": "平定县红岩岭风景区",
+      "ok": true,
+      "amapId": "B0FFG98A4E",
+      "amapName": "红岩岭景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "岔口乡主铺掌村北沟"
+    },
+    {
+      "id": 8188,
+      "nameCN": "壶关县欢乐太行谷景区",
+      "ok": true,
+      "amapId": "B0FFGKE46J",
+      "amapName": "欢乐太行谷",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "李东线"
+    },
+    {
+      "id": 8189,
+      "nameCN": "上党区振兴小镇景区",
+      "ok": true,
+      "amapId": "B0FFIRKZ2H",
+      "amapName": "振兴小镇",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "振兴新区和谐街"
+    },
+    {
+      "id": 8190,
+      "nameCN": "黎城县黄崖洞文化旅游区",
+      "ok": true,
+      "amapId": "B0163001D9",
+      "amapName": "黄崖洞文化旅游区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "上赤峪村168号"
+    },
+    {
+      "id": 8191,
+      "nameCN": "平顺县太行水乡·赤壁悬流景区",
+      "ok": true,
+      "amapId": "B0FFL2IKJ3",
+      "amapName": "太行赤壁悬流",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "阳高乡奥治村"
+    },
+    {
+      "id": 8192,
+      "nameCN": "黎城县洗耳河景区",
+      "ok": true,
+      "amapId": "B0FFG0L3OY",
+      "amapName": "中太行洗耳河景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "西井镇洗耳河风景区"
+    },
+    {
+      "id": 8193,
+      "nameCN": "武乡县八路军太行纪念馆景区",
+      "ok": true,
+      "amapId": "B0163000HW",
+      "amapName": "八路军太行纪念馆",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "太行西街65号"
+    },
+    {
+      "id": 8194,
+      "nameCN": "武乡县太行溶洞风景区",
+      "ok": true,
+      "amapId": "B016300H0I",
+      "amapName": "太行溶洞",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "蟠龙镇石泉村太行龙洞"
+    },
+    {
+      "id": 8195,
+      "nameCN": "襄垣县仙堂山景区",
+      "ok": true,
+      "amapId": "B016300H0K",
+      "amapName": "仙堂山",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "井背村"
+    },
+    {
+      "id": 8196,
+      "nameCN": "武乡县八路军文化园景区",
+      "ok": true,
+      "amapId": "B01630M9GI",
+      "amapName": "八路军文化园(暂停开放)",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "太行西街359号"
+    },
+    {
+      "id": 8197,
+      "nameCN": "平顺县通天峡景区",
+      "ok": true,
+      "amapId": "B01630MILY",
+      "amapName": "山西通天峡景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "S76平长高速"
+    },
+    {
+      "id": 8198,
+      "nameCN": "壶关县太行山大峡谷景区",
+      "ok": true,
+      "amapId": "B0HDF7I34Q",
+      "amapName": "太行山大峡谷",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "壶关县"
+    },
+    {
+      "id": 8199,
+      "nameCN": "平顺县天脊山景区",
+      "ok": true,
+      "amapId": "B0FFJBA9VI",
+      "amapName": "天脊山风景区",
+      "hasHours": false,
+      "hasTicket": false,
+      "address": "东寺头乡羊老岩村"
+    }
+  ]
+}

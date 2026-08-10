@@ -6,6 +6,7 @@
 export * from './evidence-reference';
 export * from './constraint-evaluation';
 export * from './world-state-snapshot';
+export * from './decision-scope.types';
 export * from './objective-definition';
 export * from './optimization-problem';
 export * from './optimization-result';

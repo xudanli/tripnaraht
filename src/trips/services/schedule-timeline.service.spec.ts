@@ -131,6 +131,11 @@ describe('ScheduleTimelineService', () => {
     expect(itineraryItems.loadItemsGroupedByTripDayIds).toHaveBeenCalledTimes(1);
     expect(itineraryItems.buildTimelineDayItems).toHaveBeenCalledTimes(2);
     expect(scheduleConverter.buildScheduleFromItems).toHaveBeenCalledTimes(2);
+    expect(scheduleConverter.buildScheduleFromItems).toHaveBeenCalledWith(
+      expect.any(Array),
+      '2026-06-20',
+      'Atlantic/Reykjavik',
+    );
     expect(result.data.days).toHaveLength(2);
     expect(result.data.metricsSummary).toEqual({ totalDays: 2 });
     expect(result.data.etag).toMatch(/^[a-f0-9]{16}$/);

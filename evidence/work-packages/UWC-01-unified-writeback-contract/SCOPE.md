@@ -7,6 +7,7 @@
 - Lightweight `AuthoritativeWriteGateway` (validate + optional handler)  
 - Contract tests aligned to `WRITEBACK_CORRIDOR_AUDIT_MATRIX`  
 - Explicit Preview → Confirm → Apply outcome vocabulary  
+- Three frozen corridor canaries (ACTIONS → ITINERARY → UNIFIED PlanVersion-only)  
 
 ## OUT / FORBIDDEN
 
@@ -17,21 +18,29 @@
 - Iceland / Mobile writeback expansion  
 - External commercial compensation (hotel / activity / car)  
 - Collapsing mixed writers into one store  
+- Expanding canary admission beyond frozen scopes  
+- One-shot global AUTHORITATIVE / compensation unlock when canaries pass  
 
-## Acceptance (1a / 1b)
+## Acceptance
 
-- [x] Types + registry + gateway committed  
-- [x] Contract spec PASS  
-- [x] Handlers bound (ACTIONS → ADJUST → UNIFIED)  
-- [x] Default mode SHADOW_VALIDATE; zero writes  
-- [x] AUTHORITATIVE hard-blocked until UWC-1c  
-- [x] Per-corridor DISABLED kill switch  
-- [x] Shadow/legacy diffs auditable (`getShadowProbeAuditEntries`)  
-- [x] OCC ExpectedWriteVersion + per-corridor strategies (1c)  
-- [x] Idempotency before freshness → ALREADY_APPLIED  
-- [x] Cross-corridor concurrency proofs (≤1 success)  
-- [x] AUTHORITATIVE still blocked (dual gates; switch auth false)  
-- [x] UWC-1d recovery layers + profiles + COMPENSATION_CONFLICT  
-- [x] Compensation exec gate closed; Cutover: ACTIONS canary first  
-- [x] UWC-CANARY-01 ACTIONS AUTHORITATIVE_CANARY (XOR legacy; kill switch)  
-- [ ] ACTIONS_COMMIT Canary ops review → then ITINERARY independent review only  
+### Contract layers (code)
+
+- [x] Types + registry + gateway  
+- [x] Handlers bound; SHADOW_VALIDATE default; AUTHORITATIVE hard-blocked  
+- [x] OCC + recovery contract; compensation exec gate closed  
+- [x] UWC-CANARY-01/02/03 **code complete + FROZEN**  
+
+### Ops (ordered — do not skip)
+
+- [ ] ACTIONS canary pass → `advanceCutoverAfterActionsCanaryPass()`  
+- [ ] ITINERARY independent review → `beginItineraryAdjustCanary()` → pass → `advanceCutoverAfterItineraryCanaryPass()`  
+- [ ] UNIFIED → `approveUnifiedExecuteForCanary()` → env (percent 0 + trip allowlist) → `beginUnifiedExecuteCanary()` → pass → `advanceCutoverAfterUnifiedCanaryPass()`  
+
+### After all three canaries
+
+- [x] Global AUTHORITATIVE still LOCKED  
+- [x] Compensation exec still LOCKED  
+- [x] **UWC-CUTOVER-01** D1/D2/D3 APPROVED — not global unlock  
+- [x] **UWC-1e** client protocol FROZEN (`UWC-1e.md`)  
+
+See `PROCESS_STATUS.md` and `CANARY_OPS_RUNBOOK.md`.

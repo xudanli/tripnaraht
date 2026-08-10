@@ -89,6 +89,33 @@ export class RouteTemplatePlanningService {
         score += Math.min(2, poiRefs.length / 6);
         if (poiRefs.length > 0) matchedReasons.push(`template_pois:${poiRefs.length}`);
 
+        // 经典自驾线模板：CN / IS 命中别名时强加权
+        const meta = (template.metadata || {}) as { classicRouteId?: string };
+        if (meta.classicRouteId) {
+          const classicHint =
+            countryCode === 'CN'
+              ? /318|317|219|211|青甘|川藏|滇藏|新藏|独库|银榕|g318|g317|g219|g211|qinggan|duku/i.test(
+                  [
+                    ...intent.requiredExperienceAtoms.map((a) => a.atom),
+                    ...intent.preferredPoiTypes,
+                    text,
+                  ].join(' '),
+                )
+              : countryCode === 'IS'
+                ? /golden.?circle|ring.?road|南岸|黄金圈|环岛|snaefellsnes|斯奈山|westfjords|西峡湾|highlands|laugavegur|朗格|south.?coast/i.test(
+                    [
+                      ...intent.requiredExperienceAtoms.map((a) => a.atom),
+                      ...intent.preferredPoiTypes,
+                      text,
+                    ].join(' '),
+                  )
+                : false;
+          if (classicHint) {
+            score += 2.5;
+            matchedReasons.push(`classic_route:${meta.classicRouteId}`);
+          }
+        }
+
         return {
           templateId: template.id,
           routeDirectionId: template.routeDirectionId,

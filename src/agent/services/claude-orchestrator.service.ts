@@ -336,7 +336,9 @@ import {
   shouldInjectIcelandRentalGuidanceForLightweight,
   shouldPullSafetravelAdvisoriesForLightweightIceland,
   isWestfjordsLegTransportPreferenceConsultation,
+  isHotelInventorySearchQuery,
 } from '../utils/orchestration-signals.util';
+import { isDayLodgingChoiceQuery } from '../utils/day-lodging-choice.util';
 import {
   buildLightweightTemporalGroundingZhLines,
   buildLightweightTemporalRepairSuffix,
@@ -450,6 +452,24 @@ import {
 } from '../../trips/reality-kernel/reality-snapshot.types';
 import type { DecisionContextV0 } from '../../trips/reality-kernel/decision-context.types';
 import { McpToolDispatcherService } from '../assistants/planning-assistant/services/mcp-tool-dispatcher.service';
+import {
+  runLiveActivitySensorBranch as runLiveActivitySensorBranchShared,
+  runLiveCarRentalSensorBranch as runLiveCarRentalSensorBranchShared,
+  runLiveFlightSensorBranch as runLiveFlightSensorBranchShared,
+} from '../routing/lightweight-live-sensors.runner';
+import type { LightweightLiveSensorsHost } from '../routing/lightweight-live-sensors.host';
+import {
+  buildCarRentalChatCards,
+  isCarRentalChatCardQuery,
+} from '../chat/build-car-rental-chat-cards.util';
+import {
+  buildFlightChatCards,
+  isFlightChatCardQuery,
+} from '../chat/build-flight-chat-cards.util';
+import {
+  isActivityAdvanceBookingConsultQuery,
+  mapActivitySearchItemsToChatCards,
+} from '../chat/build-activity-booking-chat-cards.util';
 import {
   extractHotelListingDisplayName,
   extractHotelListingPriceHint,
@@ -2170,7 +2190,9 @@ export class ClaudeOrchestratorService {
     /** 可执行航班库存 intent：勿自动旁路到住宿（除非用户显式 enable_live_tools hotel） */
     if (
       !tools.includes('hotel') &&
-      (this.amadeusDirect?.isAvailable || this.flightMcp?.isAvailable) &&
+      (this.amadeusDirect?.isAvailable ||
+        this.flightMcp?.isAvailable ||
+        !!this.mcpToolDispatcher) &&
       isExecutableFlightInventoryQuery(msg)
     ) {
       return false;
@@ -2184,9 +2206,15 @@ export class ClaudeOrchestratorService {
     return false;
   }
 
-  /** Phase1：Amadeus 或 Flight MCP（inventory）；显式 `flight` 或开放程/实时航班组合话术 */
+  /** Phase1：Amadeus / Flight MCP / 飞猪；显式 `flight` 或开放程/实时航班组合话术 */
   private shouldAttemptFlightSensor(request: RouteAndRunRequestDto, context: AgentContext): boolean {
-    if (!this.amadeusDirect?.isAvailable && !this.flightMcp?.isAvailable) return false;
+    if (
+      !this.amadeusDirect?.isAvailable &&
+      !this.flightMcp?.isAvailable &&
+      !this.mcpToolDispatcher
+    ) {
+      return false;
+    }
     const rt = context.routingTaskType;
     if (rt !== 'DATA_LOOKUP' && rt !== 'GENERIC_QA' && rt !== 'RAG_QA') return false;
     const tools = normalizeLiveTools(request.options?.enable_live_tools);
@@ -2201,249 +2229,416 @@ export class ClaudeOrchestratorService {
    * - 自动：话术含租车/推荐租车等（与咨询路由「交通」语义对齐）。
    * 需能解析取还日期（绑定行程起止日或 structured 日期），否则跳过。
    */
-  private shouldAttemptCarRentalSensor(request: RouteAndRunRequestDto, context: AgentContext): boolean {
-    if (!this.mcpToolDispatcher) return false;
-    const rt = context.routingTaskType;
-    if (rt !== 'DATA_LOOKUP' && rt !== 'GENERIC_QA' && rt !== 'RAG_QA') return false;
-    const tools = normalizeLiveTools(request.options?.enable_live_tools);
-    const msg = request.message ?? '';
-    if (tools.includes('car_rental')) return true;
-    if (
-      /我要租车|想租车|需要租车|租车|推荐租车|租一辆车|查询租车|车型|报价|取车|还车|车行|SUV|四驱|包车|自驾租车|\bcar\s+rental\b|\brent\s+a\s+car\b/i.test(
-        msg,
-      )
-    ) {
-      return true;
-    }
-    return false;
-  }
-
-  /** 从绑定行程解析 Booking.com 租车检索参数；无日期则 null */
-  private async resolveCarRentalSearchParamsForMcp(
-    request: RouteAndRunRequestDto,
-    effectiveTripId?: string,
-  ): Promise<Record<string, unknown> | null> {
-    const st = request.structured_travel_input;
-    let pickUpDate: string | undefined;
-    let dropOffDate: string | undefined;
-    let pickupQuery = 'Reykjavik';
-
-    if (st?.start_date && st?.end_date) {
-      pickUpDate = st.start_date.slice(0, 10);
-      dropOffDate = st.end_date.slice(0, 10);
-    } else if (effectiveTripId) {
-      try {
-        const trip = await this.prisma.trip.findUnique({
-          where: { id: effectiveTripId },
-          select: { destination: true, startDate: true, endDate: true },
-        });
-        if (trip?.startDate && trip?.endDate) {
-          pickUpDate = trip.startDate.toISOString().slice(0, 10);
-          dropOffDate = trip.endDate.toISOString().slice(0, 10);
-        }
-        const d = trip?.destination?.trim() ?? '';
-        const du = d.toUpperCase();
-        if (du === 'IS' || /冰岛|冰島/i.test(d) || /^iceland$/i.test(d)) {
-          pickupQuery = 'Reykjavik Iceland';
-        } else if (d.length === 2 && /^[A-Z]{2}$/i.test(d)) {
-          pickupQuery = d;
-        } else if (d.length > 1) {
-          pickupQuery = d;
-        }
-      } catch {
-        return null;
-      }
-    }
-
-    if (!pickUpDate || !dropOffDate) return null;
-
+  private liveSensorsHost(): LightweightLiveSensorsHost {
     return {
-      pickupQuery,
-      pick_up_date: pickUpDate,
-      drop_off_date: dropOffDate,
-      pick_up_time: '10:00',
-      drop_off_time: '10:00',
-      driver_age: 30,
-      currency_code: 'USD',
-      location: 'US',
+      logger: this.logger,
+      prisma: this.prisma,
+      mcpToolDispatcher: this.mcpToolDispatcher
+        ? {
+            executeTool: (ns, name, params) =>
+              this.mcpToolDispatcher!.executeTool(ns, name, params),
+            isBookingComCarRentalAvailable: () =>
+              typeof (this.mcpToolDispatcher as { isBookingComCarRentalAvailable?: () => boolean })
+                .isBookingComCarRentalAvailable === 'function'
+                ? (this.mcpToolDispatcher as { isBookingComCarRentalAvailable: () => boolean })
+                    .isBookingComCarRentalAvailable()
+                : false,
+            isCarRentalSearchAvailable: () =>
+              typeof (this.mcpToolDispatcher as { isCarRentalSearchAvailable?: () => boolean })
+                .isCarRentalSearchAvailable === 'function'
+                ? (this.mcpToolDispatcher as { isCarRentalSearchAvailable: () => boolean })
+                    .isCarRentalSearchAvailable()
+                : !!this.mcpToolDispatcher,
+          }
+        : undefined,
+      amadeusDirect: this.amadeusDirect,
+      flightMcp: this.flightMcp,
+      hotelDecisionNarrator: this.hotelDecisionNarrator,
+      icelandRentalGuidanceSkill: this.icelandRentalGuidanceSkill,
     };
   }
 
-  /**
-   * 用户明确要问租车但 Trip / structured 尚无起止日时：用「今日起 +14 天取车、+21 天还车」的示例窗口触达 Booking.com，
-   * 以便仍返回 MCP 列表与前端卡片（正文须提示价格为示意、用户可在工作台补日期后再查）。
-   */
-  private async buildFallbackCarRentalSearchParams(
-    request: RouteAndRunRequestDto,
-    effectiveTripId?: string,
-  ): Promise<Record<string, unknown> | null> {
-    let pickupQuery = 'Reykjavik Iceland';
-    if (effectiveTripId) {
-      try {
-        const trip = await this.prisma.trip.findUnique({
-          where: { id: effectiveTripId },
-          select: { destination: true },
-        });
-        const d = trip?.destination?.trim() ?? '';
-        const du = d.toUpperCase();
-        if (du === 'IS' || /冰岛|冰島/i.test(d) || /^iceland$/i.test(d)) {
-          pickupQuery = 'Reykjavik Iceland';
-        } else if (d.length === 2 && /^[A-Z]{2}$/i.test(d)) {
-          pickupQuery = d;
-        } else if (d.length > 1) {
-          pickupQuery = d;
-        }
-      } catch {
-        return null;
-      }
-    }
-    const now = new Date();
-    const pickUp = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 14));
-    const dropOff = new Date(Date.UTC(pickUp.getUTCFullYear(), pickUp.getUTCMonth(), pickUp.getUTCDate() + 7));
-    const ymd = (d: Date) => d.toISOString().slice(0, 10);
-    return {
-      pickupQuery,
-      pick_up_date: ymd(pickUp),
-      drop_off_date: ymd(dropOff),
-      pick_up_time: '10:00',
-      drop_off_time: '10:00',
-      driver_age: 30,
-      currency_code: 'USD',
-      location: 'US',
-    };
-  }
-
-  private formatLiveCarRentalSensorBlock(
-    data: unknown,
-    opts?: { fallbackDatesUsed?: boolean },
-  ): string {
-    const d = data as { data?: unknown[] };
-    const rows = Array.isArray(d?.data) ? d.data : [];
-    if (rows.length === 0) {
-      return `【实时租车检索 MCP】供应商返回列表为空（可能无库存或日期无报价）。`;
-    }
-    const prefix =
-      opts?.fallbackDatesUsed === true
-        ? '【说明】当前行程未携带可取用的起止日，已使用系统示例取还日期窗口检索；报价仅供示意，请以预订页实时为准。\n'
-        : '';
-    const lines = rows.slice(0, 6).map((x, i) => {
-      const row = x as Record<string, unknown>;
-      const company = String(row.company ?? row.supplier ?? row.name ?? '供应商');
-      const vehicle = String(row.vehicle_type ?? row.vehicleType ?? row.car_class ?? '');
-      const priceObj = row.price as Record<string, unknown> | undefined;
-      const price =
-        priceObj && typeof priceObj === 'object'
-          ? `${priceObj.currency ?? ''} ${priceObj.amount ?? ''}`.trim()
-          : '';
-      return `[${i + 1}] ${company}${vehicle ? ` · ${vehicle}` : ''}${price ? ` · ${price}` : ''}`;
-    });
-    return [
-      prefix + '【实时租车检索 MCP】以下为 Booking.com 摘录（可订性与价格以平台实时为准）：',
-      ...lines,
-    ].join('\n');
-  }
-
+  /** 委托共享 runner：国内取车城解析 + 飞猪 car_rentals 形状 */
   private async runLiveCarRentalSensorBranch(
     request: RouteAndRunRequestDto,
     context: AgentContext,
     effectiveTripId?: string,
-  ): Promise<{
-    audits: LiveSensorAuditRow[];
-    block: string | null;
-    carRentals?: unknown[];
-    carRentalSearchMeta?: {
-      fallback_dates_used?: boolean;
-      pick_up_date?: string;
-      drop_off_date?: string;
-      pickup_query?: string;
-      captured_at_iso?: string;
+  ) {
+    return runLiveCarRentalSensorBranchShared(
+      this.liveSensorsHost(),
+      request,
+      context,
+      effectiveTripId,
+    );
+  }
+
+  /** 委托共享 runner：国内活动/门票 → 飞猪 search-poi */
+  private async runLiveActivitySensorBranch(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    effectiveTripId?: string,
+    teamFitnessMeta?: Record<string, unknown> | null,
+  ) {
+    return runLiveActivitySensorBranchShared(
+      this.liveSensorsHost(),
+      request,
+      context,
+      effectiveTripId,
+      teamFitnessMeta,
+    );
+  }
+
+  /**
+   * 门票/活动出卡快路径：只跑 activity live MCP（国内飞猪），跳过天气/酒店/RAG/长 LLM。
+   */
+  private async orchestrateActivityCardFastPath(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    effectiveTripId: string | undefined,
+    startTime: number,
+  ): Promise<OrchestrationResult> {
+    const aBranch = await this.runLiveActivitySensorBranch(
+      request,
+      context,
+      effectiveTripId,
+    );
+    const rawActs = Array.isArray(aBranch.activityRouteRunUi?.activities)
+      ? aBranch.activityRouteRunUi!.activities
+      : [];
+    const cards = mapActivitySearchItemsToChatCards(rawActs);
+    const names = cards
+      .slice(0, 3)
+      .map((c) => c.nameZh || c.name)
+      .filter(Boolean);
+    const userAsk = String(request.message ?? '')
+      .replace(/\n+\s*\[(?:日程|行程|上下文|Context)\][\s\S]*$/iu, '')
+      .split('\n')[0]
+      ?.trim() || '门票预订';
+    const answerText = cards.length
+      ? [
+          `结论：已查到与「${userAsk}」相关的实时门票/活动候选，详情见下方卡片。`,
+          '',
+          `- 推荐：${names.join('、') || '见卡片'}`,
+          '- 说明：价格与可订性以飞猪/预订页实时为准；请核对游览日期。',
+        ].join('\n')
+      : [
+          `结论：暂未拿到「${userAsk}」的实时门票报价，可换关键词或日期后再试。`,
+          '',
+          '- 说明：国内门票优先飞猪检索；请确认景区名称是否明确。',
+        ].join('\n');
+
+    this.logger.log({
+      tag: 'lightweight.activity_exclusive_fast_path',
+      request_id: request.request_id,
+      cards: cards.length,
+      duration_ms: Date.now() - startTime,
+      mode: aBranch.activityRouteRunUi?.activity_search_meta?.mode,
+    });
+
+    const rd: RoutingDecision = {
+      route: 'SYSTEM2_REASONING',
+      confidence: 0.9,
+      reasoning: 'lightweight_activity_card_fast_path',
+      budget: { max_seconds: 8, max_steps: 1, max_browser_steps: 0 },
+      requiredCapabilities: ['qa'],
+      consentRequired: false,
+      selected_path: 'QA_LIGHT',
     };
-  }> {
-    const audits: LiveSensorAuditRow[] = [];
-    if (!this.shouldAttemptCarRentalSensor(request, context)) {
-      return { audits, block: null };
-    }
-    let params = await this.resolveCarRentalSearchParamsForMcp(request, effectiveTripId);
-    let fallbackDatesUsed = false;
-    if (!params) {
-      params = await this.buildFallbackCarRentalSearchParams(request, effectiveTripId);
-      fallbackDatesUsed = Boolean(params);
-      if (!params) {
-        this.logger.debug(
-          `[LiveTool] car_rental skipped_no_dates request_id=${request.request_id}（无 Trip 起止日且无法构造默认窗口）`,
-        );
-        return { audits, block: null };
-      }
-      this.logger.debug(
-        `[LiveTool] car_rental using_fallback_dates request_id=${request.request_id} pick=${params.pick_up_date} drop=${params.drop_off_date}`,
-      );
-    }
-    const pickUpYmd = typeof params.pick_up_date === 'string' ? params.pick_up_date : undefined;
-    const dropYmd = typeof params.drop_off_date === 'string' ? params.drop_off_date : undefined;
-    const pickupQ = typeof params.pickupQuery === 'string' ? params.pickupQuery : undefined;
-    const started = Date.now();
-    try {
-      const data = await this.runLiveToolWithTimeout(
-        () => this.mcpToolDispatcher!.executeTool('car_rental', 'car_rental.search', params),
-        ClaudeOrchestratorService.LIVE_TOOL_CAR_RENTAL_MS,
-      );
-      const latency_ms = Date.now() - started;
-      audits.push({ tool_id: 'live_tool.mcp.car_rental', ok: true, latency_ms });
-      this.logger.log({
-        tag: 'live_tool.mcp.car_rental',
-        request_id: request.request_id,
-        ok: true,
-        latency_ms,
-      });
-      const rows = Array.isArray((data as { data?: unknown[] })?.data)
-        ? (data as { data: unknown[] }).data
-        : [];
-      const capturedIso = new Date().toISOString();
-      const carRentalSearchMeta = fallbackDatesUsed
-        ? {
-            fallback_dates_used: true as const,
-            pick_up_date: pickUpYmd,
-            drop_off_date: dropYmd,
-            pickup_query: pickupQ,
-            captured_at_iso: capturedIso,
-          }
-        : pickUpYmd || dropYmd || pickupQ
+    const doneAt = Date.now();
+    return {
+      success: true,
+      answerText,
+      result: {
+        routingDecision: rd,
+        intentAnalysis: {
+          intentType: 'simple_query',
+          complexity: 'simple',
+          requiredCapabilities: ['qa'],
+          confidence: 0.9,
+          reasoning: 'lightweight_activity_card_fast_path',
+        },
+        lightweightKnowledgeQa: true,
+        activityCardFastPath: true,
+        routingTaskType: context.routingTaskType,
+        ...(aBranch.audits.length ? { live_sensor_audit: aBranch.audits } : {}),
+        ...(cards.length
           ? {
-              fallback_dates_used: false as const,
-              pick_up_date: pickUpYmd,
-              drop_off_date: dropYmd,
-              pickup_query: pickupQ,
-              captured_at_iso: capturedIso,
+              schema_id: 'tripnara/chat_activity_booking_cards@v1',
+              activities: cards,
+              activity_booking_cards: cards,
+              ui_surface: 'activity_booking_cards' as const,
+              ...(aBranch.activityRouteRunUi?.activity_search_meta
+                ? {
+                    activity_search_meta:
+                      aBranch.activityRouteRunUi.activity_search_meta,
+                  }
+                : {}),
             }
-          : { captured_at_iso: capturedIso };
-      return {
-        audits,
-        block: this.formatLiveCarRentalSensorBlock(data, { fallbackDatesUsed }),
-        carRentals: rows,
-        carRentalSearchMeta,
-      };
-    } catch (e: any) {
-      const latency_ms = Date.now() - started;
-      const err = e?.message ? String(e.message) : String(e);
-      audits.push({
-        tool_id: 'live_tool.mcp.car_rental',
-        ok: false,
-        latency_ms,
-        error: err,
-        orchestrator_robustness: classifyOrchestratorFailure(e, {
-          orchestrator_step: 'INTAKE',
-          tool_id: 'live_tool.mcp.car_rental',
-        }),
-      });
-      this.logger.warn({
-        tag: 'live_tool.mcp.car_rental',
-        request_id: request.request_id,
-        ok: false,
-        latency_ms,
-        error: err,
-      });
-      return { audits, block: null };
-    }
+          : {}),
+      },
+      stepsExecuted: [],
+      totalDuration: doneAt - startTime,
+      decisionLog: [
+        {
+          request_id: request.request_id,
+          step: 'INTAKE' as OrchestrationStep,
+          actor: 'Orchestrator' as SubAgentType,
+          inputs_summary: (request.message ?? '').substring(0, 240),
+          outputs_summary: `activity_card_fast_path cards=${cards.length}`,
+          evidence_refs: cards.length
+            ? [`live_tool:mcp:activity:${request.request_id}`]
+            : [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'ACTIVITY_CARD_FAST_PATH',
+            cards: cards.length,
+          },
+        },
+      ],
+    };
+  }
+
+  /**
+   * 住宿出卡快路径：只跑酒店 live MCP（模板管家文案、无 Narrator/INTAKE LLM）。
+   * 终端对照：飞猪 ~1–2s，Narrator+INTAKE 可再拖 20s+。
+   */
+  private async orchestrateHotelCardFastPath(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    effectiveTripId: string | undefined,
+    startTime: number,
+  ): Promise<OrchestrationResult> {
+    const hBranch = await this.runLiveHotelSensorBranch(request, context, effectiveTripId, {
+      skipDecisionNarrator: true,
+    });
+    const ui = hBranch.hotelRouteRunUi;
+    const accommodations = Array.isArray(ui?.accommodations) ? ui!.accommodations : [];
+    const metaExtra = (ui?.hotel_search_meta ?? {}) as Record<string, unknown>;
+    const destHint =
+      (typeof metaExtra.destination === 'string' && metaExtra.destination) ||
+      (typeof metaExtra.dest_name === 'string' && metaExtra.dest_name) ||
+      (typeof metaExtra.destName === 'string' && metaExtra.destName) ||
+      '行程过夜点';
+    const names = accommodations
+      .slice(0, 3)
+      .map((c, i) => String((c as { nameZh?: string; name?: string }).nameZh ?? (c as { name?: string }).name ?? `选项${i + 1}`))
+      .filter(Boolean);
+    const userAsk = String(request.message ?? '')
+      .replace(/\n+\s*\[(?:日程|行程|上下文|Context)\][\s\S]*$/iu, '')
+      .split('\n')[0]
+      ?.trim() || '住宿推荐';
+    const answerText = accommodations.length
+      ? [
+          `结论：已查到「${destHint}」附近的实时住宿候选，详情见下方卡片。`,
+          '',
+          `- 问法：${userAsk}`,
+          `- 推荐：${names.join('、') || '见卡片'}`,
+          '- 说明：价格与可订性以飞猪/预订页实时为准；可按预算与步行距离再筛选。',
+        ].join('\n')
+      : [
+          `结论：暂未拿到「${destHint}」的实时住宿报价，可换日期或城镇后再试。`,
+          '',
+          `- 问法：${userAsk}`,
+          '- 说明：国内住宿优先飞猪检索；请确认行程当晚锚点城市是否明确。',
+        ].join('\n');
+
+    this.logger.log({
+      tag: 'lightweight.hotel_exclusive_fast_path',
+      request_id: request.request_id,
+      cards: accommodations.length,
+      duration_ms: Date.now() - startTime,
+    });
+
+    const rd: RoutingDecision = {
+      route: 'SYSTEM2_REASONING',
+      confidence: 0.9,
+      reasoning: 'lightweight_hotel_card_fast_path',
+      budget: { max_seconds: 8, max_steps: 1, max_browser_steps: 0 },
+      requiredCapabilities: ['qa'],
+      consentRequired: false,
+      selected_path: 'QA_LIGHT',
+    };
+    const doneAt = Date.now();
+    return {
+      success: true,
+      answerText,
+      result: {
+        routingDecision: rd,
+        intentAnalysis: {
+          intentType: 'simple_query',
+          complexity: 'simple',
+          requiredCapabilities: ['qa'],
+          confidence: 0.9,
+          reasoning: 'lightweight_hotel_card_fast_path',
+        },
+        lightweightKnowledgeQa: true,
+        hotelCardFastPath: true,
+        routingTaskType: context.routingTaskType,
+        ...(hBranch.audits.length ? { live_sensor_audit: hBranch.audits } : {}),
+        ...(ui
+          ? {
+              accommodations: ui.accommodations,
+              accommodation_cards: ui.accommodations,
+              airbnbListings: ui.airbnbListings,
+              routing: ui.routing,
+              ...(ui.night_groups?.length
+                ? { accommodation_night_groups: ui.night_groups }
+                : {}),
+              ...(ui.hotel_search_meta ? { hotel_search_meta: ui.hotel_search_meta } : {}),
+              ...(accommodations.length
+                ? {
+                    schema_id: 'tripnara/chat_accommodation_cards@v1',
+                    ui_surface: 'accommodation_cards' as const,
+                  }
+                : {}),
+            }
+          : {}),
+      },
+      stepsExecuted: [],
+      totalDuration: doneAt - startTime,
+      decisionLog: [
+        {
+          request_id: request.request_id,
+          step: 'INTAKE' as OrchestrationStep,
+          actor: 'Orchestrator' as SubAgentType,
+          inputs_summary: (request.message ?? '').substring(0, 240),
+          outputs_summary: `hotel_card_fast_path cards=${accommodations.length}`,
+          evidence_refs: accommodations.length
+            ? [`live_tool:mcp:hotel:${request.request_id}`]
+            : [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'HOTEL_CARD_FAST_PATH',
+            cards: accommodations.length,
+          },
+        },
+      ],
+    };
+  }
+
+  /**
+   * 租车出卡快路径：只跑租车 live MCP，跳过天气/机票/酒店/RAG/长 LLM。
+   * 对抗移动端 ~10s HTTP 断连（否则 Promise.all + DeepSeek 易 [CLOSED]）。
+   */
+  private async orchestrateCarRentalCardFastPath(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    effectiveTripId: string | undefined,
+    startTime: number,
+  ): Promise<OrchestrationResult> {
+    const rBranch = await this.runLiveCarRentalSensorBranch(
+      request,
+      context,
+      effectiveTripId,
+    );
+    const bookingRows = Array.isArray(rBranch.carRentals)
+      ? (rBranch.carRentals as Array<Record<string, unknown>>)
+      : [];
+    const cards = buildCarRentalChatCards({
+      userMessage: request.message ?? '',
+      bookingResults: bookingRows.length ? bookingRows : undefined,
+      icelandRentalGuidance: null,
+      carRentalSearchMeta: rBranch.carRentalSearchMeta ?? null,
+    });
+    const pickup =
+      typeof rBranch.carRentalSearchMeta?.pickup_query === 'string'
+        ? rBranch.carRentalSearchMeta.pickup_query
+        : '行程取车点';
+    const names = (cards.length ? cards : bookingRows)
+      .slice(0, 3)
+      .map((r, i) => String((r as Record<string, unknown>).nameZh ?? (r as Record<string, unknown>).name ?? `选项${i + 1}`))
+      .filter(Boolean);
+    const userAsk = String(request.message ?? '')
+      .replace(/\n+\s*\[(?:日程|行程|上下文|Context)\][\s\S]*$/iu, '')
+      .split('\n')[0]
+      ?.trim() || pickup;
+    const answerText = cards.length
+      ? [
+          `结论：已查到与「${pickup}」相关的实时租车结果，详情见下方卡片。`,
+          '',
+          `- 取还车：${userAsk}`,
+          `- 推荐：${names.join('、') || '见卡片'}`,
+          '- 说明：价格与可订性以飞猪/预订页实时为准；异地还车请在下单页确认政策。',
+        ].join('\n')
+      : [
+          `结论：暂未拿到「${pickup}」的实时租车报价，可稍后再试或换取车城市重试。`,
+          '',
+          `- 取还车：${userAsk}`,
+          '- 说明：国内租车走飞猪检索；异地还车政策以下单页为准。',
+        ].join('\n');
+
+    this.logger.log({
+      tag: 'lightweight.car_rental_exclusive_fast_path',
+      request_id: request.request_id,
+      cards: cards.length,
+      live_rows: bookingRows.length,
+      duration_ms: Date.now() - startTime,
+    });
+
+    const rd: RoutingDecision = {
+      route: 'SYSTEM2_REASONING',
+      confidence: 0.9,
+      reasoning: 'lightweight_car_rental_card_fast_path',
+      budget: { max_seconds: 8, max_steps: 1, max_browser_steps: 0 },
+      requiredCapabilities: ['qa'],
+      consentRequired: false,
+      selected_path: 'QA_LIGHT',
+    };
+    const doneAt = Date.now();
+    return {
+      success: true,
+      answerText,
+      result: {
+        routingDecision: rd,
+        intentAnalysis: {
+          intentType: 'simple_query',
+          complexity: 'simple',
+          requiredCapabilities: ['qa'],
+          confidence: 0.9,
+          reasoning: 'lightweight_car_rental_card_fast_path',
+        },
+        lightweightKnowledgeQa: true,
+        carRentalCardFastPath: true,
+        routingTaskType: context.routingTaskType,
+        ...(rBranch.audits.length ? { live_sensor_audit: rBranch.audits } : {}),
+        ...(bookingRows.length
+          ? {
+              car_rentals: bookingRows,
+              ...(rBranch.carRentalSearchMeta
+                ? { car_rental_search_meta: rBranch.carRentalSearchMeta }
+                : {}),
+            }
+          : {}),
+        ...(cards.length
+          ? {
+              schema_id: 'tripnara/chat_car_rental_cards@v1',
+              car_rental_cards: cards,
+              ui_surface: 'car_rental_cards' as const,
+              ...(!bookingRows.length ? { car_rentals: cards } : {}),
+            }
+          : {}),
+      },
+      stepsExecuted: [],
+      totalDuration: doneAt - startTime,
+      decisionLog: [
+        {
+          request_id: request.request_id,
+          step: 'INTAKE' as OrchestrationStep,
+          actor: 'Orchestrator' as SubAgentType,
+          inputs_summary: (request.message ?? '').substring(0, 240),
+          outputs_summary: `car_rental_card_fast_path cards=${cards.length}`,
+          evidence_refs: cards.length
+            ? [`live_tool:mcp:car_rental:${request.request_id}`]
+            : [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'CAR_RENTAL_CARD_FAST_PATH',
+            cards: cards.length,
+            live_rows: bookingRows.length,
+          },
+        },
+      ],
+    };
   }
 
   private async runIcelandRentalGuidanceLightweightBranch(
@@ -2542,265 +2737,136 @@ export class ClaudeOrchestratorService {
     return prefer === 'mcp';
   }
 
+  /** 委托共享 runner：国内飞猪 search_flight + 海外 Amadeus/Flight MCP */
   private async runLiveFlightSensorBranch(
     request: RouteAndRunRequestDto,
     context: AgentContext,
     effectiveTripId?: string,
-  ): Promise<{
-    audits: LiveSensorAuditRow[];
-    block: string | null;
-    flight_inventory_snapshot?: {
-      legs: Array<Record<string, unknown>>;
-      disclaimer_zh?: string;
-      captured_at_iso?: string;
-    };
-  }> {
-    const audits: LiveSensorAuditRow[] = [];
-    if (!this.shouldAttemptFlightSensor(request, context)) {
-      return { audits, block: null };
-    }
-    let tripStart: string | undefined;
-    let tripEnd: string | undefined;
-    if (effectiveTripId) {
-      try {
-        const trip = await this.prisma.trip.findUnique({
-          where: { id: effectiveTripId },
-          select: { startDate: true, endDate: true },
-        });
-        if (trip?.startDate && trip?.endDate) {
-          tripStart = trip.startDate.toISOString().slice(0, 10);
-          tripEnd = trip.endDate.toISOString().slice(0, 10);
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-    const legs = resolveFlightInventoryLegs(request.message ?? '', {
-      tripStartYmd: tripStart,
-      tripEndYmd: tripEnd,
+  ) {
+    return runLiveFlightSensorBranchShared(
+      this.liveSensorsHost(),
+      request,
+      context,
+      effectiveTripId,
+    );
+  }
+
+  /**
+   * 机票出卡快路径：只跑航班 live MCP，跳过天气/酒店/RAG/长 LLM。
+   */
+  private async orchestrateFlightCardFastPath(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    effectiveTripId: string | undefined,
+    startTime: number,
+  ): Promise<OrchestrationResult> {
+    const fBranch = await this.runLiveFlightSensorBranch(
+      request,
+      context,
+      effectiveTripId,
+    );
+    const snapshot = fBranch.flight_inventory_snapshot ?? null;
+    const cards = buildFlightChatCards({
+      flightInventorySnapshot: snapshot as Record<string, unknown> | null,
+      limit: 6,
     });
-    if (!legs?.length) {
-      this.logger.debug(`[LiveTool] flight skipped_no_legs request_id=${request.request_id}`);
-      return { audits, block: null };
-    }
+    const routeHint =
+      (() => {
+        const legs = Array.isArray(snapshot?.legs) ? snapshot!.legs : [];
+        const leg0 = (legs[0] ?? {}) as Record<string, unknown>;
+        const o = String(leg0.origin ?? leg0.origin_iata ?? '').trim();
+        const d = String(leg0.destination ?? leg0.destination_iata ?? '').trim();
+        if (o && d) return `${o}→${d}`;
+        return '行程航段';
+      })();
+    const names = cards
+      .slice(0, 3)
+      .map((c) => c.nameZh || c.summaryLineZh || c.id)
+      .filter(Boolean);
+    const userAsk = String(request.message ?? '')
+      .replace(/\n+\s*\[(?:日程|行程|上下文|Context)\][\s\S]*$/iu, '')
+      .split('\n')[0]
+      ?.trim() || '机票推荐';
+    const answerText = cards.length
+      ? [
+          `结论：已查到「${routeHint}」的实时机票候选，详情见下方卡片。`,
+          '',
+          `- 问法：${userAsk}`,
+          `- 推荐：${names.join('、') || '见卡片'}`,
+          '- 说明：价格与舱位以飞猪/预订页实时为准。',
+        ].join('\n')
+      : [
+          `结论：暂未拿到「${routeHint}」的实时机票报价，可换日期或机场后再试。`,
+          '',
+          `- 问法：${userAsk}`,
+          '- 说明：国内机票优先飞猪检索；请确认出发/到达城市是否明确。',
+        ].join('\n');
 
-    const useMcp = this.shouldUseFlightMcpProvider();
-    if (useMcp && !this.flightMcp?.isAvailable) {
-      this.logger.debug(`[LiveTool] flight skipped_mcp_unavailable request_id=${request.request_id}`);
-      return { audits, block: null };
-    }
-    if (!useMcp && !this.amadeusDirect?.isAvailable) {
-      this.logger.debug(`[LiveTool] flight skipped_amadeus_unavailable request_id=${request.request_id}`);
-      return { audits, block: null };
-    }
-    const flightProviderMode = (process.env.FLIGHT_INVENTORY_PROVIDER || 'auto').toLowerCase();
-    if (flightProviderMode === 'mcp' && !useMcp) {
-      this.logger.debug(`[LiveTool] flight skipped_mcp_required request_id=${request.request_id}`);
-      return { audits, block: null };
-    }
+    this.logger.log({
+      tag: 'lightweight.flight_exclusive_fast_path',
+      request_id: request.request_id,
+      cards: cards.length,
+      duration_ms: Date.now() - startTime,
+      provider: snapshot && typeof snapshot === 'object'
+        ? (snapshot as { provider?: string }).provider
+        : undefined,
+    });
 
-    const started = Date.now();
-    const snapshotLegs: Array<Record<string, unknown>> = [];
-    const headerZh = useMcp
-      ? '【实时航班检索 Flight MCP】以下为报价摘录（非生成文案；聚合数据源，以预订时为准）：'
-      : '【实时航班库存 Amadeus Flight Offers】以下为报价摘录（非生成文案；舱位与价格以预订时为准）：';
-    const disclaimerZh = useMcp
-      ? '报价来自 Flight MCP（Smithery/Kiwi 等）；出发枢纽未写明时使用默认城市（见各腿 label）；以预订页实时为准。'
-      : '报价来自 Amadeus Flight Offers；出发枢纽未写明时使用默认城市（见各腿 label）；以预订页实时为准。';
-    const okToolId = useMcp ? 'live_tool.flight_mcp.search_flights' : 'live_tool.amadeus.flight_offers';
-    const blockLines: string[] = [headerZh];
-
-    try {
-      for (const leg of legs) {
-        const legStarted = Date.now();
-        if (useMcp && this.flightMcp) {
-          const out = await this.runLiveToolWithTimeout<{
-            raw: unknown;
-            lines: string[];
-          }>(
-            () =>
-              this.flightMcp!.searchFlightsOneWay({
-                origin: leg.origin,
-                destination: leg.destination,
-                departDate: leg.departureDate,
-              }),
-            ClaudeOrchestratorService.LIVE_TOOL_FLIGHT_MS,
-          );
-          const { lines, raw } = out;
-          const displayLinesMcp = lines.length ? lines : ['（无报价或未返回数据）'];
-          const mcpFailed = isFlightMcpToolResultFailure(raw, displayLinesMcp);
-          const mcpLinesForUi = mcpFailed ? sanitizeFlightInventoryLinesForUi(displayLinesMcp) : displayLinesMcp;
-          const latencyMcp = Date.now() - legStarted;
-          if (mcpFailed) {
-            this.flightMcp.invalidateConnectionCacheFromRaw(raw);
-          }
-          audits.push({
-            tool_id: okToolId,
-            ok: !mcpFailed,
-            latency_ms: latencyMcp,
-            ...(mcpFailed ? { error: 'mcp_tool_error' } : {}),
-          });
-
-          const allowAmadeusFallback =
-            mcpFailed &&
-            this.amadeusDirect?.isAvailable &&
-            process.env.FLIGHT_MCP_FALLBACK_AMADEUS !== 'false';
-
-          if (allowAmadeusFallback) {
-            this.logger.warn({
-              tag: 'live_tool.flight_mcp.fallback_amadeus',
-              request_id: request.request_id,
-              leg: `${leg.origin}->${leg.destination}`,
-              date: leg.departureDate,
-            });
-            const legStartedAmadeus = Date.now();
-            try {
-              const result = await this.runLiveToolWithTimeout(
-                () =>
-                  this.amadeusDirect!.searchFlightOffers({
-                    originLocationCode: leg.origin,
-                    destinationLocationCode: leg.destination,
-                    departureDate: leg.departureDate,
-                    adults: 1,
-                    max: 5,
-                    currencyCode: 'EUR',
-                  }),
-                ClaudeOrchestratorService.LIVE_TOOL_FLIGHT_MS,
-              );
-              const latencyAmadeus = Date.now() - legStartedAmadeus;
-              audits.push({ tool_id: 'live_tool.amadeus.flight_offers', ok: true, latency_ms: latencyAmadeus });
-              const offers = Array.isArray(result?.data) ? result.data : [];
-              const sample = offers
-                .slice(0, 3)
-                .map((o, i) => this.formatFlightOfferLineForSensorBlock(o, i + 1));
-              const displayLines = sample.length ? sample : ['（Amadeus 本轮亦无报价）'];
-              const structuredAmadeus = mapAmadeusOffersToSampleCards(offers, 5);
-              const sample_offers = enrichSampleOffersFromLines(structuredAmadeus, displayLines, 5);
-              blockLines.push(`— ${leg.leg_label_zh} (${leg.origin}→${leg.destination} ${leg.departureDate}) —`);
-              blockLines.push(...displayLines);
-              snapshotLegs.push({
-                provider: 'amadeus',
-                fallback_from: 'flight_mcp',
-                origin_iata: leg.origin,
-                destination_iata: leg.destination,
-                departure_date: leg.departureDate,
-                label_zh: leg.leg_label_zh,
-                raw_offer_count: offers.length,
-                sample_lines: displayLines,
-                sample_offers,
-              });
-            } catch (fallbackErr: any) {
-              const msg = fallbackErr?.message ? String(fallbackErr.message) : String(fallbackErr);
-              this.logger.warn({
-                tag: 'live_tool.flight_mcp.fallback_amadeus_failed',
-                request_id: request.request_id,
-                error: msg,
-              });
-              blockLines.push(`— ${leg.leg_label_zh} (${leg.origin}→${leg.destination} ${leg.departureDate}) —`);
-              blockLines.push(...mcpLinesForUi);
-              const structuredMcp = parseFlightMcpToolResultToSampleOffers(raw, 5);
-              const sample_offers = enrichSampleOffersFromLines(structuredMcp, mcpLinesForUi, 5);
-              snapshotLegs.push({
-                provider: 'flight_mcp',
-                origin_iata: leg.origin,
-                destination_iata: leg.destination,
-                departure_date: leg.departureDate,
-                label_zh: leg.leg_label_zh,
-                sample_lines: mcpLinesForUi,
-                sample_offers,
-              });
-            }
-          } else {
-            blockLines.push(`— ${leg.leg_label_zh} (${leg.origin}→${leg.destination} ${leg.departureDate}) —`);
-            blockLines.push(...mcpLinesForUi);
-            const structuredMcp = parseFlightMcpToolResultToSampleOffers(raw, 5);
-            const sample_offers = enrichSampleOffersFromLines(structuredMcp, mcpLinesForUi, 5);
-            snapshotLegs.push({
-              provider: 'flight_mcp',
-              origin_iata: leg.origin,
-              destination_iata: leg.destination,
-              departure_date: leg.departureDate,
-              label_zh: leg.leg_label_zh,
-              sample_lines: mcpLinesForUi,
-              sample_offers,
-            });
-          }
-        } else {
-          const result = await this.runLiveToolWithTimeout(
-            () =>
-              this.amadeusDirect!.searchFlightOffers({
-                originLocationCode: leg.origin,
-                destinationLocationCode: leg.destination,
-                departureDate: leg.departureDate,
-                adults: 1,
-                max: 5,
-                currencyCode: 'EUR',
-              }),
-            ClaudeOrchestratorService.LIVE_TOOL_FLIGHT_MS,
-          );
-          const latency_ms = Date.now() - legStarted;
-          audits.push({ tool_id: okToolId, ok: true, latency_ms });
-          const offers = Array.isArray(result?.data) ? result.data : [];
-          const sample = offers
-            .slice(0, 3)
-            .map((o, i) => this.formatFlightOfferLineForSensorBlock(o, i + 1));
-          const displayLines = sample.length ? sample : ['（无报价或未返回数据）'];
-          const structuredAmadeus = mapAmadeusOffersToSampleCards(offers, 5);
-          const sample_offers = enrichSampleOffersFromLines(structuredAmadeus, displayLines, 5);
-          blockLines.push(`— ${leg.leg_label_zh} (${leg.origin}→${leg.destination} ${leg.departureDate}) —`);
-          blockLines.push(...displayLines);
-          snapshotLegs.push({
-            provider: 'amadeus',
-            origin_iata: leg.origin,
-            destination_iata: leg.destination,
-            departure_date: leg.departureDate,
-            label_zh: leg.leg_label_zh,
-            raw_offer_count: offers.length,
-            sample_lines: displayLines,
-            sample_offers,
-          });
-        }
-      }
-      const auditAllOk = audits.every((a) => a.ok === true);
-      this.logger.log({
-        tag: useMcp ? 'live_tool.flight_mcp.flight' : 'live_tool.amadeus.flight',
-        request_id: request.request_id,
-        ok: auditAllOk,
-        latency_ms: Date.now() - started,
-        leg_count: legs.length,
-      });
-      const capturedIso = new Date().toISOString();
-      return {
-        audits,
-        block: blockLines.join('\n'),
-        flight_inventory_snapshot: {
-          legs: snapshotLegs,
-          disclaimer_zh: disclaimerZh,
-          captured_at_iso: capturedIso,
+    const rd: RoutingDecision = {
+      route: 'SYSTEM2_REASONING',
+      confidence: 0.9,
+      reasoning: 'lightweight_flight_card_fast_path',
+      budget: { max_seconds: 8, max_steps: 1, max_browser_steps: 0 },
+      requiredCapabilities: ['qa'],
+      consentRequired: false,
+      selected_path: 'QA_LIGHT',
+    };
+    const doneAt = Date.now();
+    return {
+      success: true,
+      answerText,
+      result: {
+        routingDecision: rd,
+        intentAnalysis: {
+          intentType: 'simple_query',
+          complexity: 'simple',
+          requiredCapabilities: ['qa'],
+          confidence: 0.9,
+          reasoning: 'lightweight_flight_card_fast_path',
         },
-      };
-    } catch (e: any) {
-      const latency_ms = Date.now() - started;
-      const err = e?.message ? String(e.message) : String(e);
-      audits.push({
-        tool_id: okToolId,
-        ok: false,
-        latency_ms,
-        error: err,
-        orchestrator_robustness: classifyOrchestratorFailure(e, {
-          orchestrator_step: 'INTAKE',
-          tool_id: okToolId,
-        }),
-      });
-      this.logger.warn({
-        tag: useMcp ? 'live_tool.flight_mcp.flight' : 'live_tool.amadeus.flight',
-        request_id: request.request_id,
-        ok: false,
-        latency_ms,
-        error: err,
-      });
-      return { audits, block: null };
-    }
+        lightweightKnowledgeQa: true,
+        flightCardFastPath: true,
+        routingTaskType: context.routingTaskType,
+        ...(fBranch.audits.length ? { live_sensor_audit: fBranch.audits } : {}),
+        ...(snapshot ? { flight_inventory_snapshot: snapshot } : {}),
+        ...(cards.length
+          ? {
+              schema_id: 'tripnara/chat_flight_cards@v1',
+              flight_cards: cards,
+              ui_surface: 'flight_cards' as const,
+            }
+          : {}),
+      },
+      stepsExecuted: [],
+      totalDuration: doneAt - startTime,
+      decisionLog: [
+        {
+          request_id: request.request_id,
+          step: 'INTAKE' as OrchestrationStep,
+          actor: 'Orchestrator' as SubAgentType,
+          inputs_summary: (request.message ?? '').substring(0, 240),
+          outputs_summary: `flight_card_fast_path cards=${cards.length}`,
+          evidence_refs: cards.length
+            ? [`live_tool:mcp:flight:${request.request_id}`]
+            : [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'FLIGHT_CARD_FAST_PATH',
+            cards: cards.length,
+          },
+        },
+      ],
+    };
   }
 
   private async resolveLiveWeatherLocationForMcp(
@@ -3223,16 +3289,22 @@ export class ClaudeOrchestratorService {
     payload: HotelRouteRunUiPayload,
     request: RouteAndRunRequestDto,
     tripId?: string | null,
+    opts?: { skipNarratorLlm?: boolean },
   ): Promise<void> {
     if (!payload.accommodations?.length) return;
     const ctx = await this.resolveHotelDecisionContext(request, tripId);
-    const worldHintZh = await this.resolveHotelDecisionWorldHintZh(tripId);
+    const worldHintZh = opts?.skipNarratorLlm
+      ? undefined
+      : await this.resolveHotelDecisionWorldHintZh(tripId);
     const rawList = Array.isArray(payload.airbnbListings) ? payload.airbnbListings : [];
 
     const disableLlm =
-      process.env.DISABLE_HOTEL_DECISION_LLM === '1' || process.env.DISABLE_HOTEL_DECISION_LLM === 'true';
+      opts?.skipNarratorLlm === true ||
+      process.env.DISABLE_HOTEL_DECISION_LLM === '1' ||
+      process.env.DISABLE_HOTEL_DECISION_LLM === 'true';
     const forceLlm =
-      process.env.HOTEL_DECISION_LLM === 'always' || process.env.HOTEL_DECISION_LLM === '1';
+      !opts?.skipNarratorLlm &&
+      (process.env.HOTEL_DECISION_LLM === 'always' || process.env.HOTEL_DECISION_LLM === '1');
     /** 默认 false：列表内卡片尽量都走管家 LLM（仍受 HOTEL_DECISION_LLM_MAX_CARDS 截断）；设为 1 则退回窄触发 shouldInvokeStewardNarrator */
     const strictStewardNarrator =
       process.env.HOTEL_DECISION_LLM_STRICT === '1' || process.env.HOTEL_DECISION_LLM_STRICT === 'true';
@@ -3382,7 +3454,7 @@ export class ClaudeOrchestratorService {
     request: RouteAndRunRequestDto,
     context: AgentContext,
     effectiveTripId?: string,
-    opts?: { fullTripReplan?: boolean },
+    opts?: { fullTripReplan?: boolean; skipDecisionNarrator?: boolean },
   ): Promise<{
     audits: LiveSensorAuditRow[];
     block: string | null;
@@ -3473,7 +3545,9 @@ export class ClaudeOrchestratorService {
               request.message,
             );
           }
-          await this.enrichHotelRouteRunUiPayloadWithDecisionSupport(hotelRouteRunUi, request, tripId);
+          await this.enrichHotelRouteRunUiPayloadWithDecisionSupport(hotelRouteRunUi, request, tripId, {
+            skipNarratorLlm: opts?.skipDecisionNarrator === true,
+          });
           if (tripId) {
             hotelRouteRunUi.night_groups = await this.buildAccommodationNightGroupsForPayload(
               hotelRouteRunUi.accommodations,
@@ -3636,7 +3710,9 @@ export class ClaudeOrchestratorService {
         request.message,
       );
 
-      await this.enrichHotelRouteRunUiPayloadWithDecisionSupport(merged, request, tripId);
+      await this.enrichHotelRouteRunUiPayloadWithDecisionSupport(merged, request, tripId, {
+        skipNarratorLlm: opts?.skipDecisionNarrator === true,
+      });
 
       merged.night_groups = await this.buildAccommodationNightGroupsForPayload(
         merged.accommodations,
@@ -3935,6 +4011,56 @@ export class ClaudeOrchestratorService {
     );
 
     const tripCtxJoined = tripContextLines.join('\n');
+
+    // 机票出卡：独占快路径（国内飞猪；跳过天气/酒店/RAG/长 LLM）
+    if (!lightweightTriviaFact && isFlightChatCardQuery(request.message ?? '')) {
+      return await this.orchestrateFlightCardFastPath(
+        request,
+        context,
+        effectiveTripId,
+        startTime,
+      );
+    }
+
+    // 门票/活动出卡：独占快路径（国内飞猪 search-poi）
+    if (
+      !lightweightTriviaFact &&
+      isActivityAdvanceBookingConsultQuery(request.message ?? '')
+    ) {
+      return await this.orchestrateActivityCardFastPath(
+        request,
+        context,
+        effectiveTripId,
+        startTime,
+      );
+    }
+
+    // 租车出卡：独占快路径（跳过天气/酒店/RAG/长 LLM，避免客户端 ~10s [CLOSED]）
+    if (!lightweightTriviaFact && isCarRentalChatCardQuery(request.message ?? '')) {
+      return await this.orchestrateCarRentalCardFastPath(
+        request,
+        context,
+        effectiveTripId,
+        startTime,
+      );
+    }
+
+    // 住宿出卡：独占快路径（跳过 Narrator LLM + 长文 INTAKE；飞猪本身约 1–2s）
+    const msgForHotelFast = request.message ?? '';
+    if (
+      !lightweightTriviaFact &&
+      (isHotelInventorySearchQuery(msgForHotelFast) ||
+        isDayLodgingChoiceQuery(msgForHotelFast) ||
+        /住宿推荐|推荐住宿|第一晚.*住宿|第\s*\d+\s*晚.*住宿/.test(msgForHotelFast))
+    ) {
+      return await this.orchestrateHotelCardFastPath(
+        request,
+        context,
+        effectiveTripId,
+        startTime,
+      );
+    }
+
     const diningLookupIntent = isDiningRecommendationQuery(request.message ?? '');
     const diningAnchoredInMessage = messageHasDiningLocationAnchor(request.message ?? '');
     const itineraryDraftHasItems =
@@ -4341,7 +4467,35 @@ export class ClaudeOrchestratorService {
       },
     };
 
+    const carRowsForFast = Array.isArray(rBranch.carRentals)
+      ? (rBranch.carRentals as Array<Record<string, unknown>>)
+      : [];
+    const carRentalFastPath =
+      isCarRentalChatCardQuery(request.message ?? '') && carRowsForFast.length > 0;
+
     try {
+      if (carRentalFastPath) {
+        const names = carRowsForFast
+          .slice(0, 3)
+          .map((r, i) => String(r.nameZh ?? r.name ?? r.title ?? `选项${i + 1}`))
+          .filter(Boolean);
+        const pickup =
+          typeof rBranch.carRentalSearchMeta?.pickup_query === 'string'
+            ? rBranch.carRentalSearchMeta.pickup_query
+            : '行程取车点';
+        answerText = [
+          `结论：已查到与「${pickup}」相关的实时租车结果，详情见下方卡片。`,
+          '',
+          `- 取还车：${String(request.message ?? '').trim() || pickup}`,
+          `- 推荐：${names.join('、') || '见卡片'}`,
+          '- 说明：价格与可订性以飞猪/预订页实时为准；异地还车请在下单页确认政策。',
+        ].join('\n');
+        this.logger.log({
+          tag: 'lightweight.car_rental_fast_path',
+          request_id: request.request_id,
+          cards: carRowsForFast.length,
+        });
+      } else {
       answerText = await this.llmService.callLlmWithSchema(
         llmProvider,
         prompt,
@@ -4421,6 +4575,7 @@ export class ClaudeOrchestratorService {
       narrativeIntegrityReport = integrityOutcome.report;
       if (lightweightTriviaFact) {
         answerText = this.stripConsultationPromptLeakageFromLightweightAnswer(answerText);
+      }
       }
     } catch (e: any) {
       const robust = classifyOrchestratorFailure(e, { orchestrator_step: 'INTAKE' });
@@ -4632,6 +4787,29 @@ export class ClaudeOrchestratorService {
                 : {}),
             }
           : {}),
+        ...(() => {
+          if (!isCarRentalChatCardQuery(request.message ?? '')) return {};
+          const bookingRows = Array.isArray(rBranch.carRentals)
+            ? (rBranch.carRentals as Array<Record<string, unknown>>)
+            : [];
+          const cards = buildCarRentalChatCards({
+            userMessage: request.message ?? '',
+            bookingResults: bookingRows.length ? bookingRows : undefined,
+            icelandRentalGuidance: gBranch.guidance
+              ? (gBranch.guidance as unknown as Record<string, unknown>)
+              : null,
+            carRentalSearchMeta: rBranch.carRentalSearchMeta ?? null,
+          });
+          if (!cards.length) return {};
+          return {
+            schema_id: 'tripnara/chat_car_rental_cards@v1',
+            car_rental_cards: cards,
+            ui_surface: 'car_rental_cards' as const,
+            ...(!bookingRows.length
+              ? { car_rentals: cards }
+              : {}),
+          };
+        })(),
         ...(gBranch.guidance ? { iceland_rental_guidance: gBranch.guidance } : {}),
         ...(stPack.out
           ? {
@@ -7832,6 +8010,13 @@ ${JSON.stringify(routingDecision, null, 2)}
           show_poi_trace: request.options?.show_poi_trace === true,
           // Persist emergency constraints on OrchestratorState for DSO projection (Sentinel hard mask).
           emergency_constraints: (request as any).emergency_constraints ?? undefined,
+          // TMR selective CONSUME → DSO/CGUS soft path（advisoryOnly）
+          ...((request as any).__travelMemoryDecisionHints?.length
+            ? {
+                travelMemoryDecisionHints: (request as any)
+                  .__travelMemoryDecisionHints,
+              }
+            : {}),
         },
         request.options,
       ) as OrchestratorState['metadata'],

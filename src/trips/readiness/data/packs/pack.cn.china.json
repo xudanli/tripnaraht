@@ -1,0 +1,281 @@
+{
+  "packId": "pack.cn.china",
+  "destinationId": "CN-CHINA",
+  "displayName": {
+    "en": "China",
+    "zh": "中国"
+  },
+  "version": "1.1.0",
+  "lastReviewedAt": "2026-08-08T00:00:00.000Z",
+  "geo": {
+    "countryCode": "CN",
+    "region": {
+      "en": "China",
+      "zh": "中国"
+    },
+    "city": {
+      "en": "Nationwide",
+      "zh": "全国"
+    },
+    "lat": 35.8617,
+    "lng": 104.1954
+  },
+  "supportedSeasons": ["summer", "winter", "shoulder", "monsoon"],
+  "rules": [
+    {
+      "id": "rule.cn.entry_transit",
+      "category": "entry_transit",
+      "severity": "medium",
+      "when": {
+        "eq": { "path": "itinerary.countries", "value": ["CN"] }
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "Confirm passport/visa or domestic ID requirements for China travel.",
+          "zh": "确认中国行程证件要求：境内居民带好身份证；入境旅客核验签证/过境免签政策。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Verify entry documents / domestic ID",
+              "zh": "核验入境证件或身份证"
+            },
+            "dueOffsetDays": -14,
+            "tags": ["documents", "entry"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rule.cn.payment_mobile",
+      "category": "logistics",
+      "severity": "high",
+      "when": {
+        "eq": { "path": "itinerary.countries", "value": ["CN"] }
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "WeChat Pay / Alipay are default; prepare mobile payments or UnionPay backup.",
+          "zh": "微信/支付宝为默认支付；外卡场景有限，请提前开通移动支付或备银联卡/少量现金。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Set up WeChat Pay or Alipay",
+              "zh": "开通微信支付或支付宝"
+            },
+            "dueOffsetDays": -7,
+            "tags": ["payment", "logistics"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rule.cn.peak_booking",
+      "category": "activities_bookings",
+      "severity": "high",
+      "when": {
+        "eq": { "path": "itinerary.countries", "value": ["CN"] }
+      },
+      "then": {
+        "level": "must",
+        "message": {
+          "en": "Book popular attractions and trains early around National Day / summer / Spring Festival.",
+          "zh": "国庆、暑期、春节等高峰请提前预约热门景区门票与高铁票。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Reserve timed-entry tickets for major sites",
+              "zh": "预约主要景区分时门票"
+            },
+            "dueOffsetDays": -10,
+            "tags": ["booking", "attraction"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rule.cn.driving_city_limits",
+      "category": "logistics",
+      "severity": "medium",
+      "when": {
+        "eq": { "path": "itinerary.countries", "value": ["CN"] }
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "Check local plate/odd-even driving limits and expressway ETC before city self-drive. See data/country-packs/CN/city-driving-limits.v1.json for major-city hints (not real-time).",
+          "zh": "进城自驾前核验当地尾号/环保限行与高速公路 ETC。主要城市提示见 data/country-packs/CN/city-driving-limits.v1.json（非实时，以交管通告为准）。"
+        }
+      }
+    },
+    {
+      "id": "rule.cn.plateau_altitude",
+      "category": "safety_hazards",
+      "severity": "high",
+      "when": {
+        "eq": { "path": "itinerary.countries", "value": ["CN"] }
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "For Tibet / western Sichuan / Qinghai routes, apply altitude acclimatization and CN_XIZANG/CN_SICHUAN pack thresholds.",
+          "zh": "涉藏、川西、青海等高海拔行程须安排适应期，并套用 CN_XIZANG / CN_SICHUAN 风险阈值。"
+        },
+        "tasks": [
+          {
+            "title": {
+              "en": "Plan altitude acclimatization days",
+              "zh": "规划高原适应日程"
+            },
+            "dueOffsetDays": -21,
+            "tags": ["altitude", "safety"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "rule.cn.gear_season",
+      "category": "gear_packing",
+      "severity": "medium",
+      "when": {
+        "eq": { "path": "itinerary.countries", "value": ["CN"] }
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "Pack for regional climate extremes (humid heat south / cold dry north / monsoon).",
+          "zh": "按区域气候备装：南方湿热、北方干冷、季风暴雨与高原昼夜温差。"
+        }
+      }
+    },
+    {
+      "id": "rule.cn.health_insurance",
+      "category": "health_insurance",
+      "severity": "medium",
+      "when": {
+        "eq": { "path": "itinerary.countries", "value": ["CN"] }
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "Ensure medical coverage for domestic long-haul / adventure segments; foreigners confirm travel insurance.",
+          "zh": "长途自驾或户外段建议确认医疗保障；入境旅客确认旅行保险覆盖中国大陆。"
+        }
+      }
+    },
+    {
+      "id": "rule.cn.connectivity",
+      "category": "logistics",
+      "severity": "medium",
+      "when": {
+        "eq": { "path": "itinerary.countries", "value": ["CN"] }
+      },
+      "then": {
+        "level": "should",
+        "message": {
+          "en": "Plan mobile data / eSIM; many services assume mainland connectivity and apps.",
+          "zh": "规划大陆手机流量/eSIM；地图、购票与支付高度依赖本地网络与 App。"
+        }
+      }
+    }
+  ],
+  "checklists": [
+    {
+      "id": "checklist.cn.documents",
+      "category": "entry_transit",
+      "items": [
+        { "en": "Passport or China resident ID", "zh": "护照或中国居民身份证" },
+        { "en": "Visa / transit visa-free eligibility (if foreign visitor)", "zh": "签证或过境免签资格（入境旅客）" }
+      ]
+    },
+    {
+      "id": "checklist.cn.payment",
+      "category": "logistics",
+      "items": [
+        { "en": "WeChat Pay / Alipay ready", "zh": "微信/支付宝可用" },
+        { "en": "UnionPay card or small cash backup", "zh": "银联卡或少量现金备用" }
+      ]
+    },
+    {
+      "id": "checklist.cn.bookings",
+      "category": "activities_bookings",
+      "items": [
+        { "en": "Timed tickets for major attractions", "zh": "热门景区分时门票" },
+        { "en": "High-speed rail / flight segments booked", "zh": "高铁/机票已预订" }
+      ]
+    },
+    {
+      "id": "checklist.cn.driving",
+      "category": "logistics",
+      "items": [
+        { "en": "Valid license / IDP if required", "zh": "有效驾照（及国际驾照如需）" },
+        { "en": "City driving-limit check for destination dates", "zh": "目的地日期限行核验" },
+        { "en": "ETC or toll payment method", "zh": "ETC 或通行费支付方式" },
+        {
+          "en": "If on classic routes (G318 / G211 / Qinggan loop etc.), apply route pack hints",
+          "zh": "若走经典线（G318/G211/青甘大环线等），套用 classic-self-drive-routes 提示"
+        }
+      ]
+    },
+    {
+      "id": "checklist.cn.safety",
+      "category": "safety_hazards",
+      "items": [
+        { "en": "Emergency numbers 110/119/120", "zh": "急救电话 110/119/120" },
+        { "en": "Altitude plan if visiting plateau regions", "zh": "高原行程适应计划（如适用）" }
+      ]
+    }
+  ],
+  "hazards": [
+    {
+      "type": "ALTITUDE",
+      "severity": "high",
+      "level": "HIGH",
+      "summary": {
+        "en": "High-altitude regions (Tibet / western Sichuan / Qinghai): altitude sickness risk; acclimatize and avoid rapid ascent.",
+        "zh": "高海拔地区（西藏/川西/青海）：存在高原反应风险；需适应并避免快速攀升。"
+      },
+      "mitigations": [
+        {
+          "en": "Schedule acclimatization days; apply CN_XIZANG / CN_SICHUAN thresholds.",
+          "zh": "安排适应日；套用 CN_XIZANG / CN_SICHUAN 阈值。"
+        }
+      ]
+    },
+    {
+      "type": "OTHER",
+      "severity": "medium",
+      "level": "MEDIUM",
+      "summary": {
+        "en": "Holiday crowding & transport strain around National Day / Spring Festival / summer.",
+        "zh": "国庆/春节/暑期高峰易拥堵且票务紧张。"
+      },
+      "mitigations": [
+        {
+          "en": "Book timed tickets and transport early; prefer shoulder-season alternatives.",
+          "zh": "提前预约分时门票与交通；优先错峰替代方案。"
+        }
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "sourceId": "src.cn.nia",
+      "authority": "National Immigration Administration",
+      "type": "html",
+      "title": { "en": "NIA", "zh": "国家移民管理局" },
+      "canonicalUrl": "https://www.nia.gov.cn/"
+    },
+    {
+      "sourceId": "src.cn.weather",
+      "authority": "CMA",
+      "type": "html",
+      "title": { "en": "China Meteorological Administration", "zh": "中国气象局" },
+      "canonicalUrl": "https://weather.cma.cn/"
+    }
+  ]
+}

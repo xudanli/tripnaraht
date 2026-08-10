@@ -5,6 +5,7 @@
 import { DateTime } from 'luxon';
 import type { TripConstraint } from '../types/trip-constraint.types';
 import { getConstraintTemplate } from './constraint-template-registry.util';
+import { resolveTripTimezone } from '../../../common/utils/destination-timezone.util';
 
 export interface SoftScheduleDayItem {
   id: string;
@@ -22,6 +23,8 @@ export interface SoftScheduleEvalContext {
     dateIso: string;
     items: SoftScheduleDayItem[];
   }>;
+  /** 目的地墙钟时区；缺省 utc（冰岛） */
+  timezone?: string;
   budgetTotal?: number;
   budgetCurrency?: string;
 }
@@ -47,38 +50,52 @@ function rawValue(c: TripConstraint): Record<string, unknown> {
   return c.value && typeof c.value === 'object' ? (c.value as Record<string, unknown>) : {};
 }
 
-function parseHmOnDay(dateIso: string, hm: string): DateTime | undefined {
-  const dt = DateTime.fromISO(`${dateIso}T${hm}`, { setZone: true });
+function parseHmOnDay(
+  dateIso: string,
+  hm: string,
+  timezone: string = 'utc',
+): DateTime | undefined {
+  const dt = DateTime.fromISO(`${dateIso}T${hm}`, { zone: timezone || 'utc' });
   return dt.isValid ? dt : undefined;
 }
 
-function itemStart(dateIso: string, item: SoftScheduleDayItem): DateTime | undefined {
+function itemStart(
+  dateIso: string,
+  item: SoftScheduleDayItem,
+  timezone: string = 'utc',
+): DateTime | undefined {
   if (!item.startTime) return undefined;
   if (item.startTime instanceof Date) {
-    return DateTime.fromJSDate(item.startTime);
+    return DateTime.fromJSDate(item.startTime, { zone: 'utc' }).setZone(timezone || 'utc');
   }
   if (typeof item.startTime === 'string') {
     if (item.startTime.includes('T')) {
-      const dt = DateTime.fromISO(item.startTime);
-      return dt.isValid ? dt : undefined;
+      const dt = DateTime.fromISO(item.startTime, { setZone: true });
+      return dt.isValid ? dt.setZone(timezone || 'utc') : undefined;
     }
-    return parseHmOnDay(dateIso, item.startTime);
+    return parseHmOnDay(dateIso, item.startTime, timezone);
   }
   return undefined;
 }
 
-function itemEnd(dateIso: string, item: SoftScheduleDayItem): DateTime | undefined {
+function itemEnd(
+  dateIso: string,
+  item: SoftScheduleDayItem,
+  timezone: string = 'utc',
+): DateTime | undefined {
   if (item.endTime) {
-    if (item.endTime instanceof Date) return DateTime.fromJSDate(item.endTime);
+    if (item.endTime instanceof Date) {
+      return DateTime.fromJSDate(item.endTime, { zone: 'utc' }).setZone(timezone || 'utc');
+    }
     if (typeof item.endTime === 'string') {
       if (item.endTime.includes('T')) {
-        const dt = DateTime.fromISO(item.endTime);
-        return dt.isValid ? dt : undefined;
+        const dt = DateTime.fromISO(item.endTime, { setZone: true });
+        return dt.isValid ? dt.setZone(timezone || 'utc') : undefined;
       }
-      return parseHmOnDay(dateIso, item.endTime);
+      return parseHmOnDay(dateIso, item.endTime, timezone);
     }
   }
-  return itemStart(dateIso, item);
+  return itemStart(dateIso, item, timezone);
 }
 
 function isMealItem(item: SoftScheduleDayItem): boolean {
@@ -196,13 +213,14 @@ function evalDailyFreeTime(
   ctx: SoftScheduleEvalContext,
 ): SoftConstraintViolation[] {
   const minMinutes = Number(rawValue(c).minMinutes ?? 60);
+  const tz = ctx.timezone || 'utc';
   const out: SoftConstraintViolation[] = [];
   for (const day of ctx.days) {
     const timed = day.items
       .map((item) => ({
         item,
-        start: itemStart(day.dateIso, item),
-        end: itemEnd(day.dateIso, item),
+        start: itemStart(day.dateIso, item, tz),
+        end: itemEnd(day.dateIso, item, tz),
       }))
       .filter((x) => x.start && x.end) as Array<{
       item: SoftScheduleDayItem;
@@ -234,15 +252,16 @@ function evalLunchWindow(
 ): SoftConstraintViolation[] {
   const start = String(rawValue(c).startTime ?? '12:00');
   const end = String(rawValue(c).endTime ?? '13:30');
+  const tz = ctx.timezone || 'utc';
   const out: SoftConstraintViolation[] = [];
   for (const day of ctx.days) {
     const meals = day.items.filter(isMealItem);
     if (meals.length === 0) continue;
     const lunch = meals[0];
-    const at = itemStart(day.dateIso, lunch);
+    const at = itemStart(day.dateIso, lunch, tz);
     if (!at) continue;
-    const windowStart = parseHmOnDay(day.dateIso, start);
-    const windowEnd = parseHmOnDay(day.dateIso, end);
+    const windowStart = parseHmOnDay(day.dateIso, start, tz);
+    const windowEnd = parseHmOnDay(day.dateIso, end, tz);
     if (!windowStart || !windowEnd) continue;
     if (at < windowStart || at > windowEnd) {
       out.push({
@@ -262,12 +281,13 @@ function evalAvoidEarly(
   ctx: SoftScheduleEvalContext,
 ): SoftConstraintViolation[] {
   const earliest = String(rawValue(c).earliestTime ?? '08:30');
+  const tz = ctx.timezone || 'utc';
   const out: SoftConstraintViolation[] = [];
   for (const day of ctx.days) {
     const first = day.items[0];
     if (!first) continue;
-    const at = itemStart(day.dateIso, first);
-    const threshold = parseHmOnDay(day.dateIso, earliest);
+    const at = itemStart(day.dateIso, first, tz);
+    const threshold = parseHmOnDay(day.dateIso, earliest, tz);
     if (!at || !threshold) continue;
     if (at < threshold) {
       out.push({
@@ -288,14 +308,15 @@ function evalElderlyRest(
 ): SoftConstraintViolation[] {
   const start = String(rawValue(c).startTime ?? '14:00');
   const duration = Number(rawValue(c).durationMinutes ?? 90);
+  const tz = ctx.timezone || 'utc';
   const out: SoftConstraintViolation[] = [];
   for (const day of ctx.days) {
-    const windowStart = parseHmOnDay(day.dateIso, start);
+    const windowStart = parseHmOnDay(day.dateIso, start, tz);
     if (!windowStart) continue;
     const windowEnd = windowStart.plus({ minutes: duration });
     const hasRest = day.items.some((item) => {
       if (!isRestItem(item)) return false;
-      const at = itemStart(day.dateIso, item);
+      const at = itemStart(day.dateIso, item, tz);
       return at != null && at >= windowStart && at <= windowEnd;
     });
     if (!hasRest && day.items.length >= 3) {
@@ -339,6 +360,8 @@ function evalLodgingContinuity(
 }
 
 export function buildSoftScheduleEvalContext(input: {
+  destination?: string | null;
+  metadata?: unknown;
   TripDay?: Array<{
     date: Date;
     ItineraryItem?: Array<{
@@ -352,9 +375,13 @@ export function buildSoftScheduleEvalContext(input: {
   }>;
   budgetConfig?: unknown;
 }): SoftScheduleEvalContext {
+  const timezone = resolveTripTimezone({
+    destination: input.destination,
+    metadata: input.metadata,
+  });
   const days = (input.TripDay ?? []).map((day, index) => ({
     dayNumber: index + 1,
-    dateIso: DateTime.fromJSDate(day.date).toISODate() ?? String(index + 1),
+    dateIso: DateTime.fromJSDate(day.date, { zone: 'utc' }).toISODate() ?? String(index + 1),
     items: (day.ItineraryItem ?? []).map((item) => ({
       id: item.id,
       type: item.type,
@@ -376,6 +403,7 @@ export function buildSoftScheduleEvalContext(input: {
   const total = Number(budget.total ?? budget.amount);
   return {
     days,
+    timezone,
     ...(Number.isFinite(total) ? { budgetTotal: total, budgetCurrency: String(budget.currency ?? 'CNY') } : {}),
   };
 }

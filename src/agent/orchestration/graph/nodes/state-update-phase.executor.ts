@@ -1,9 +1,6 @@
 import type { OrchestrationStep, SubAgentType } from '../../../interfaces/trip-plan.interface';
-import {
-  buildPatchFromDSOPrimary,
-  decisionStateToOrchestratorState,
-  orchestratorStateToDecisionStatePatch,
-} from '../../../../decision/kernel/orchestrator-state-mapper';
+import { buildPatchFromDSOPrimary } from '../../../../decision/kernel/orchestrator-state-mapper';
+import { projectToOrchestratorState } from '../../../../decision/kernel/dso-authority.util';
 import {
   extractDecisionLogTripContext,
   extractDestinationDisplayZh,
@@ -27,9 +24,11 @@ export async function runStateUpdatePhase(
     const stepStartTime = Date.now();
     host.logger.debug(`[Claude Orchestrator] 执行 STATE_UPDATE 步骤（原子提交）...`);
 
-    const patch = host.isDsoAsPrimary()
-      ? buildPatchFromDSOPrimary(decisionState, state)
-      : orchestratorStateToDecisionStatePatch(state);
+    // DSO 唯一可写权威：始终以 DSO 为主构建 patch（O→D 覆盖已退役）
+    if (!host.isDsoAsPrimary()) {
+      host.logger.warn('[STATE_UPDATE] DSO_AS_PRIMARY=false ignored; forcing DSO-primary patch');
+    }
+    const patch = buildPatchFromDSOPrimary(decisionState, state);
     patch.systemState = {
       ...patch.systemState,
       requestId: state.request_id,
@@ -64,9 +63,8 @@ export async function runStateUpdatePhase(
       maxRetries: 3,
     });
 
-    // DSO 为主时：派生 OrchestratorState 兼容字段
-    const derived = decisionStateToOrchestratorState(updated, state);
-    Object.assign(state, derived);
+    // DSO 权威：经统一投影入口写入 OrchestratorState（禁止其它 Object.assign）
+    projectToOrchestratorState(updated, state, { phase: 'STATE_UPDATE' });
 
     const intakeUserMessage =
       (state.metadata as { intake_user_message?: string } | undefined)?.intake_user_message ??

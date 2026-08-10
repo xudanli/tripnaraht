@@ -96,6 +96,9 @@ export interface TravelEtaActualCaptureV1 {
   sampleSourceNote?: string;
 }
 
+/** Capture path dataSource union (alias of TravelEtaActualCaptureV1.dataSource). */
+export type TravelEtaActualDataSource = TravelEtaActualCaptureV1['dataSource'];
+
 export interface TravelEtaActualComputeInput {
   actualDepartureAt: string | Date;
   actualArrivalAt: string | Date;

@@ -1,0 +1,215 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "updatedAt": "2026-08-09",
+    "corridor": "cn.route.qinggan_loop",
+    "disclaimer": "规则与票价区间为公开攻略/OTA 抽样综合的示意值，须以景区当日通告与飞猪实时商品为准。",
+    "sources": [
+      "public OTA/travel guides (Mogao timed entry, Chaka/Danxia peak seasons)"
+    ]
+  },
+  "hotspots": [
+    {
+      "id": "cn.poi.mogao",
+      "nameCN": "莫高窟",
+      "nameEN": "Mogao Caves",
+      "aliases": ["敦煌莫高", "莫高窟景区", "敦煌莫高窟"],
+      "hubCityCN": "敦煌",
+      "category": "scenic",
+      "openSeason": {
+        "peak": {
+          "start": "--04-01",
+          "end": "--10-31",
+          "hoursHint": "分时预约入场；参观含数字展示中心（示意）"
+        },
+        "offPeak": {
+          "start": "--11-01",
+          "end": "--03-31",
+          "hoursHint": "冬季名额与班次可能收缩"
+        },
+        "bestVisitMonthsHint": [5, 6, 9, 10]
+      },
+      "booking": {
+        "realNameRequired": true,
+        "advanceBookingDaysHint": { "min": 1, "recommended": 7, "peakHoliday": 14 },
+        "channelsHintCN": ["莫高窟官方预约平台", "飞猪/主流 OTA（若有）"],
+        "sameDayValid": false,
+        "mustHintsCN": [
+          "几乎必须提前实名分时预约，旺季/节假日建议提前 7–14 天",
+          "常见「数字展示中心 + 洞窟」组合，勿与纯洞窟误解",
+          "当日票极不稳定，规划日勿压到最后一天才订"
+        ]
+      },
+      "priceBandsCNY": {
+        "gateListAdultCombo": {
+          "peak": 238,
+          "offPeak": 140,
+          "note": "门市常见组合票示意（含数字中心等），以官方为准"
+        },
+        "otaAdult": { "low": 120, "high": 260, "note": "OTA/官方实时为准" }
+      },
+      "consultBlurbCN": "莫高窟须官网/官方渠道实名分时预约，旺季建议提前一周以上；多为数字展示中心+洞窟组合。票价与名额以当日通告为准。"
+    },
+    {
+      "id": "cn.poi.mingsha",
+      "nameCN": "鸣沙山月牙泉",
+      "nameEN": "Mingsha Mountain & Crescent Spring",
+      "aliases": ["鸣沙山", "月牙泉", "鸣沙山•月牙泉", "鸣沙山景区"],
+      "hubCityCN": "敦煌",
+      "category": "scenic",
+      "openSeason": {
+        "peak": {
+          "start": "--04-01",
+          "end": "--10-31",
+          "hoursHint": "约 06:00–20:00（示意，沙漠日落档更挤）"
+        },
+        "bestVisitMonthsHint": [5, 6, 9, 10]
+      },
+      "booking": {
+        "realNameRequired": true,
+        "advanceBookingDaysHint": { "min": 0, "recommended": 1, "peakHoliday": 3 },
+        "channelsHintCN": ["飞猪/主流 OTA", "景区窗口"],
+        "sameDayValid": true,
+        "mustHintsCN": [
+          "日落档人流大，建议错峰或提前入场",
+          "驼队/滑沙等体验另计，勿与大门票混比"
+        ]
+      },
+      "priceBandsCNY": {
+        "gateListAdult": { "peak": 110, "offPeak": 90, "note": "门市常见挂牌示意" },
+        "otaAdult": { "low": 80, "high": 130, "note": "以实时商品为准" }
+      },
+      "consultBlurbCN": "鸣沙山月牙泉可当日订，旺季日落档建议提前；大门票与驼队体验分开计价。"
+    },
+    {
+      "id": "cn.poi.chaka",
+      "nameCN": "茶卡盐湖",
+      "nameEN": "Chaka Salt Lake",
+      "aliases": ["茶卡", "天空之镜", "茶卡盐湖景区"],
+      "hubCityCN": "茶卡",
+      "category": "scenic",
+      "altitudeMetersHint": 3059,
+      "openSeason": {
+        "peak": {
+          "start": "--05-01",
+          "end": "--10-15",
+          "hoursHint": "约 07:00–19:00（示意）"
+        },
+        "offPeak": {
+          "start": "--10-16",
+          "end": "--04-30",
+          "hoursHint": "冬季结冰/风大，体验差异大"
+        },
+        "bestVisitMonthsHint": [6, 7, 8, 9]
+      },
+      "booking": {
+        "realNameRequired": true,
+        "advanceBookingDaysHint": { "min": 0, "recommended": 1, "peakHoliday": 2 },
+        "channelsHintCN": ["飞猪/主流 OTA", "景区窗口"],
+        "sameDayValid": true,
+        "mustHintsCN": [
+          "小火车/观光车常另计或捆绑，报价勿只看大门票",
+          "高原日照强，备防晒；傍晚前抵达过夜更稳"
+        ]
+      },
+      "priceBandsCNY": {
+        "gateListAdult": { "peak": 70, "offPeak": 50, "note": "门市常见挂牌示意" },
+        "otaAdultPlusShuttle": {
+          "low": 60,
+          "high": 120,
+          "note": "含小火车等组合常见区间"
+        }
+      },
+      "consultBlurbCN": "茶卡盐湖旺季建议提前订；小火车常另计。海拔约 3000m，傍晚前抵茶卡过夜更稳。"
+    },
+    {
+      "id": "cn.poi.danxia",
+      "nameCN": "七彩丹霞",
+      "nameEN": "Zhangye Danxia",
+      "aliases": ["张掖七彩丹霞", "丹霞地貌", "张掖丹霞"],
+      "hubCityCN": "张掖",
+      "category": "scenic",
+      "openSeason": {
+        "peak": {
+          "start": "--04-01",
+          "end": "--10-31",
+          "hoursHint": "分时/观光车编组，日落档最挤（示意）"
+        },
+        "bestVisitMonthsHint": [6, 7, 8, 9, 10]
+      },
+      "booking": {
+        "realNameRequired": true,
+        "advanceBookingDaysHint": { "min": 0, "recommended": 1, "peakHoliday": 3 },
+        "channelsHintCN": ["飞猪/主流 OTA", "景区官方"],
+        "sameDayValid": true,
+        "mustHintsCN": [
+          "门票常与景区观光车捆绑",
+          "日落观景台人流大，建议提前入园占点"
+        ]
+      },
+      "priceBandsCNY": {
+        "gateListAdultPlusShuttle": {
+          "peak": 100,
+          "offPeak": 75,
+          "note": "门市常见票+车示意"
+        },
+        "otaAdult": { "low": 70, "high": 120, "note": "以实时商品为准" }
+      },
+      "consultBlurbCN": "七彩丹霞多为票+观光车；日落档建议提前订并早入园。价以飞猪/官方当日为准。"
+    },
+    {
+      "id": "cn.poi.kumbum",
+      "nameCN": "塔尔寺",
+      "nameEN": "Kumbum Monastery",
+      "aliases": ["湟中塔尔寺", "塔尔寺景区"],
+      "hubCityCN": "西宁",
+      "category": "scenic",
+      "altitudeMetersHint": 2660,
+      "openSeason": {
+        "peak": {
+          "start": "--01-01",
+          "end": "--12-31",
+          "hoursHint": "约 08:00–17:00（示意）"
+        },
+        "bestVisitMonthsHint": [5, 6, 7, 8, 9]
+      },
+      "booking": {
+        "realNameRequired": true,
+        "advanceBookingDaysHint": { "min": 0, "recommended": 1, "peakHoliday": 2 },
+        "channelsHintCN": ["飞猪/主流 OTA", "现场"],
+        "sameDayValid": true,
+        "mustHintsCN": [
+          "宗教场所注意着装与拍照礼仪",
+          "青甘首日常串联：西宁→塔尔寺→青海湖/茶卡，勿恋战"
+        ]
+      },
+      "priceBandsCNY": {
+        "gateListAdult": { "peak": 40, "offPeak": 30, "note": "门市常见挂牌示意" },
+        "otaAdult": { "low": 25, "high": 50, "note": "以实时商品为准" }
+      },
+      "consultBlurbCN": "塔尔寺可当日订；注意宗教礼仪。青甘首日常与茶卡串联，控制停留时长。"
+    }
+  ],
+  "lodgingNotes": [
+    {
+      "hubCityCN": "西宁",
+      "role": "gateway",
+      "altitudeMetersHint": 2261,
+      "mustHintsCN": ["环线起点/终点还车枢纽", "首日勿过晚出发去茶卡"],
+      "priceBandCNYHint": { "mid": [200, 450], "note": "OTA 示意，非承诺" }
+    },
+    {
+      "hubCityCN": "敦煌",
+      "role": "culture_overnight",
+      "altitudeMetersHint": 1138,
+      "mustHintsCN": ["莫高窟预约日建议连住", "鸣沙山日落档回城较晚"],
+      "priceBandCNYHint": { "mid": [220, 550], "note": "OTA 示意，非承诺" }
+    },
+    {
+      "hubCityCN": "张掖",
+      "role": "danxia_overnight",
+      "mustHintsCN": ["丹霞周边住宿旺季紧张，可住市区或景区口", "最长驾驶日前后优先休息"],
+      "priceBandCNYHint": { "mid": [180, 420], "note": "OTA 示意，非承诺" }
+    }
+  ]
+}

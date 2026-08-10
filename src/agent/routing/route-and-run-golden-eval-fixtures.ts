@@ -1,13 +1,15 @@
 import type { RouteAndRunGoldenEvalFixture } from './route-and-run-routing-protocol.types';
+import { toRouteAndRunGoldenEvalFixtures } from './cn-g318-golden-fixtures';
 
 const TRIP_A = '00000000-0000-4000-8000-000000000001';
 const TRIP_B = '00000000-0000-4000-8000-000000000002';
 const TRIP_C = '00000000-0000-4000-8000-000000000003';
 
 /**
- * route_and_run Golden Eval — 协议层 SSOT（28 条）。
+ * route_and_run Golden Eval — 协议层 SSOT（含 CN/G318 试点话术）。
  * 运行：`npx jest src/agent/routing/route-and-run-route-class.util.spec.ts`
  * 导出：`npx ts-node scripts/export-route-and-run-golden-eval.ts`
+ * CN/G318 夹具 SSOT：`cn-g318-golden-fixtures.ts`
  */
 export const ROUTE_AND_RUN_GOLDEN_EVAL_FIXTURES: RouteAndRunGoldenEvalFixture[] = [
   // ── 完整深规划 ──
@@ -622,4 +624,54 @@ export const ROUTE_AND_RUN_GOLDEN_EVAL_FIXTURES: RouteAndRunGoldenEvalFixture[] 
       asyncEligible: false,
     },
   },
+
+  // ── Harness Fast Query / Live（协议层）──
+  {
+    id: 'golden-harness-lodging-gap-q01',
+    label: '哪一天没住宿 → 快答（Harness TRIP_QUERY）',
+    request: {
+      request_id: 'golden-harness-q01',
+      user_id: 'eval-user',
+      trip_id: TRIP_A,
+      message: '哪一天没住宿',
+      options: {
+        intent_mode: 'TRIP_PLANNING',
+        entry_point: 'itinerary_day_editor',
+      },
+    },
+    expected: {
+      routeClass: 'QUICK_ANSWER',
+      tripId: 'optional',
+      needsClarificationBeforeWrite: false,
+      allowsDirectItineraryWrite: false,
+      successPayload: 'answer_text_only',
+      gate: { terminalStatus: 'OK' },
+      deepResearchV71: 'OFF',
+      orchestrationDepth: 'LIGHT_LOOKUP',
+      asyncEligible: false,
+    },
+  },
+  {
+    id: 'golden-harness-live-delay-e01',
+    label: '晚两小时还能去冰河湖 → 快答（Harness LIVE）',
+    request: {
+      request_id: 'golden-harness-e01',
+      user_id: 'eval-user',
+      trip_id: TRIP_A,
+      message: '我们晚两个小时，还能去冰河湖吗？',
+    },
+    expected: {
+      routeClass: 'QUICK_ANSWER',
+      tripId: 'optional',
+      needsClarificationBeforeWrite: false,
+      allowsDirectItineraryWrite: false,
+      successPayload: 'answer_text_only',
+      gate: { terminalStatus: 'OK' },
+      deepResearchV71: 'OFF',
+      orchestrationDepth: 'LIGHT_LOOKUP',
+      asyncEligible: false,
+    },
+  },
+  // ── CN / G318 试点（SSOT: cn-g318-golden-fixtures.ts）──
+  ...toRouteAndRunGoldenEvalFixtures(),
 ];

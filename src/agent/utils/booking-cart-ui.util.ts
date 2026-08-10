@@ -65,15 +65,20 @@ export function buildBookingCartUi(input: {
         const segs = Array.isArray(o.segments) ? o.segments : [];
         const seg0 = (segs[0] ?? {}) as Record<string, unknown>;
         const label =
-          pickStr(o, ['summary_line']) ??
+          pickStr(o, ['summary_line', 'summaryLineZh', 'titleZh', 'title', 'nameZh']) ??
           `${pickStr(seg0, ['departure_airport']) ?? '?'} → ${pickStr(seg0, ['arrival_airport']) ?? '?'}`;
         items.push({
-          item_id: `flight_leg${li}_rank${rank}`,
+          item_id: pickStr(o, ['id']) ?? `flight_leg${li}_rank${rank}`,
           kind: 'flight',
           label_zh: `航班 · ${label}`,
-          price_label: pickStr(o, ['price_total']),
+          price_label: pickStr(o, ['price_total', 'priceLabel', 'price_label', 'price']),
           currency: pickStr(o, ['currency']),
-          metadata: { rank, duration: o.duration },
+          href: pickStr(o, ['webUrl', 'url']),
+          metadata: {
+            rank,
+            duration: o.duration ?? o.durationLabel,
+            source: o.source ?? o.bookingProvider,
+          },
         });
       }
     }

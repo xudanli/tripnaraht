@@ -1,0 +1,182 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "sampledAt": "2026-08-09T09:00:56.076Z",
+    "source": "restapi.amap.com/v3/place/text",
+    "corridor": "cn.route.g211",
+    "disclaimer": "高德 POI 文本搜首条。"
+  },
+  "summary": {
+    "targets": 9,
+    "ok": 9,
+    "miss": 0,
+    "maxDeltaKm": 2.729,
+    "appliedCount": 0,
+    "thresholdKm": 3,
+    "apply": true
+  },
+  "rows": [
+    {
+      "nameCN": "银川",
+      "ok": true,
+      "seed": {
+        "lat": 38.4872,
+        "lng": 106.2309,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 38.487783,
+        "lng": 106.230977,
+        "name": "银川市",
+        "address": "金凤区",
+        "id": "B03B70PI1Z"
+      },
+      "deltaKm": 0.065,
+      "applied": false
+    },
+    {
+      "nameCN": "庆阳",
+      "ok": true,
+      "seed": {
+        "lat": 35.734,
+        "lng": 107.644,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 35.709459,
+        "lng": 107.643433,
+        "name": "庆阳市",
+        "address": "西峰区",
+        "id": "B03A616D7P"
+      },
+      "deltaKm": 2.729,
+      "applied": false
+    },
+    {
+      "nameCN": "西安",
+      "ok": true,
+      "seed": {
+        "lat": 34.3416,
+        "lng": 108.9398,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 34.343207,
+        "lng": 108.939645,
+        "name": "西安市",
+        "address": "未央区",
+        "id": "B001D0W888"
+      },
+      "deltaKm": 0.179,
+      "applied": false
+    },
+    {
+      "nameCN": "商洛",
+      "ok": true,
+      "seed": {
+        "lat": 33.873,
+        "lng": 109.94,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 33.873358,
+        "lng": 109.918646,
+        "name": "商洛市",
+        "address": "商州区",
+        "id": "B0FFJ1DFUP"
+      },
+      "deltaKm": 1.972,
+      "applied": false
+    },
+    {
+      "nameCN": "安康",
+      "ok": true,
+      "seed": {
+        "lat": 32.69,
+        "lng": 109.029,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 32.685435,
+        "lng": 109.029017,
+        "name": "安康市",
+        "address": "汉滨区",
+        "id": "B03930O7OW"
+      },
+      "deltaKm": 0.508,
+      "applied": false
+    },
+    {
+      "nameCN": "万州",
+      "ok": true,
+      "seed": {
+        "lat": 30.8079,
+        "lng": 108.408,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 30.807621,
+        "lng": 108.408591,
+        "name": "万州区",
+        "address": "万州区",
+        "id": "B001781XZL"
+      },
+      "deltaKm": 0.064,
+      "applied": false
+    },
+    {
+      "nameCN": "沿河",
+      "ok": true,
+      "seed": {
+        "lat": 28.564,
+        "lng": 108.496,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 28.564083,
+        "lng": 108.503152,
+        "name": "沿河土家族自治县",
+        "address": "沿河土家族自治县",
+        "id": "B035800VYA"
+      },
+      "deltaKm": 0.699,
+      "applied": false
+    },
+    {
+      "nameCN": "镇远古镇",
+      "ok": true,
+      "seed": {
+        "lat": 27.049,
+        "lng": 108.429,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 27.047373,
+        "lng": 108.421039,
+        "name": "镇远古城",
+        "address": "兴隆街21号",
+        "id": "B03570161S"
+      },
+      "deltaKm": 0.809,
+      "applied": false
+    },
+    {
+      "nameCN": "榕江",
+      "ok": true,
+      "seed": {
+        "lat": 25.932,
+        "lng": 108.522,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 25.931893,
+        "lng": 108.521881,
+        "name": "榕江县",
+        "address": "榕江县",
+        "id": "B0357013JW"
+      },
+      "deltaKm": 0.017,
+      "applied": false
+    }
+  ]
+}

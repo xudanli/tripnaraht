@@ -865,6 +865,11 @@ model Trip {
   TravelOutcome          TravelOutcome[]
   TripWalletRule         TripWalletRule?
   TripWalletLedgerEntry  TripWalletLedgerEntry[]
+  TripLedgerExpense      TripLedgerExpense[]
+  TripLedgerTransferConfirm TripLedgerTransferConfirm[]
+  TripTeamTask           TripTeamTask[]
+  TripTeamTaskRemind     TripTeamTaskRemind[]
+  TripMyPackingListItem  TripMyPackingListItem[]
   TripValueFeedback      TripValueFeedback[]
   TripBudgetDecisionLog  TripBudgetDecisionLog[]
   TripWishItem           TripWishItem[]
@@ -899,6 +904,7 @@ model Trip {
   TripExecutionRiskUserState   TripExecutionRiskUserState[]
   TripMemberInvite             TripMemberInvite[]
   TepRepairExecution           TepRepairExecution[]
+  AgentConversation            AgentConversation[]
 
   @@index([status])
 }
@@ -1457,6 +1463,109 @@ model TripWalletLedgerEntry {
   @@unique([tripId, sourceType, sourceId])
   @@index([tripId, settled])
   @@map("trip_wallet_ledger_entries")
+}
+
+/// Team Hub · Team Ledger — peer expense (integer cents)
+model TripLedgerExpense {
+  id               String    @id @default(uuid()) @db.Uuid
+  tripId           String    @map("trip_id")
+  title            String    @db.Text
+  payerMemberId    String    @map("payer_member_id") @db.Text
+  amountCents      Int       @map("amount_cents")
+  currency         String    @default("CNY") @db.VarChar(8)
+  occurredAt       DateTime  @map("occurred_at") @db.Timestamptz(6)
+  status           String    @default("pending") @db.VarChar(16)
+  splitMemberIds   Json      @map("split_member_ids")
+  /// Optional link to itinerary activity (活动详情「团队账本」回显)
+  itineraryItemId  String?   @map("itinerary_item_id") @db.Text
+  createdByUserId  String    @map("created_by_user_id") @db.Text
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip             Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, deletedAt, occurredAt(sort: Desc)])
+  @@index([tripId, status, deletedAt])
+  @@index([tripId, itineraryItemId])
+  @@map("trip_ledger_expenses")
+}
+
+/// Team Ledger — member-confirmed settlement transfer (keyed by from/to/amount)
+model TripLedgerTransferConfirm {
+  id           String   @id @default(uuid()) @db.Uuid
+  tripId       String   @map("trip_id")
+  fromMemberId String   @map("from_member_id") @db.Text
+  toMemberId   String   @map("to_member_id") @db.Text
+  amountCents  Int      @map("amount_cents")
+  status       String   @default("settled") @db.VarChar(16)
+  confirmedAt  DateTime @default(now()) @map("confirmed_at") @db.Timestamptz(6)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip         Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, fromMemberId, toMemberId, amountCents])
+  @@index([tripId])
+  @@map("trip_ledger_transfer_confirms")
+}
+
+/// Team Hub · Team Tasks — lightweight pre-trip assignment board
+model TripTeamTask {
+  id                String    @id @default(uuid()) @db.Uuid
+  tripId            String    @map("trip_id")
+  title             String    @db.Text
+  notes             String?   @db.Text
+  status            String    @default("open") @db.VarChar(16)
+  assigneeMemberId  String?   @map("assignee_member_id") @db.Text
+  assigneeName      String?   @map("assignee_name") @db.Text
+  dueAt             DateTime? @map("due_at") @db.Timestamptz(6)
+  dueLabel          String?   @map("due_label") @db.Text
+  systemImage       String?   @map("system_image") @db.VarChar(64)
+  sourceType        String    @default("manual") @map("source_type") @db.VarChar(32)
+  sourceRefId       String?   @map("source_ref_id") @db.Text
+  sourceLabelZh     String?   @map("source_label_zh") @db.Text
+  createdByMemberId String    @map("created_by_member_id") @db.Text
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip              Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, status])
+  @@index([tripId, sourceType, sourceRefId])
+  @@map("trip_team_tasks")
+}
+
+/// Team Tasks — remind log (dedupe when allowRemindAgain=false)
+model TripTeamTaskRemind {
+  id           String   @id @default(uuid()) @db.Uuid
+  tripId       String   @map("trip_id")
+  fromMemberId String   @map("from_member_id") @db.Text
+  toMemberId   String   @map("to_member_id") @db.Text
+  message      String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  Trip         Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, toMemberId, createdAt])
+  @@map("trip_team_task_reminds")
+}
+
+/// Team Hub · personal packing checklist (per member)
+model TripMyPackingListItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  tripId      String   @map("trip_id")
+  userId      String   @map("user_id") @db.Text
+  titleZh     String   @map("title_zh") @db.Text
+  categoryZh  String?  @map("category_zh") @db.Text
+  checked     Boolean  @default(false)
+  sourceType  String?  @map("source_type") @db.VarChar(32)
+  sourceRefId String?  @map("source_ref_id") @db.Text
+  templateId  String?  @map("template_id") @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  Trip        Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, userId])
+  @@index([tripId, userId, sourceType, sourceRefId])
+  @@map("trip_my_packing_list_items")
 }
 
 /// L4 Value feedback — per expense / itinerary item satisfaction
@@ -2186,6 +2295,7 @@ model User {
   accountContexts           UserAccountContext[]
   professionalProfile       ProfessionalProfile?
   professionalCertifications ProfessionalCertification[]
+  credentialDocuments        UserCredentialDocument[]
 
   @@index([googleSub])
   @@index([email])
@@ -2736,6 +2846,30 @@ model UserProfile {
   User                User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+/// Personal-center credential vault (user-level; never expose file URLs in trip public payloads)
+model UserCredentialDocument {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  type        String    @db.VarChar(64)
+  status      String    @default("pending") @db.VarChar(32)
+  expiresOn   DateTime? @map("expires_on") @db.Date
+  notes       String?   @db.Text
+  storageKey  String    @map("storage_key") @db.Text
+  fileUrl     String?   @map("file_url") @db.Text
+  mimeType    String    @map("mime_type") @db.VarChar(128)
+  fileSize    Int       @map("file_size")
+  fileName    String    @map("file_name") @db.VarChar(512)
+  numberLast4 String?   @map("number_last4") @db.VarChar(4)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  User        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+  @@index([userId, deletedAt])
+  @@map("user_credential_documents")
 }
 
 model StripeConnection {
@@ -4676,6 +4810,10 @@ enum PlaceCategory {
   HOTEL
   TRANSIT_HUB
   HOSPITAL
+  /// 补给（加油站 / 超市等）；库内已有该值，Prisma 必须同步
+  SUPPLY
+  /// 服务设施（游客中心、租车等）；库内已有该值，Prisma 必须同步
+  SERVICE
 }
 
 enum ApprovalStatus {
@@ -6908,4 +7046,118 @@ model RatePlan {
   @@index([sessionId])
   @@index([offeringId, travelerType])
   @@map("rate_plan")
+}
+/// Agent AI chat — durable conversation (TRIP_SHARED | PERSONAL)
+enum AgentConversationScope {
+  TRIP_SHARED
+  PERSONAL
+}
+
+enum AgentConversationMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+/// Drawer + message ledger for route_and_run chat (not in-trip intercom).
+model AgentConversation {
+  id              String                  @id @default(uuid()) @db.Uuid
+  scope           AgentConversationScope
+  /// Required when scope=TRIP_SHARED; optional anchor for PERSONAL
+  tripId          String?                 @map("trip_id")
+  title           String?                 @db.VarChar(200)
+  createdByUserId String                  @map("created_by_user_id") @db.Text
+  /// JSON: { readers?: string[], writers?: string[] } — empty = trip members / owner default
+  visibility      Json?
+  createdAt       DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastMessageAt   DateTime?               @map("last_message_at") @db.Timestamptz(6)
+  metadata        Json?
+
+  Trip     Trip?                       @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  messages AgentConversationMessage[]
+
+  /// TRIP_SHARED uniqueness enforced in service (one primary thread per trip)
+  @@index([createdByUserId, scope, updatedAt])
+  @@index([tripId, scope])
+  @@map("agent_conversations")
+}
+
+model AgentConversationMessage {
+  id              String                       @id @default(uuid()) @db.Uuid
+  conversationId  String                       @map("conversation_id") @db.Uuid
+  role            AgentConversationMessageRole
+  userId          String?                      @map("user_id") @db.Text
+  displayName     String?                      @map("display_name") @db.VarChar(120)
+  content         String                       @db.Text
+  requestId       String?                      @map("request_id") @db.VarChar(128)
+  /// route_and_run result.status summary (OK | NEED_CONFIRMATION | …)
+  resultStatus    String?                      @map("result_status") @db.VarChar(64)
+  deliveryVerdict String?                      @map("delivery_verdict") @db.VarChar(64)
+  taskId          String?                      @map("task_id") @db.VarChar(128)
+  /// Truncated assistant/user extras (negotiation ids, etc.) — not full payload
+  summaryJson     Json?                        @map("summary_json")
+  createdAt       DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  conversation AgentConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([requestId])
+  @@map("agent_conversation_messages")
+}
+
+/// Travel Memory Runtime — append-only Evidence Chain（Decision Accountability）
+/// @see src/travel-memory/TMR_READINESS.md · MEMORY_VALIDATION_LOOP.md
+model TravelMemoryEvent {
+  id               String    @id @db.VarChar(64)
+  subjectType      String    @map("subject_type") @db.VarChar(32)
+  subjectId        String    @map("subject_id") @db.VarChar(128)
+  memoryType       String    @map("memory_type") @db.VarChar(64)
+  predicate        String    @db.VarChar(256)
+  scope            String    @db.VarChar(32)
+  /// JSON value payload（preference / episode ref / candidate…）
+  value            Json
+  lifecycleStatus  String    @map("lifecycle_status") @db.VarChar(32)
+  eventStatus      String    @map("event_status") @db.VarChar(32)
+  confidence       Float     @default(0)
+  op               String    @db.VarChar(32)
+  sourceType       String    @map("source_type") @db.VarChar(64)
+  decisionId       String?   @map("decision_id") @db.VarChar(128)
+  episodeId        String?   @map("episode_id") @db.VarChar(128)
+  tripId           String?   @map("trip_id") @db.VarChar(128)
+  supersedesEventId String?  @map("supersedes_event_id") @db.VarChar(64)
+  supersededBy     String?   @map("superseded_by") @db.VarChar(64)
+  validFrom        DateTime  @map("valid_from") @db.Timestamptz(6)
+  validTo          DateTime? @map("valid_to") @db.Timestamptz(6)
+  recordedAt       DateTime  @map("recorded_at") @db.Timestamptz(6)
+  supersededAt     DateTime? @map("superseded_at") @db.Timestamptz(6)
+  /// Denormalized evidenceRefs[] for fast read; rows also in TravelMemoryEvidence
+  evidenceRefsJson Json      @map("evidence_refs_json")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  evidenceRefs TravelMemoryEvidence[]
+
+  @@index([subjectType, subjectId, predicate, recordedAt])
+  @@index([decisionId])
+  @@index([episodeId])
+  @@index([tripId, recordedAt])
+  @@index([lifecycleStatus, eventStatus])
+  @@map("travel_memory_events")
+}
+
+model TravelMemoryEvidence {
+  id           String   @id @default(uuid()) @db.Uuid
+  memoryEventId String  @map("memory_event_id") @db.VarChar(64)
+  evidenceType String   @map("evidence_type") @db.VarChar(64)
+  evidenceId   String   @map("evidence_id") @db.VarChar(128)
+  weight       Float?
+  note         String?  @db.VarChar(512)
+  at           DateTime? @db.Timestamptz(6)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  memoryEvent TravelMemoryEvent @relation(fields: [memoryEventId], references: [id], onDelete: Cascade)
+
+  @@index([memoryEventId])
+  @@index([evidenceType, evidenceId])
+  @@map("travel_memory_evidence")
 }

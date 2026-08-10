@@ -8,8 +8,10 @@ import {
   extractMaxDailyDrivingHoursFromMessage,
   extractItineraryAdjustTargetDateFromMessage,
   isCoarseCountryOnlyDestination,
+  resolveSparseSelectedPoiContinuation,
   shouldPreferTripDestinationOnHydration,
   shouldSkipPoiDestinationClarificationForItineraryAdjust,
+  shouldSkipPoiDestinationCommuteClarification,
 } from './itinerary-adjust-intent.util';
 import type { TripPlanRequest } from '../interfaces/trip-plan.interface';
 import {
@@ -92,6 +94,24 @@ describe('itinerary-adjust-intent.util', () => {
     expect(detectItineraryAdjustIntent('明天太累了，轻松一点')).toBe(true);
   });
 
+  it('detects motion-sickness driven route adjust (not full replan)', () => {
+    const msg = '成员说晕车，调整一下路线';
+    expect(detectItineraryAdjustIntent(msg)).toBe(true);
+    expect(detectFullTripReplanIntent(msg, TRIP_RANGE)).toBe(false);
+  });
+
+  it('detects motion-sickness adjust with UI [日程] Day1 suffix', () => {
+    const msg = '成员说晕车，调整一下路线\n\n[日程] Day1 Day 1 · 黄金圈';
+    expect(detectItineraryAdjustIntent(msg)).toBe(true);
+    expect(detectFullTripReplanIntent(msg, TRIP_RANGE)).toBe(false);
+  });
+
+  it('does not treat 第N天 as multi-day full replan span', () => {
+    const msg = '第2天有人晕车，调整一下路线';
+    expect(detectFullTripReplanIntent(msg, TRIP_RANGE)).toBe(false);
+    expect(detectItineraryAdjustIntent(msg, TRIP_RANGE)).toBe(true);
+  });
+
   it('PRE_TRIP：明天相对 startDate（出发前规划期）', () => {
     expect(
       extractItineraryAdjustTargetDateFromMessage('明天太累了，轻松一点', {
@@ -165,6 +185,14 @@ describe('itinerary-adjust-intent.util', () => {
     expect(shouldPreferTripDestinationOnHydration('雷克雅未克', '冰岛 南部')).toBe(false);
   });
 
+  it('prefers trip destination when NL city conflicts with bound-trip country', () => {
+    expect(shouldPreferTripDestinationOnHydration('杭州', '冰岛')).toBe(true);
+    expect(shouldPreferTripDestinationOnHydration('杭州', 'IS')).toBe(true);
+    expect(shouldPreferTripDestinationOnHydration('上海', '日本')).toBe(true);
+    // 同国城市：不因冲突规则强制覆盖（仍走 coarse / 长度规则）
+    expect(shouldPreferTripDestinationOnHydration('杭州', '上海')).toBe(false);
+  });
+
   it('avoids duplicate 南部 in clarification options', () => {
     expect(buildDestinationScopeClarificationOptions('冰岛 南部')).toEqual([
       '冰岛 南部 市区',
@@ -181,7 +209,62 @@ describe('itinerary-adjust-intent.util', () => {
       shouldSkipPoiDestinationClarificationForItineraryAdjust('GENERAL_PLAN', 13),
     ).toBe(true);
     expect(
+      shouldSkipPoiDestinationClarificationForItineraryAdjust('TRIP_CONSULTATION', 13),
+    ).toBe(true);
+    expect(
       shouldSkipPoiDestinationClarificationForItineraryAdjust('GENERAL_PLAN', 1),
+    ).toBe(false);
+  });
+
+  it('backfills sparse cluster from ranked pool instead of clarifying', () => {
+    const ranked = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    const out = resolveSparseSelectedPoiContinuation({
+      scored: [{ id: 1 }],
+      rankedPois: ranked,
+      minPoiRequired: 2,
+      tripPoiSeedCount: 0,
+      hasBoundTrip: false,
+    });
+    expect(out.shouldClarify).toBe(false);
+    expect(out.bypassReason).toBe('RANKED_POOL_BACKFILL');
+    expect(out.scored).toHaveLength(2);
+  });
+
+  it('soft-continues sparse selection on bound trip without enough seeds', () => {
+    const out = resolveSparseSelectedPoiContinuation({
+      scored: [{ id: 1 }],
+      rankedPois: [{ id: 1 }],
+      minPoiRequired: 2,
+      tripPoiSeedCount: 0,
+      hasBoundTrip: true,
+    });
+    expect(out.shouldClarify).toBe(false);
+    expect(out.bypassReason).toBe('BOUND_TRIP_SOFT_CONTINUE');
+  });
+
+  it('still clarifies when greenfield ranked pool is truly sparse', () => {
+    const out = resolveSparseSelectedPoiContinuation({
+      scored: [{ id: 1 }],
+      rankedPois: [{ id: 1 }],
+      minPoiRequired: 2,
+      tripPoiSeedCount: 0,
+      hasBoundTrip: false,
+    });
+    expect(out.shouldClarify).toBe(true);
+  });
+
+  it('skips commute clarify on bound trips', () => {
+    expect(
+      shouldSkipPoiDestinationCommuteClarification({
+        tripPoiSeedCount: 0,
+        hasBoundTrip: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldSkipPoiDestinationCommuteClarification({
+        tripPoiSeedCount: 0,
+        hasBoundTrip: false,
+      }),
     ).toBe(false);
   });
 

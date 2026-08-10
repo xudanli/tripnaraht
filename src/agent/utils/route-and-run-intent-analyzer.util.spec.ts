@@ -43,6 +43,37 @@ describe('route-and-run-intent-analyzer.util', () => {
     expect(detectItinerarySlotPlacementIntent(DATED_PEAK_MSG)).toBe(false);
   });
 
+  it('day editor 已锚定 DayN 时，勿因「安排/顺路」误判 SLOT_PLACEMENT', () => {
+    const withDay1 =
+      '能否在行程里安排极光\n\n[日程] Day1 Day 1 · 抵达雷克雅未克';
+    expect(detectItinerarySlotPlacementIntent(withDay1)).toBe(false);
+    expect(
+      analyzeRouteAndRunIntent(withDay1, { tripId: 't1', hasTripDays: true }).primary,
+    ).not.toBe('ITINERARY_SLOT_PLACEMENT');
+
+    const roadside =
+      '顺路安排观鲸活动\n\n[日程] Day1 Day 1 · 抵达雷克雅未克';
+    expect(detectItinerarySlotPlacementIntent(roadside)).toBe(false);
+  });
+
+  it('显式追问「那几天」时，即使有 [日程] DayN 仍走 SLOT_PLACEMENT', () => {
+    const msg =
+      '我应该把那几天定为极光观测日\n\n[日程] Day1 Day 1 · 抵达雷克雅未克';
+    expect(detectItinerarySlotPlacementIntent(msg)).toBe(true);
+  });
+
+  it('「规划哪几天空的行程」≠ SLOT_PLACEMENT，应走 GENERAL_PLAN 填空日', () => {
+    const msg =
+      '可以帮我规划一下哪几天空的行程吗？\n\n[日程] Day1 Day 1 · 抵达雷克雅未克';
+    expect(detectItinerarySlotPlacementIntent(msg)).toBe(false);
+    const analysis = analyzeRouteAndRunIntent(msg, {
+      tripId: 't1',
+      hasTripDays: true,
+    });
+    expect(analysis.primary).not.toBe('ITINERARY_SLOT_PLACEMENT');
+    expect(analysis.primary).toBe('GENERAL_PLAN');
+  });
+
   it('prioritizes slot placement over peak SKU when trip is bound', () => {
     const trip = { trip_id: 't1', message: SLOT_MSG } as TripPlanRequest;
     const analysis = analyzeRouteAndRunIntent(SLOT_MSG, { trip, tripId: 't1' });

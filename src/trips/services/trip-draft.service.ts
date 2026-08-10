@@ -6,7 +6,9 @@ import { LlmProvider } from '../../llm/dto/llm-request.dto';
 import { Prisma } from '@prisma/client';
 import { DateTime } from 'luxon';
 import { randomUUID } from 'crypto';
-import { PlaceMetadata } from '../../places/interfaces/place-metadata.interface';
+import { EffectivePlanWriteGuardService } from '../../decision-runtime/execution/effective-plan-write-guard.service';
+import { runBootstrapPlanSeedWithAuthority } from '../../decision-runtime/execution/bootstrap-plan-seed-authority.util';
+import { PlaceMetadata, normalizePlaceRawTags } from '../../places/interfaces/place-metadata.interface';
 import { PhysicalMetadata } from '../../places/interfaces/physical-metadata.interface';
 import {
   CreateTripDraftDto,
@@ -236,6 +238,7 @@ export class TripDraftService {
     private readonly globalPolicyWeightsService: GlobalPolicyWeightsService,
     @Optional() private readonly worldBus?: WorldBusService,
     @Optional() private readonly worldKernel?: WorldKernelService,
+    @Optional() private readonly effectivePlanWriteGuard?: EffectivePlanWriteGuardService,
   ) {}
 
   /**
@@ -822,7 +825,7 @@ export class TripDraftService {
         lng: place.lng,
         openingHours: metadata?.openingHours,
         avgVisitDuration: physicalMetadata?.estimated_duration_min || 60,
-        tags: metadata?.rawTags || [],
+        tags: normalizePlaceRawTags(metadata?.rawTags),
         popularity: place.rating ? place.rating * 2 : 5,
         rating: place.rating || undefined,
       };
@@ -1016,6 +1019,11 @@ export class TripDraftService {
       this.logger.log(`LLM 返回了 ${parsed.days.length} 天的编排结果`);
 
       const slotValidation = validateDraftLlmSlotsAsCandidates(parsed, candidates, dto, days);
+      if (slotValidation.repairs.length > 0) {
+        this.logger.warn(
+          `ExperienceCandidate 池外修复（${slotValidation.repairs.length} 项）: ${slotValidation.repairs.slice(0, 5).join('; ')}`,
+        );
+      }
       if (!slotValidation.valid) {
         this.logger.warn(
           `ExperienceCandidate 校验失败（${slotValidation.errors.length} 项）: ${slotValidation.errors.slice(0, 3).join('; ')}`,
@@ -1025,7 +1033,10 @@ export class TripDraftService {
         );
       }
       this.logger.log(
-        `ExperienceCandidate 校验通过：${slotValidation.candidates.length} 个结构化候选`,
+        `ExperienceCandidate 校验通过：${slotValidation.candidates.length} 个结构化候选` +
+          (slotValidation.repairs.length
+            ? `（含 ${slotValidation.repairs.length} 项池外修复）`
+            : ''),
       );
       
       // LLM 编排完成，通知进度回调
@@ -2686,39 +2697,45 @@ export class TripDraftService {
         itemsByDay.get(item.tripDayId)!.push(item);
       }
 
-      await this.prisma.$transaction(async (tx) => {
-        for (const [tripDayId, dayItems] of itemsByDay.entries()) {
-          // 查询当天最大的 order 值
-          const maxOrderItem = await tx.itineraryItem.findFirst({
-            where: { tripDayId },
-            orderBy: { order: 'desc' },
-            select: { order: true },
+      await runBootstrapPlanSeedWithAuthority(
+        this.effectivePlanWriteGuard,
+        'trip-draft.createItineraryItemsFromDraft',
+        async () => {
+          await this.prisma.$transaction(async (tx) => {
+            for (const [tripDayId, dayItems] of itemsByDay.entries()) {
+              // 查询当天最大的 order 值
+              const maxOrderItem = await tx.itineraryItem.findFirst({
+                where: { tripDayId },
+                orderBy: { order: 'desc' },
+                select: { order: true },
+              });
+              const baseOrder = maxOrderItem?.order !== null && maxOrderItem?.order !== undefined 
+                ? maxOrderItem.order + 1 
+                : 1;
+
+              // 按 startTime 排序，确保顺序正确
+              dayItems.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+
+              // 创建 items，设置递增的 order
+              for (let i = 0; i < dayItems.length; i++) {
+                const item = dayItems[i];
+                await tx.itineraryItem.create({
+                  data: {
+                    id: randomUUID(),
+                    tripDayId: item.tripDayId,
+                    placeId: item.placeId,
+                    type: item.type as any,
+                    startTime: item.startTime,
+                    endTime: item.endTime,
+                    note: item.note,
+                    order: baseOrder + i, // 🆕 设置显示顺序
+                  } as any,
+                });
+              }
+            }
           });
-          const baseOrder = maxOrderItem?.order !== null && maxOrderItem?.order !== undefined 
-            ? maxOrderItem.order + 1 
-            : 1;
-
-          // 按 startTime 排序，确保顺序正确
-          dayItems.sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
-
-          // 创建 items，设置递增的 order
-          for (let i = 0; i < dayItems.length; i++) {
-            const item = dayItems[i];
-            await tx.itineraryItem.create({
-              data: {
-                id: randomUUID(),
-                tripDayId: item.tripDayId,
-                placeId: item.placeId,
-                type: item.type as any,
-                startTime: item.startTime,
-                endTime: item.endTime,
-                note: item.note,
-                order: baseOrder + i, // 🆕 设置显示顺序
-              } as any,
-            });
-          }
-        }
-      });
+        },
+      );
     }
 
     return itemsToCreate.length;

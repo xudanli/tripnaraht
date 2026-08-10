@@ -84,6 +84,27 @@ describe('fact-derivation.util', () => {
     );
   });
 
+  it('derives SOFT temporal_opening_v1 when open_window is UNKNOWN', () => {
+    const facts = deriveFactsFromMetadata({
+      metadata: {
+        rule_id: 'temporal_opening_v1',
+        details: {
+          evidence: {
+            type: 'opening_hours',
+            poi_id: 'poi_missing',
+            open_window: 'UNKNOWN',
+            is_violated: true,
+          },
+        },
+      },
+      reasonCodes: ['temporal_opening_v1'],
+    });
+    expect(facts.some((f) => f.rule_id === 'temporal_opening_v1' && f.severity === 'SOFT' && f.is_violated === true)).toBe(
+      true,
+    );
+    expect(facts.some((f) => f.rule_id === 'temporal_opening_v1' && f.severity === 'HARD')).toBe(false);
+  });
+
   it('derives HARD drive_safety_v1 fact from weather_physics wind evidence', () => {
     const facts = deriveFactsFromMetadata({
       metadata: {

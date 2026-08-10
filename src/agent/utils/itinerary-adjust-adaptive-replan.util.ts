@@ -187,6 +187,10 @@ export async function runAdaptiveReplanForAdjustState(
 ): Promise<boolean> {
   const md = (state.metadata ?? {}) as Record<string, unknown>;
   if (!md.adaptive_replan_requested) return false;
+  if (md.itinerary_adjust_empty_target_optimize === true) {
+    md.adaptive_replan_result = { skipped: true, reason: 'empty_target_day_optimize' };
+    return false;
+  }
   if (!state.itinerary?.days?.length) return false;
 
   const skill = skillsRegistry?.getSkill('itinerary.adaptive_replan');

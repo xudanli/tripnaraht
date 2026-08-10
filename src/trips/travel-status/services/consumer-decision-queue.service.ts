@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { isDecisionGatewayUnifiedEnabled } from '../../../decision-runtime/gateway/config/decision-gateway.config';
 import { UnifiedDecisionProblemReadModelService } from '../../../decision-runtime/gateway/services/unified-decision-problem-read-model.service';
+import { isTerminalDecisionWorkflowStatus } from '../../../decision-runtime/gateway/utils/decision-queue-admission.util';
 import type { UnifiedDecisionProblemListItem } from '../../../decision-runtime/gateway/contracts/unified-decision-ui.types';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { fetchPlanItemImpactDetails } from '../../guardian-decision-core/adapters/plan-item-impact-details.util';
@@ -36,7 +37,7 @@ export class ConsumerDecisionQueueService {
 
     const list = await this.readModel.listProblems(tripId, { queueOnly: true });
     const openItems = list.items.filter(
-      (item) => !['RESOLVED', 'DISMISSED'].includes(item.workflowStatus),
+      (item) => !isTerminalDecisionWorkflowStatus(item.workflowStatus),
     );
 
     const blockingCount = openItems.filter((item) => item.enforcement === 'BLOCK').length;

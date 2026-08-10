@@ -1,0 +1,147 @@
+{
+  "schema": "rag-chunk-road-constraint-seed/v1",
+  "countryCode": "CN",
+  "description": "P0 China G318 (Sichuan–Tibet southern) road/altitude/booking constraint chunks for decision-closure RAG materialization.",
+  "chunks": [
+    {
+      "chunk_id": "cn-g318-west-sichuan-rainy-landslide-advisory",
+      "type": "ROAD_STATUS",
+      "category": "ROAD_STATUS",
+      "content": "G318 川西段（康定—新都桥—理塘一带）雨季（约 6–9 月）塌方、落石与短时封路风险升高。ADVISORY：出发前查当地交警/路况通告，预留绕行或过夜缓冲，勿按极限日里程硬排。",
+      "credibility_score": 0.82,
+      "keywords": ["G318", "川藏", "雨季", "塌方", "康定", "理塘", "ADVISORY", "川西"],
+      "metadata": {
+        "category": "ROAD_STATUS",
+        "roadId": "CN-G318-WEST-SICHUAN",
+        "countryCode": "CN",
+        "status": "ADVISORY",
+        "affected_slot_ids": ["g318-d1-cd-kd", "g318-d3-xdq-lt"],
+        "valid_from": "2026-06-01T00:00:00Z",
+        "valid_to": "2026-09-30T23:59:59Z",
+        "source": "cn-g318-pack-seasonal-window",
+        "confidence": 0.82
+      }
+    },
+    {
+      "chunk_id": "cn-g318-east-tibet-checkpoint-advisory",
+      "type": "ROAD_STATUS",
+      "category": "ROAD_STATUS",
+      "content": "G318 藏东段（芒康—波密—林芝—拉萨）检查站与证件查验较常见。ADVISORY：随身携带身份证件，关注临时交通管制；非实时交警数据，以现场通告为准。",
+      "credibility_score": 0.8,
+      "keywords": ["G318", "芒康", "林芝", "拉萨", "检查站", "ADVISORY"],
+      "metadata": {
+        "category": "ROAD_STATUS",
+        "roadId": "CN-G318-EAST-TIBET",
+        "countryCode": "CN",
+        "status": "ADVISORY",
+        "affected_slot_ids": ["g318-d7-mk-bm", "g318-d10-lz-ls"],
+        "source": "cn-g318-pack-checkpoint-hint",
+        "confidence": 0.8
+      }
+    },
+    {
+      "chunk_id": "cn-g318-zheduo-pass-altitude-gate",
+      "type": "GATE",
+      "category": "GATE",
+      "content": "折多山垭口海拔约 4298m：康定出发后首个显著高点。GATE：勿成都当日直冲更高海拔过夜；优先康定适应，垭口短停，夜宿回落县城。",
+      "credibility_score": 0.86,
+      "keywords": ["折多山", "垭口", "高反", "康定", "G318", "高原", "GATE"],
+      "metadata": {
+        "category": "GATE",
+        "roadId": "CN-G318-Zheduo",
+        "countryCode": "CN",
+        "status": "ADVISORY",
+        "affected_slot_ids": ["g318-d2-kd-xdq"],
+        "structured_data": {
+          "altitude_gate": { "passNameCN": "折多山垭口", "altitudeMeters": 4298 }
+        },
+        "source": "cn-g318-altitude-passes",
+        "confidence": 0.86
+      }
+    },
+    {
+      "chunk_id": "cn-g318-acclimatization-rule",
+      "type": "RULES",
+      "category": "RULES",
+      "content": "川藏南线高原适应规则：成都（约 500m）→康定（约 2560m）过渡，再进理塘（约 4014m）等高点。连续两日净升过大时下调高强度行程；出现严重高反应立即下降海拔并就医。",
+      "credibility_score": 0.84,
+      "keywords": ["高反", "适应", "康定", "理塘", "成都", "川藏线", "RULES"],
+      "metadata": {
+        "category": "RULES",
+        "roadId": "CN-G318",
+        "countryCode": "CN",
+        "status": "ADVISORY",
+        "affected_slot_ids": ["g318-d1-cd-kd", "g318-d2-acclimatize"],
+        "structured_data": {
+          "acclimatization": {
+            "hubs": [
+              { "nameCN": "成都", "altitudeMeters": 500 },
+              { "nameCN": "康定", "altitudeMeters": 2560 },
+              { "nameCN": "理塘", "altitudeMeters": 4014 }
+            ]
+          }
+        },
+        "source": "cn-g318-altitude-passes",
+        "confidence": 0.84
+      }
+    },
+    {
+      "chunk_id": "cn-g318-mugecuo-advance-booking",
+      "type": "RULES",
+      "category": "RULES",
+      "content": "康定木格措门票常与往返观光车捆绑；建议实名提前预订（旺季/节假日至少提前 1–3 天）。门市票+车约 165–195 元量级，OTA 实时价以飞猪为准；游船/温泉另计。",
+      "credibility_score": 0.83,
+      "keywords": ["木格措", "门票", "预约", "观光车", "康定", "飞猪", "RULES"],
+      "metadata": {
+        "category": "RULES",
+        "roadId": "CN-G318-WEST-SICHUAN",
+        "countryCode": "CN",
+        "status": "ADVISORY",
+        "affected_slot_ids": ["g318-d1-mugecuo"],
+        "structured_data": {
+          "activity_booking": {
+            "poi": "木格措",
+            "realNameRequired": true,
+            "advanceBookingDaysRecommended": 1
+          }
+        },
+        "source": "cn-g318-hotspot-booking",
+        "confidence": 0.83
+      }
+    },
+    {
+      "chunk_id": "cn-g318-corridor-fuel-sparse-advisory",
+      "type": "ROAD_STATUS",
+      "category": "ROAD_STATUS",
+      "content": "G318 理塘—芒康一带加油站与补给相对稀疏。ADVISORY：县城满油出发，预留氧气/常用药，日里程勿顶满。",
+      "credibility_score": 0.78,
+      "keywords": ["G318", "理塘", "芒康", "加油", "补给", "ADVISORY"],
+      "metadata": {
+        "category": "ROAD_STATUS",
+        "roadId": "CN-G318",
+        "countryCode": "CN",
+        "status": "ADVISORY",
+        "affected_slot_ids": ["g318-d5-lt-mk"],
+        "structured_data": { "fuelSparse": true },
+        "source": "cn-g318-pack-supply-hint",
+        "confidence": 0.78
+      }
+    },
+    {
+      "chunk_id": "cn-g318-rainy-season-weather-risk-2026-07",
+      "type": "RISK_INFO",
+      "category": "RISK_INFO",
+      "content": "G318 川西高原雨季 WEATHER RISK：heavy RAIN may trigger landslides and short closures. 非实时气象，出行前核对当地预报与交警通告。",
+      "credibility_score": 0.8,
+      "keywords": ["雨季", "暴雨", "RAIN", "WEATHER", "塌方", "G318", "川西", "RISK"],
+      "metadata": {
+        "category": "RISK_INFO",
+        "countryCode": "CN",
+        "weather_dates": ["2026-07-15"],
+        "date": "2026-07-15",
+        "source": "cn-g318-pack-seasonal-window",
+        "confidence": 0.8
+      }
+    }
+  ]
+}

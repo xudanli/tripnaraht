@@ -576,7 +576,9 @@ export class ObjectiveFunctionService implements IObjectiveFunction {
    * 计算预算超支惩罚
    */
   private computeBudgetOverrunPenalty(_plan: RoutePlanDraft, _world: WorldModelContext): number {
-    // Phase 1 简化：暂无预算数据
+    // CGUS V1：EU-500 Budget = KNOWN_GAP（刻意返回 0，非「待办 Feature」）。
+    // 仅当产品合同已承诺预算进入决策，且真实 Trip 因 P_budget=0 错误排序时，
+    // 按 Decision Correctness Bug 证据触发最小修复。见 CGUS_V1_OPERATIONAL_POLICY.md。
     return 0;
   }
 

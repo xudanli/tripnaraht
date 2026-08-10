@@ -1,11 +1,14 @@
 import type { PlanDiff } from '../../../generated/execution-risk-contracts';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { assertDirectEffectivePlanWriteBlocked } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { planDiffToPlanOperations } from './execution-risk-plan-diff-to-operations.util';
 import { planShiftOperationToMaterialization } from '../materialization/shift-time-materialization.service';
 
 /**
  * Lightweight Active Plan write for recommendation apply —
  * mirrors mobile patchActivity (direct ItineraryItem update + trip.updatedAt bump).
+ *
+ * Agent Harness P0-1 W3：入口硬挡；正式落库走 confirm → AE。
  */
 export async function materializeRecommendationPlanDiff(input: {
   prisma: PrismaService;
@@ -17,6 +20,8 @@ export async function materializeRecommendationPlanDiff(input: {
   contextVersion: number;
   bumpedAt: Date;
 }> {
+  assertDirectEffectivePlanWriteBlocked('execution-risk.materializeRecommendationPlanDiff');
+
   const operations = planDiffToPlanOperations(input.planDiff);
   const updatedItemIds: string[] = [];
 

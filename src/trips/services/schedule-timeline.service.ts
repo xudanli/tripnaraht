@@ -19,6 +19,10 @@ import {
   buildScheduleTimelineQueryFingerprint,
   etagMatches,
 } from '../utils/schedule-timeline-etag.util';
+import {
+  resolveTripTimezone,
+  withDestinationDisplayTimes,
+} from '../../common/utils/destination-timezone.util';
 
 const DEFAULT_INCLUDE: ScheduleTimelineInclude[] = [
   'items',
@@ -189,6 +193,11 @@ export class ScheduleTimelineService {
       return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
     };
 
+    const tripTimezone = resolveTripTimezone({
+      destination: tripRow.destination,
+      metadata: tripRow.metadata,
+    });
+
     const dayPayloads = await Promise.all(
       days.map(async (day) => {
         const dayNumber1Based = day.dayIndex + 1;
@@ -205,16 +214,24 @@ export class ScheduleTimelineService {
         };
 
         if (include.has('items')) {
-          payload.itineraryItems = await this.itineraryItems.buildTimelineDayItems(
+          const rawDayItems = await this.itineraryItems.buildTimelineDayItems(
             { id: day.dayId, date: day.dateObj, tripId },
             allOrderedDays,
             itemsByDayId,
+          );
+          // 中国等非 UTC 目的地：勿把 Date 默认序列化成 ...T01:00:00.000Z（前端截 HH:mm 会显示凌晨）
+          payload.itineraryItems = rawDayItems.map((item) =>
+            withDestinationDisplayTimes(item as Record<string, unknown>, tripTimezone),
           );
         }
 
         if (include.has('schedule')) {
           const rawItems = itemsByDayId.get(day.dayId) ?? [];
-          const schedule = this.scheduleConverter.buildScheduleFromItems(rawItems, day.date);
+          const schedule = this.scheduleConverter.buildScheduleFromItems(
+            rawItems,
+            day.date,
+            tripTimezone,
+          );
           payload.schedule = {
             date: day.date,
             schedule,
@@ -258,6 +275,7 @@ export class ScheduleTimelineService {
           metadata: tripRow.metadata,
           status: tripRow.status,
           pipelineStatus,
+          timezone: tripTimezone,
         },
         days: dayPayloads,
         ...(metricsBundle?.summary ? { metricsSummary: metricsBundle.summary } : {}),

@@ -22,13 +22,32 @@ export function isGooglePlaceId(id: string): boolean {
 }
 
 export function buildAccommodationPlaceMetadata(
-  acc: AccommodationItemDto,
+  acc: AccommodationItemDto & {
+    otaRef?: { provider: string; externalId: string };
+    bookingProvider?: string;
+  },
 ): Record<string, unknown> {
+  const ota = acc.otaRef;
   return {
     accommodationSource: acc.source,
     accommodationId: acc.id,
     ...(acc.photoUrl ? { photoUrl: acc.photoUrl } : {}),
     ...(acc.url ? { bookingUrl: acc.url } : {}),
+    ...(ota
+      ? {
+          externalSource: ota.provider,
+          externalId: ota.externalId,
+          otaRef: ota,
+          ...(ota.provider === 'fliggy' ? { fliggyShId: ota.externalId } : {}),
+        }
+      : acc.source === 'fliggy'
+        ? {
+            externalSource: 'fliggy',
+            externalId: acc.id,
+            fliggyShId: acc.id,
+            otaRef: { provider: 'fliggy', externalId: acc.id },
+          }
+        : {}),
     importedFrom: 'planning_assistant_apply',
   };
 }

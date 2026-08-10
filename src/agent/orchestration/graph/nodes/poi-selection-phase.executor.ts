@@ -21,8 +21,10 @@ import {
   buildDestinationScopeClarificationOptions,
   extractItineraryAdjustTargetDateFromMessage,
   isItineraryFullTripReplanMetadata,
-  shouldSkipPoiDestinationClarificationForItineraryAdjust,
+  resolveSparseSelectedPoiContinuation,
+  shouldSkipPoiDestinationCommuteClarification,
 } from '../../../utils/itinerary-adjust-intent.util';
+import { isExistingTripRouteOrderOptimizationQuery } from '../../../utils/orchestration-signals.util';
 import {
   corridorScoreBoostForPoi,
   selectClusteredPoisAlongCorridor,
@@ -34,6 +36,10 @@ import type {
 } from '../../../utils/itinerary-adjust-neighbor-anchors.util';
 import { applyCorridorResearchMarkers } from '../../../utils/itinerary-trip-neighbor-anchor-load.util';
 import { captureItineraryAdjustBaselineSchedule } from '../../../utils/itinerary-adjust-decision-log.util';
+import {
+  applyEmptyTargetDayOptimizeHalt,
+  isRouteOptimizeOnEmptyTargetDay,
+} from '../../../utils/itinerary-adjust-empty-target-optimize.util';
 import {
   collectOccupiedPoiKeysFromItineraryDays,
   collectOccupiedPoiKeysFromTripDayRows,
@@ -68,6 +74,7 @@ import {
 } from '../../../../planning-policy/open-world/discovery-buffer.util';
 import { runOpenWorldDiscoveryPipeline } from '../../../utils/open-world-discovery-pipeline.util';
 import { syncDecisionContextToDecisionState } from '../../../../planning-policy/open-world/decision-context-sync.util';
+import { applyDecisionStatePatchLocal } from '../../../../decision/kernel/dso-authority.util';
 import {
   sanitizeOrchestratorStateAfterPoiSelection,
   sanitizeOrchestratorStateBeforePoiSelection,
@@ -164,6 +171,32 @@ async function runPoiSelectionPhaseCore(
             tripDayRows: neighborCtx.dayRows,
             itinerary: state.itinerary,
           });
+          const targetRow = neighborCtx.dayRows.find(
+            (d) => d.dateIso.slice(0, 10) === adjustTargetDateIso.slice(0, 10),
+          );
+          const targetDayItemCount = targetRow?.items?.length ?? 0;
+          const intakeForEmpty =
+            typeof intakeMsg === 'string' ? intakeMsg : String(intakeMsg ?? '');
+          if (
+            isRouteOptimizeOnEmptyTargetDay({
+              message: intakeForEmpty,
+              tripId,
+              targetDayItemCount,
+            })
+          ) {
+            applyEmptyTargetDayOptimizeHalt(state, {
+              targetDateIso: adjustTargetDateIso,
+              targetDayNumber: neighborCtx.anchors.targetDayNumber,
+            });
+            host.logger.log(
+              `[Claude Orchestrator] empty target day optimize halt date=${adjustTargetDateIso} items=0`,
+            );
+            state.metadata.last_updated_at = new Date().toISOString();
+            return {
+              needsClarification: false,
+              allowWithFallback: false,
+            };
+          }
         }
       }
     }
@@ -547,15 +580,21 @@ async function runPoiSelectionPhaseCore(
       state.trip_plan_request?.mode as any,
       startCoordinates,
     );
-    const skipCommuteClarifyForItineraryAdjust =
-      shouldSkipPoiDestinationClarificationForItineraryAdjust(
-        routeIntent?.primary,
-        boundTripPoiSeedCount,
-      );
-    if (
-      estimatedCommuteMinutes > commuteBudgetMinutes &&
-      !skipCommuteClarifyForItineraryAdjust
-    ) {
+    const intakeMsgForScope =
+      (state.metadata as { intake_user_message?: string })?.intake_user_message ??
+      state.trip_plan_request?.message;
+    const existingTripRouteOrderOptimization = isExistingTripRouteOrderOptimizationQuery(
+      tripId,
+      typeof intakeMsgForScope === 'string' ? intakeMsgForScope : '',
+    );
+    const hasBoundTrip = Boolean(tripId?.trim());
+    const skipCommuteClarify = shouldSkipPoiDestinationCommuteClarification({
+      tripPoiSeedCount: boundTripPoiSeedCount,
+      hasBoundTrip,
+      routeIntentPrimary: routeIntent?.primary,
+      bypassRouteOrderOptimization: existingTripRouteOrderOptimization,
+    });
+    if (estimatedCommuteMinutes > commuteBudgetMinutes && !skipCommuteClarify) {
       const destinationExample = destinationRaw || '雷克雅未克';
       state.gaps = [
         ...(state.gaps || []),
@@ -590,15 +629,29 @@ async function runPoiSelectionPhaseCore(
     }
 
     const minPoiRequired = sparsePoiGate.minPoiRequired;
-    const skipSparseForItineraryAdjust = shouldSkipPoiDestinationClarificationForItineraryAdjust(
-      routeIntent?.primary,
-      boundTripPoiSeedCount,
-      minPoiRequired > 0 ? minPoiRequired : 2,
-    );
-    if (skipSparseForItineraryAdjust && scored.length < minPoiRequired) {
-      scored = rankedPois.slice(0, Math.max(minPoiRequired, scored.length));
+    const sparseContinuation = resolveSparseSelectedPoiContinuation({
+      scored,
+      rankedPois,
+      minPoiRequired,
+      tripPoiSeedCount: boundTripPoiSeedCount,
+      hasBoundTrip,
+      routeIntentPrimary: routeIntent?.primary,
+      bypassRouteOrderOptimization: existingTripRouteOrderOptimization,
+    });
+    scored = sparseContinuation.scored;
+    if (sparseContinuation.bypassReason) {
+      (state.metadata as Record<string, unknown>).poi_selection_destination_scope_clarification_bypassed =
+        {
+          reason: sparseContinuation.bypassReason,
+          selected_count: scored.length,
+          min_poi_required: minPoiRequired > 0 ? minPoiRequired : 2,
+          estimated_commute_minutes: estimatedCommuteMinutes,
+          commute_budget_minutes: commuteBudgetMinutes,
+          ranked_pool_count: rankedPois.length,
+          trip_poi_seed_count: boundTripPoiSeedCount,
+        };
     }
-    if (scored.length > 0 && scored.length < minPoiRequired && !skipSparseForItineraryAdjust) {
+    if (sparseContinuation.shouldClarify) {
       const destinationExample = destinationRaw || '雷克雅未克';
       state.gaps = [
         ...(state.gaps || []),
@@ -631,7 +684,12 @@ async function runPoiSelectionPhaseCore(
       };
     }
 
-    if (destinationCountry && scored.length === 0) {
+    if (
+      destinationCountry &&
+      scored.length === 0 &&
+      !existingTripRouteOrderOptimization &&
+      !hasBoundTrip
+    ) {
       if (sparsePoiGate.sparseProfile) {
         (state.metadata as Record<string, unknown>).sparse_region_no_poi_fallback = true;
       } else {
@@ -680,7 +738,7 @@ async function runPoiSelectionPhaseCore(
     persistSelectedPoisToResearchData(state, rawPoiEvidence, scored);
     if (decisionState) {
       const hydrated = syncDecisionContextToDecisionState(decisionState, state);
-      decisionState.constraints = hydrated.constraints;
+      applyDecisionStatePatchLocal(decisionState, { constraints: hydrated.constraints });
     }
     if (isFullTripReplan && state.research_data && typeof state.research_data === 'object') {
       state.research_data = {
@@ -747,7 +805,11 @@ async function runPoiSelectionPhaseCore(
     });
     state.metadata.last_updated_at = new Date().toISOString();
     await host.generateDecisionStepForStep(state, 'POI_SELECTION', 'Planner');
-    const allowWithFallback = poiPolicy !== 'strict' && !!(destinationRaw && scored.length === 0);
+    const allowWithFallback =
+      (state.metadata as Record<string, unknown>)?.itinerary_adjust_empty_target_optimize !==
+        true &&
+      poiPolicy !== 'strict' &&
+      !!(destinationRaw && scored.length === 0);
     return {
       needsClarification: false,
       allowWithFallback,

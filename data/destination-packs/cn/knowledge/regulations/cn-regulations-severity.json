@@ -1,0 +1,33 @@
+{
+  "schemaId": "tripnara.china.regulations_severity@v1",
+  "version": "0.1.0-g318",
+  "status": "ACTIVE",
+  "items": [
+    {
+      "topicId": "checkpoint_documents",
+      "severity": "HARD",
+      "summaryZh": "涉藏检查站与证件自核（不代办）"
+    },
+    {
+      "topicId": "city_driving_limit",
+      "severity": "SOFT",
+      "summaryZh": "城市限行与外牌"
+    },
+    {
+      "topicId": "high_altitude_pace",
+      "severity": "HARD",
+      "summaryZh": "高原控程与适应"
+    },
+    {
+      "topicId": "timed_entry_booking",
+      "severity": "SOFT",
+      "summaryZh": "热门景区分时预约"
+    },
+    {
+      "topicId": "dui_rule",
+      "severity": "HARD",
+      "summaryZh": "酒驾与醉驾"
+    }
+  ],
+  "playbookRef": "data/country-packs/CN/playbooks/tibet-checkpoint-pilot.v1.json"
+}

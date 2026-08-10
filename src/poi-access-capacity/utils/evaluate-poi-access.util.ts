@@ -21,8 +21,11 @@ import { appendAlternativePlanB } from '../fixtures/iceland-poi-alternatives';
 const DEFAULT_STALE_RULE_DAYS = 14;
 const HIGH_WAIT_P50_MIN = 20;
 
-function parseArrivalMinutes(arrivalTime: string): number | undefined {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(arrivalTime.trim());
+function parseArrivalMinutes(arrivalTime: string | null | undefined): number | undefined {
+  if (arrivalTime == null || typeof arrivalTime !== 'string') return undefined;
+  const trimmed = arrivalTime.trim();
+  if (!trimmed) return undefined;
+  const m = /^(\d{1,2}):(\d{2})$/.exec(trimmed);
   if (!m) return undefined;
   return Number(m[1]) * 60 + Number(m[2]);
 }
@@ -400,7 +403,7 @@ export function evaluatePoiAccessCapacity(
     return {
       verdict: 'NEEDS_CONFIRMATION',
       poiId: input.poiId,
-      reason: `${input.poiName ?? input.poiId}：无法解析到达时刻 ${input.arrivalTime}`,
+      reason: `${input.poiName ?? input.poiId}：无法解析到达时刻 ${input.arrivalTime ?? '(缺失)'}`,
       confidence: 'INFERRED',
       signalSources: [],
       planB: [],

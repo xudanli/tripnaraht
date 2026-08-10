@@ -1,9 +1,14 @@
 import { BadRequestException } from '@nestjs/common';
 import { BudgetEvaluationService } from './budget-evaluation.service';
+import {
+  EFFECTIVE_PLAN_WRITE_CHAIN_REQUIRED_CODE,
+  isEffectivePlanWriteChainBadRequest,
+} from '../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 
 describe('BudgetEvaluationService.applyBudgetOptimizations', () => {
   const tripId = 'trip-apply';
   const planId = 'plan-apply';
+  const originalChain = process.env.EFFECTIVE_PLAN_WRITE_CHAIN;
 
   let budgetConfig: Record<string, unknown>;
   let prisma: {
@@ -14,6 +19,11 @@ describe('BudgetEvaluationService.applyBudgetOptimizations', () => {
   let tripBudgetService: { getBudgetSummary: jest.Mock };
 
   let service: BudgetEvaluationService;
+
+  afterEach(() => {
+    if (originalChain === undefined) delete process.env.EFFECTIVE_PLAN_WRITE_CHAIN;
+    else process.env.EFFECTIVE_PLAN_WRITE_CHAIN = originalChain;
+  });
 
   beforeEach(() => {
     budgetConfig = {
@@ -102,7 +112,8 @@ describe('BudgetEvaluationService.applyBudgetOptimizations', () => {
     expect(prisma.itineraryItem.update).not.toHaveBeenCalled();
   });
 
-  it('autoCommit applies cost reduction', async () => {
+  it('autoCommit applies cost reduction when write chain off', async () => {
+    process.env.EFFECTIVE_PLAN_WRITE_CHAIN = '0';
     const result = await service.applyBudgetOptimizations({
       planId,
       tripId,
@@ -113,6 +124,27 @@ describe('BudgetEvaluationService.applyBudgetOptimizations', () => {
     expect(result.dryRun).toBe(false);
     expect(result.appliedOptimizations[0].status).toBe('success');
     expect(prisma.itineraryItem.update).toHaveBeenCalled();
+  });
+
+  it('W2: autoCommit blocked when write chain on', async () => {
+    process.env.EFFECTIVE_PLAN_WRITE_CHAIN = '1';
+    try {
+      await service.applyBudgetOptimizations({
+        planId,
+        tripId,
+        optimizationIds: ['opt-1'],
+        autoCommit: true,
+      });
+      throw new Error('expected EFFECTIVE_PLAN_WRITE_CHAIN_REQUIRED');
+    } catch (e) {
+      if (e instanceof Error && e.message === 'expected EFFECTIVE_PLAN_WRITE_CHAIN_REQUIRED') {
+        throw e;
+      }
+      expect(isEffectivePlanWriteChainBadRequest(e)).toBe(true);
+      const body = (e as BadRequestException).getResponse() as { code?: string };
+      expect(body.code).toBe(EFFECTIVE_PLAN_WRITE_CHAIN_REQUIRED_CODE);
+    }
+    expect(prisma.itineraryItem.update).not.toHaveBeenCalled();
   });
 
   it('rejects unknown optimization ids', async () => {

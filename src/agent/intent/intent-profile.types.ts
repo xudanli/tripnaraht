@@ -13,6 +13,7 @@ export type IntentProfileId =
   | 'consult.supply'
   | 'consult.supply.nearby'
   | 'consult.accommodation'
+  | 'consult.activity_ticket'
   | 'consult.transport'
   | 'consult.scoped_feasibility'
   | 'consult.itinerary.day_view'

@@ -1,0 +1,59 @@
+{
+  "packId": "destination.cn",
+  "version": "0.1.0-g318",
+  "layer": "COUNTRY",
+  "status": "ACTIVE",
+  "scope": {
+    "countries": ["CN", "CHN", "CHINA", "中国"]
+  },
+  "supportedSemanticKeys": [
+    "ROAD_SEGMENT_UNAVAILABLE",
+    "ROAD_SEGMENT_RESTRICTED",
+    "EXCESSIVE_DAILY_LOAD",
+    "ALTITUDE_ACCLIMATIZATION_REQUIRED"
+  ],
+  "evidenceProviders": [
+    {
+      "domain": "road",
+      "primary": "CN_TRAFFIC_ADVISORY",
+      "fallback": "GENERIC_MAP"
+    },
+    {
+      "domain": "weather",
+      "primary": "CN_MET",
+      "fallback": "GLOBAL_WEATHER"
+    },
+    {
+      "domain": "booking",
+      "primary": "FLIGGY",
+      "fallback": "CHINA_OTA_DEEPLINK"
+    }
+  ],
+  "ruleBundles": [
+    { "path": "rules/cn-road-rules.json", "version": "0.1.0-g318" },
+    { "path": "rules/cn-altitude-rules.json", "version": "0.1.0-g318" },
+    { "path": "rules/cn-activity-rules.json", "version": "0.1.0-g318" }
+  ],
+  "repairTemplateBundles": [
+    { "path": "repair/cn-road-repair-templates.json", "version": "0.1.0-g318" }
+  ],
+  "environmentModifiers": [
+    { "path": "modifiers/cn-driving.json", "version": "0.1.0-g318" }
+  ],
+  "ontologyMappings": [
+    { "path": "ontology/cn-road-types.json", "version": "0.1.0-g318" }
+  ],
+  "knowledgeBundles": [
+    {
+      "path": "knowledge/regulations/cn-regulations-severity.json",
+      "version": "0.1.0-g318"
+    }
+  ],
+  "selfDriveCapabilities": {
+    "path": "self-drive-capabilities.v1.json",
+    "version": "0.1.0-g318"
+  },
+  "dependencies": [{ "packId": "destination.global", "version": "1.0.0" }],
+  "validFrom": "2026-08-01T00:00:00Z",
+  "owner": "tripnara-cn-steward-g318"
+}

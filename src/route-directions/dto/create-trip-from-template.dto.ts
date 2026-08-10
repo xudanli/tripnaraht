@@ -142,5 +142,13 @@ export class CreateTripFromRouteTemplateDto {
   @IsString({ message: 'name 必须是字符串' })
   @Length(1, 200, { message: '行程名称长度必须在 1-200 字符之间' })
   name?: string;
+
+  @ApiPropertyOptional({
+    description: '调用来源标记（如 trips.bootstrap），写入 Trip.metadata.bootstrapSource',
+    example: 'trips.bootstrap',
+  })
+  @IsOptional()
+  @IsString()
+  bootstrapSource?: string;
 }
 

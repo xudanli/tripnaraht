@@ -31,6 +31,13 @@ import {
 } from '../../decision-runtime/trigger/record-trigger-lineage.util';
 import type { DecisionTriggerGatewayService } from '../../decision-runtime/trigger/decision-trigger.gateway.service';
 import type { DecisionRunRequest } from '../../decision-runtime/contracts/decision-run-request';
+import {
+  buildSelectiveConsumeProjection,
+  consumeProjectionToObservability,
+  resolveConsumeTaskAllowRegex,
+  type TravelMemoryConsumeProjectionV1,
+} from '../../travel-memory/context-assembly/selective-consume.util';
+import type { AssembledTravelContextV1 } from '../../travel-memory/context-assembly/assembled-context.types';
 
 /** Kernel 依赖的 Agent 能力子集（避免整包 AgentService 耦合） */
 export type DecisionRuntimeKernelAgentDeps = {
@@ -84,6 +91,24 @@ export type DecisionRuntimeKernelAgentDeps = {
     ) => RouteAndRunResponseDto;
   };
   logger?: { warn?: (msg: string) => void };
+  /**
+   * Travel Context Assembly（可选）。
+   * 旧 Memory OS 主路径不变；此为并列 Shadow/未来消费入口。
+   */
+  travelContextAssembler?: {
+    isEnabled: () => boolean;
+    assemble: (input: {
+      task: string;
+      tripId?: string | null;
+      userId?: string | null;
+      messageHint?: string | null;
+      countryCode?: string | null;
+      travelMode?: string | null;
+    }) => import('../../travel-memory/context-assembly/assembled-context.types').AssembledTravelContextV1 | null;
+    toObservability: (
+      ctx: import('../../travel-memory/context-assembly/assembled-context.types').AssembledTravelContextV1,
+    ) => Record<string, unknown>;
+  };
 };
 
 export type PrepareTickResult = {
@@ -153,6 +178,78 @@ export async function prepareDecisionRuntimeTick(
     await deps.hydrateRequestFitnessIfNeeded(request, memory);
   }
   recordPhase(tickObs, 'MEMORY_HYDRATE', hydrateStart);
+
+  // TMR Context Assembly：Shadow 观测；CONSUME 时选择性注入并列提示（不替换旧 Memory OS）
+  let assembledTravelContext: AssembledTravelContextV1 | null = null;
+  let travelMemoryConsume: TravelMemoryConsumeProjectionV1 | null = null;
+  if (deps.travelContextAssembler?.isEnabled()) {
+    try {
+      const taskHint =
+        String(request.message ?? '').trim() ||
+        String((request as { intent?: string }).intent ?? '').trim() ||
+        'ROUTE_AND_RUN';
+      assembledTravelContext = deps.travelContextAssembler.assemble({
+        task: taskHint.slice(0, 200),
+        tripId: request.trip_id ?? null,
+        userId: request.user_id ?? null,
+        messageHint: request.message ?? null,
+        countryCode:
+          (request as { destination_country?: string }).destination_country ??
+          null,
+        travelMode: /自驾|self.?drive|SELF_DRIVE/i.test(
+          String(request.message ?? ''),
+        )
+          ? 'SELF_DRIVE'
+          : null,
+      });
+      if (assembledTravelContext) {
+        tickObs.travel_context_assembly =
+          deps.travelContextAssembler.toObservability(assembledTravelContext);
+        (
+          request as RouteAndRunRequestDto & {
+            __travelContextAssembly?: unknown;
+          }
+        ).__travelContextAssembly = tickObs.travel_context_assembly;
+
+        if (assembledTravelContext.mode === 'CONSUME') {
+          const projection = buildSelectiveConsumeProjection(
+            assembledTravelContext,
+            { taskAllow: resolveConsumeTaskAllowRegex() },
+          );
+          tickObs.travel_memory_consume =
+            consumeProjectionToObservability(projection);
+          (
+            request as RouteAndRunRequestDto & {
+              __travelMemoryConsume?: unknown;
+            }
+          ).__travelMemoryConsume = tickObs.travel_memory_consume;
+          if (projection.gate.allowed) {
+            travelMemoryConsume = projection;
+            (
+              request as RouteAndRunRequestDto & {
+                __travelMemoryDecisionHints?: unknown;
+              }
+            ).__travelMemoryDecisionHints = projection.decisionHints;
+            memory.observability.layers.push(
+              'travel_context_assembly_consume',
+            );
+          } else {
+            memory.observability.layers.push(
+              'travel_context_assembly_consume_gated',
+            );
+          }
+        } else {
+          memory.observability.layers.push('travel_context_assembly_shadow');
+        }
+      }
+    } catch (err) {
+      deps.logger?.warn?.(
+        `[prepareTick] travel context assembly skipped: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
 
   const ledgerStart = Date.now();
   if (
@@ -307,7 +404,12 @@ export async function prepareDecisionRuntimeTick(
   (request as RouteAndRunRequestDto & { __memoryContractObs?: unknown }).__memoryContractObs = memContractObs;
   const execCtxBase = deps.agentExecutionContextFactory.createFromFrozenMemory(memory);
   const goldenChainSpanId = randomUUID();
-  const execCtx: AgentExecutionContext = { ...execCtxBase, activeParentSpanId: goldenChainSpanId };
+  const consumeHints = travelMemoryConsume?.decisionHints;
+  const execCtx: AgentExecutionContext = {
+    ...execCtxBase,
+    activeParentSpanId: goldenChainSpanId,
+    ...(consumeHints?.length ? { travelMemoryDecisionHints: consumeHints } : {}),
+  };
   recordPhase(tickObs, 'MVCC_FREEZE', freezeStart);
 
   return {
@@ -319,6 +421,8 @@ export async function prepareDecisionRuntimeTick(
       execCtx,
       goldenChainSpanId,
       tickObs,
+      assembledTravelContext,
+      travelMemoryConsume,
     },
   };
 }

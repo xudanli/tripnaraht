@@ -42,8 +42,16 @@ import type {
   AuthorizeDecisionGatewayInput,
   ExecuteDecisionGatewayInput,
 } from '../contracts/decision-gateway.types';
+import { buildPlanVersionIdempotencyKey } from '../../../trips/guardian-decision-core/plan-version/plan-version.service';
+import { ORIGINAL_CANDIDATE_ID } from '../../../trips/guardian-decision-core/adapters/repair-candidate.adapter';
+import { isRfc001ItineraryMaterializeEnabled } from '../../../trips/guardian-decision-core/config/rfc001-iceland.config';
 import { AuthorizationPolicyGatewayService } from '../../authorization/authorization-policy.gateway.service';
 import type { AuthorizationPolicyResult } from '../../authorization/contracts/authorization-policy.types';
+import {
+  decideCanaryLegacyFallback,
+  decideUnifiedExecuteCanaryRoute,
+} from '../../execution/authoritative-write/unified-execute-canary.router';
+import { executeUnifiedExecuteAuthoritativeCanary } from '../../execution/authoritative-write/unified-execute-canary.executor';
 
 /** Runner output shared by road / weather / load evaluate paths. */
 interface CanonicalEvaluateRunResult {
@@ -291,11 +299,151 @@ export class CanonicalDecisionEngineAdapter {
       observedPlanVersionId?: string;
       observedEffectivePlanVersionId?: string;
     };
+    const idempotencyKey =
+      extended.idempotencyKey ??
+      buildPlanVersionIdempotencyKey(input.tripId, input.decisionId);
+
+    // UWC-CANARY-03: AUTHORITATIVE_CANARY XOR Legacy (no dual execution; Shadow only on legacy)
+    let canaryTechnicalFallback = false;
+    try {
+      const record = await this.ledgerStore.getDecision(
+        input.tripId,
+        input.decisionId,
+      );
+      const tripRow = await this.prisma.trip.findUnique({
+        where: { id: input.tripId },
+        select: { metadata: true },
+      });
+      const meta = (tripRow?.metadata ?? {}) as Record<string, unknown>;
+      const block = meta.rfc001PlanVersions as
+        | {
+            items?: Array<{
+              planVersionId: string;
+              sourceDecisionId?: string;
+              operations?: unknown[];
+              status?: string;
+            }>;
+            effectivePlanVersionId?: string;
+          }
+        | undefined;
+      const planVersion = block?.items?.find(
+        (v) => v.sourceDecisionId === input.decisionId,
+      );
+
+      const candidateId =
+        record?.selectedCandidateId ?? ORIGINAL_CANDIDATE_ID;
+      const operationCount = planVersion?.operations?.length ?? 0;
+      const wouldMaterialize =
+        isRfc001ItineraryMaterializeEnabled() &&
+        candidateId !== ORIGINAL_CANDIDATE_ID;
+
+      const route = decideUnifiedExecuteCanaryRoute({
+        routingKey: idempotencyKey,
+        admission: {
+          tripId: input.tripId,
+          decisionId: input.decisionId,
+          operation: 'verified_plan_version_only',
+          recordStatus: record?.recordStatus,
+          selectedCandidateId: candidateId,
+          operationCount,
+          wouldMaterializeItinerary: wouldMaterialize,
+          hasExternalSideEffect: wouldMaterialize,
+          requiresMixedWriteTargets: wouldMaterialize || operationCount > 0,
+          verified:
+            Boolean(record) &&
+            record?.recordStatus === 'AUTHORIZED' &&
+            Boolean(planVersion?.planVersionId),
+        },
+      });
+
+      if (route.selectedForCanary && planVersion?.planVersionId) {
+        try {
+          const expectedEffective =
+            extended.expectedPlanVersionId ??
+            extended.observedEffectivePlanVersionId ??
+            extended.basePlanVersionId ??
+            block?.effectivePlanVersionId ??
+            '';
+          const uwc = await executeUnifiedExecuteAuthoritativeCanary({
+            prisma: this.prisma,
+            tripId: input.tripId,
+            decisionId: input.decisionId,
+            idempotencyKey,
+            planVersionId: planVersion.planVersionId,
+            expectedEffectivePlanVersionId: String(expectedEffective),
+          });
+
+          if (
+            uwc.outcome === 'CONFLICT' ||
+            uwc.outcome === 'REJECTED' ||
+            uwc.outcome === 'VERIFICATION_REQUIRED'
+          ) {
+            const fb = decideCanaryLegacyFallback({
+              uwcOutcome: uwc.outcome,
+              uwcErrorCode: uwc.errorCode,
+              sideEffectsStarted: false,
+            });
+            if (!fb.allowLegacyFallback) {
+              throw new BadRequestException({
+                message: `UWC UNIFIED canary blocked (${uwc.outcome})`,
+                reasonCodes: [...uwc.reasonCodes, ...route.reasonCodes],
+                uwcOutcome: uwc.outcome,
+                errorCode: uwc.errorCode,
+                dual_execution: false,
+              });
+            }
+          }
+
+          if (
+            uwc.outcome === 'APPLIED' ||
+            uwc.outcome === 'IDEMPOTENT_REPLAY'
+          ) {
+            return {
+              planVersion: uwc.corridorResult?.planVersion ?? {
+                planVersionId: uwc.appliedRefs?.planVersionId,
+              },
+              idempotentReplay: uwc.outcome === 'IDEMPOTENT_REPLAY',
+              authorizationPolicy,
+              uwc_canary: true,
+              dual_execution: false,
+              write_targets: ['PlanVersion'],
+              reasonCodes: [...uwc.reasonCodes, ...route.reasonCodes],
+            };
+          }
+
+          throw new BadRequestException({
+            message: `UWC UNIFIED canary outcome ${uwc.outcome}`,
+            reasonCodes: uwc.reasonCodes,
+            dual_execution: false,
+          });
+        } catch (err) {
+          if (err instanceof BadRequestException) {
+            throw err;
+          }
+          const fb = decideCanaryLegacyFallback({
+            technicalExceptionBeforeSideEffects: true,
+            sideEffectsStarted: false,
+          });
+          if (!fb.allowLegacyFallback) {
+            throw err;
+          }
+          canaryTechnicalFallback = true;
+        }
+      }
+    } catch (err) {
+      if (err instanceof BadRequestException) {
+        throw err;
+      }
+      // route probe failure → legacy
+      void err;
+    }
+    void canaryTechnicalFallback;
+
     const uwcCapture =
       this.uwcShadowProbe?.beginCapture('UNIFIED_EXECUTE', {
         tripId: input.tripId,
         decisionId: input.decisionId,
-        idempotencyKey: extended.idempotencyKey,
+        idempotencyKey,
         basePlanVersionId: extended.basePlanVersionId,
         expectedPlanVersionId:
           extended.expectedPlanVersionId ?? extended.basePlanVersionId,

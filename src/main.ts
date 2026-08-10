@@ -15,13 +15,16 @@ if (!process.env.DISABLE_REDIS || process.env.DISABLE_REDIS === 'false') {
 
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
-import { json, urlencoded } from 'express';
+import { json, urlencoded, static as expressStatic } from 'express';
+import { join } from 'path';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { SecurityMiddleware } from './common/middlewares/security.middleware';
+import { resolveAppInstanceId } from './common/middlewares/app-instance-id.middleware';
 import { assertShadowEvidencePersistenceConfigOnStartup } from './decision-runtime/observability/shadow-evidence-persistence.config';
+import { assertEffectivePlanWriteChainOnStartup } from './decision-runtime/execution/assert-effective-plan-write-chain-on-startup';
 
 async function bootstrap() {
   console.log('🚀 [Bootstrap] 开始启动应用...');
@@ -32,6 +35,14 @@ async function bootstrap() {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`❌ [Bootstrap] Shadow evidence persistence config invalid: ${message}`);
+    process.exit(1);
+  }
+
+  try {
+    assertEffectivePlanWriteChainOnStartup();
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`❌ [Bootstrap] Effective plan write chain config invalid: ${message}`);
     process.exit(1);
   }
   
@@ -91,12 +102,33 @@ async function bootstrap() {
   app.use(json({ limit: bodyLimit, strict: false }));
   app.use(urlencoded({ extended: true, limit: bodyLimit }));
 
+  // 静态资源：冰岛自驾区域封面等（public/static → /static）
+  const staticRoot = join(process.cwd(), 'public', 'static');
+  app.use(
+    '/static',
+    expressStatic(staticRoot, {
+      maxAge: process.env.NODE_ENV === 'production' ? '1d' : 0,
+      fallthrough: true,
+      index: false,
+    }),
+  );
+  console.log(`✅ [Bootstrap] 静态资源: /static → ${staticRoot}`);
+
   // 设置全局 API 前缀
   app.setGlobalPrefix('api');
   
   // Cookie parser middleware (must be before other middleware)
   const cookieParser = require('cookie-parser');
   app.use(cookieParser());
+
+  // M1 evidence: which app instance served the request
+  const appInstanceId = resolveAppInstanceId();
+  app.use((req: any, res: any, next: any) => {
+    res.setHeader('X-App-Instance-Id', appInstanceId);
+    req.appInstanceId = appInstanceId;
+    next();
+  });
+  console.log(`✅ App instance id: ${appInstanceId}`);
   
   // 安全中间件（应该在其他中间件之前，尽早拦截恶意请求）
   console.log('✅ 安全中间件已注册');
@@ -430,6 +462,7 @@ async function bootstrap() {
     .addTag('contact', '联系我们接口（反馈消息和图片上传）')
     .addTag('google-calendar', 'Google Calendar 集成接口（行程同步、事件管理）')
     .addTag('browserbase-mcp', 'Browserbase MCP 接口（浏览器自动化）')
+    .addTag('activity-direct', '活动预订 Direct（Browserbase 探页 + 目录回落）')
     .addTag('exa', 'Exa 搜索服务接口（实时信息、风险检查、政策更新）')
     .addTag('airbnb', 'Airbnb 住宿服务接口（可用性检查、价格估算、偏好匹配）')
     .addTag('world-model-evidence', '世界模型证据接口（DEM证据、道路状态、天气窗口、路线哲学、失败画像）')

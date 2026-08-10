@@ -157,13 +157,20 @@ function conflictPriority(c: ConflictDto): FeasibilityIssuePriority {
 }
 
 function parseAffectedDayNumbers(values: string[] | undefined): number[] {
+  // Re-export semantics: skip ISO calendar dates; Day1=1.
+  // Inline to avoid circular imports with planning-conflicts.util.
   if (!values?.length) return [];
-  return values
-    .map((v) => {
-      const m = String(v).match(/(\d+)/);
-      return m ? Number(m[1]) : NaN;
-    })
-    .filter((n) => Number.isFinite(n) && n > 0);
+  const days = new Set<number>();
+  for (const v of values) {
+    const s = String(v).trim();
+    if (!s) continue;
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) continue;
+    const m = s.match(/(?:day\s*)?(\d+)/i);
+    if (!m?.[1]) continue;
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n > 0 && n <= 60) days.add(n);
+  }
+  return [...days].sort((a, b) => a - b);
 }
 
 function findingToIssue(f: ReadinessScoreFinding, evidenceContext?: EvidenceContext): FeasibilityIssueDto {

@@ -1,0 +1,213 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "updatedAt": "2026-08-08",
+    "disclaimer": "Coordinates are approximate public values for itinerary binding.",
+    "source": "gap fill for IS RouteTemplate stale POIs + city hubs"
+  },
+  "cities": [
+    { "name": "Vik", "nameCN": "维克", "nameEN": "Vík", "lat": 63.4186, "lng": -19.006 },
+    { "name": "Hofn", "nameCN": "霍夫恩", "nameEN": "Höfn", "lat": 64.2539, "lng": -15.2121 },
+    { "name": "Seydisfjordur", "nameCN": "塞济斯菲厄泽", "nameEN": "Seyðisfjörður", "lat": 65.2608, "lng": -14.0094 }
+  ],
+  "places": [
+    {
+      "nameCN": "雷克雅未克",
+      "nameEN": "Reykjavík",
+      "category": "TRANSIT_HUB",
+      "cityCN": "雷克雅未克",
+      "cityFallbackName": "Reykjavík",
+      "lat": 64.1466,
+      "lng": -21.9426,
+      "aliases": ["Reykjavik", "雷市", "Reykjavík City Center"],
+      "rating": 4.8
+    },
+    {
+      "nameCN": "阿克雷里",
+      "nameEN": "Akureyri",
+      "category": "TRANSIT_HUB",
+      "cityCN": "阿克雷里",
+      "cityFallbackName": "Akureyri",
+      "lat": 65.6835,
+      "lng": -18.1002,
+      "aliases": ["AEY"],
+      "rating": 4.6
+    },
+    {
+      "nameCN": "维克",
+      "nameEN": "Vík",
+      "category": "TRANSIT_HUB",
+      "cityCN": "维克",
+      "cityFallbackName": "Vík",
+      "lat": 63.4186,
+      "lng": -19.006,
+      "aliases": ["Vik", "Vík í Mýrdal"],
+      "rating": 4.5
+    },
+    {
+      "nameCN": "霍夫恩",
+      "nameEN": "Höfn",
+      "category": "TRANSIT_HUB",
+      "cityCN": "霍夫恩",
+      "cityFallbackName": "Höfn",
+      "lat": 64.2539,
+      "lng": -15.2121,
+      "aliases": ["Hofn"],
+      "rating": 4.4
+    },
+    {
+      "nameCN": "凯瑞斯火山口",
+      "nameEN": "Kerið Crater",
+      "category": "ATTRACTION",
+      "cityCN": "雷克雅未克",
+      "cityFallbackName": "Reykjavík",
+      "lat": 64.0417,
+      "lng": -20.8831,
+      "aliases": ["Kerið", "Kerid", "Kerið Crater"],
+      "rating": 4.5
+    },
+    {
+      "nameCN": "哈立格林姆斯大教堂",
+      "nameEN": "Hallgrímskirkja",
+      "category": "ATTRACTION",
+      "cityCN": "雷克雅未克",
+      "cityFallbackName": "Reykjavík",
+      "lat": 64.1417,
+      "lng": -21.9266,
+      "aliases": ["Hallgrimskirkja"],
+      "rating": 4.7
+    },
+    {
+      "nameCN": "阿纳尔斯塔皮",
+      "nameEN": "Arnarstapi",
+      "category": "ATTRACTION",
+      "cityCN": "博尔加内斯",
+      "cityFallbackName": "Borgarnes",
+      "lat": 64.769,
+      "lng": -23.621,
+      "aliases": ["Arnarstapi cliffs"],
+      "rating": 4.6
+    },
+    {
+      "nameCN": "布迪尔黑教堂",
+      "nameEN": "Búðir Black Church",
+      "category": "ATTRACTION",
+      "cityCN": "博尔加内斯",
+      "cityFallbackName": "Borgarnes",
+      "lat": 64.822,
+      "lng": -23.384,
+      "aliases": ["Búðir", "Budir", "Budir Black Church"],
+      "rating": 4.6
+    },
+    {
+      "nameCN": "塞济斯菲厄泽",
+      "nameEN": "Seyðisfjörður",
+      "category": "ATTRACTION",
+      "cityCN": "塞济斯菲厄泽",
+      "cityFallbackName": "Seyðisfjörður",
+      "lat": 65.2608,
+      "lng": -14.0094,
+      "aliases": ["Seydisfjordur"],
+      "rating": 4.5
+    },
+    {
+      "nameCN": "东峡湾博尔加菲厄泽",
+      "nameEN": "Borgarfjörður eystri",
+      "category": "ATTRACTION",
+      "cityCN": "埃伊尔斯塔济",
+      "cityFallbackName": "Egilsstaðir",
+      "lat": 65.525,
+      "lng": -13.805,
+      "aliases": ["Borgarfjörður", "Borgarfjordur"],
+      "rating": 4.4
+    },
+    {
+      "nameCN": "赫弗里地热泥潭",
+      "nameEN": "Hverir Geothermal Area",
+      "category": "ATTRACTION",
+      "cityCN": "阿克雷里",
+      "cityFallbackName": "Akureyri",
+      "lat": 65.641,
+      "lng": -16.808,
+      "aliases": ["Hverir", "Námafjall", "Hverir - Boiling Mud"],
+      "rating": 4.6
+    },
+    {
+      "nameCN": "红沙滩",
+      "nameEN": "Rauðasandur",
+      "category": "ATTRACTION",
+      "cityCN": "伊萨弗约尔",
+      "cityFallbackName": "Ísafjörður",
+      "lat": 65.463,
+      "lng": -24.0,
+      "aliases": ["Raudasandur", "Rauðasandur Beach Viewpoint"],
+      "rating": 4.6
+    },
+    {
+      "nameCN": "克林加菲亚特尔",
+      "nameEN": "Kerlingarfjöll",
+      "category": "ATTRACTION",
+      "cityCN": "雷克雅未克",
+      "cityFallbackName": "Reykjavík",
+      "lat": 64.666,
+      "lng": -19.25,
+      "aliases": ["Kerlingarfjoll"],
+      "rating": 4.5
+    },
+    {
+      "nameCN": "朗格维格步道",
+      "nameEN": "Laugavegur Trail",
+      "category": "ATTRACTION",
+      "cityCN": "雷克雅未克",
+      "cityFallbackName": "Reykjavík",
+      "lat": 63.95,
+      "lng": -19.15,
+      "aliases": ["Laugavegur"],
+      "rating": 4.8
+    },
+    {
+      "nameCN": "赫拉夫廷努斯凯尔",
+      "nameEN": "Hrafntinnusker",
+      "category": "ATTRACTION",
+      "cityCN": "雷克雅未克",
+      "cityFallbackName": "Reykjavík",
+      "lat": 63.933,
+      "lng": -19.167,
+      "aliases": [],
+      "rating": 4.3
+    },
+    {
+      "nameCN": "阿尔夫塔湖",
+      "nameEN": "Álftavatn",
+      "category": "ATTRACTION",
+      "cityCN": "雷克雅未克",
+      "cityFallbackName": "Reykjavík",
+      "lat": 63.858,
+      "lng": -19.225,
+      "aliases": ["Alftavatn"],
+      "rating": 4.3
+    },
+    {
+      "nameCN": "埃姆斯楚尔",
+      "nameEN": "Emstrur",
+      "category": "ATTRACTION",
+      "cityCN": "雷克雅未克",
+      "cityFallbackName": "Reykjavík",
+      "lat": 63.767,
+      "lng": -19.375,
+      "aliases": [],
+      "rating": 4.2
+    },
+    {
+      "nameCN": "菲姆沃兹哈尔斯",
+      "nameEN": "Fimmvörðuháls",
+      "category": "ATTRACTION",
+      "cityCN": "维克",
+      "cityFallbackName": "Vík",
+      "lat": 63.62,
+      "lng": -19.45,
+      "aliases": ["Fimmvorduhals"],
+      "rating": 4.5
+    }
+  ]
+}

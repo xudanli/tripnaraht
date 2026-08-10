@@ -32,6 +32,10 @@ import {
 } from './dto/open-world-verification.dto';
 import { LogDecisionRequestDto, LogDecisionResponseDto } from './dto/log-decision.dto';
 import {
+  SelectTravelDecisionRequestDto,
+  SelectTravelDecisionResponseDto,
+} from './dto/select-travel-decision.dto';
+import {
   ConflictStrategyOptionsRequestDto,
   ConflictStrategyOptionsResponseDto,
 } from './dto/conflict-strategy-options.dto';
@@ -522,6 +526,87 @@ INTAKE → STATE_UPDATE → RESEARCH → POI_SELECTION → GATE_EVAL → CONTEXT
   @ApiResponse({ status: 409, description: '协商已过期或不匹配，需要重新协商' })
   async confirmNegotiation(@Body() input: NegotiationResolutionDto): Promise<ConfirmNegotiationResponseDto> {
     return await this.agentService.confirmNegotiation(input);
+  }
+
+  @Public()
+  @Post('decisions/:decisionId/select')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '选择旅行决策方案（Decision Support Commit）',
+    description:
+      '将 option 写入 TravelDecisionProblem → trip.metadata.travelDecisionCommitments + travelDecisionContract；' +
+      '并镜像冰岛自驾车型/节奏字段。不静默改行程；若返回 draft_bridge_message，请再用 route_and_run 生成调整草案。',
+  })
+  @ApiBody({ type: SelectTravelDecisionRequestDto })
+  @ApiResponse({ status: 200, type: SelectTravelDecisionResponseDto })
+  async selectTravelDecision(
+    @Param('decisionId') decisionId: string,
+    @Body() body: SelectTravelDecisionRequestDto,
+  ): Promise<SelectTravelDecisionResponseDto> {
+    const { selectTravelDecisionOption } = await import(
+      './services/decision-support-fast-path.util'
+    );
+    const result = await selectTravelDecisionOption({
+      agent: this.agentService,
+      decisionId,
+      optionId: body.option_id,
+      selectedBy: body.selected_by,
+      tripId: body.trip_id,
+    });
+    if (result.ok === false) {
+      return { ok: false, reason: result.reason };
+    }
+    if (body.trip_id && result.problem.tripId !== body.trip_id) {
+      return { ok: false, reason: 'trip_id_mismatch' };
+    }
+    return {
+      ok: true,
+      decision_id: result.problem.decisionId,
+      decision_key: result.problem.decisionKey,
+      option_id: result.problem.selection?.optionId,
+      state: result.problem.state,
+      persisted_to_trip_metadata: result.persisted,
+      contract_patch: result.contractPatch,
+      travel_decision_contract: result.travelDecisionContract as Record<string, unknown> | undefined,
+      draft_bridge_message: result.draftBridgeMessage,
+      next: result.draftBridgeMessage
+        ? { suggested_route_and_run_message: result.draftBridgeMessage }
+        : undefined,
+    };
+  }
+
+  @Public()
+  @Get('trips/:tripId/decision-status')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: '查询行程决策状态（开放题 + 已提交账本）',
+    description:
+      '读取 trip.metadata 中的 travelDecisionOpenProblems / travelDecisionCommitments / travelDecisionContract。',
+  })
+  async getTripDecisionStatus(@Param('tripId') tripId: string): Promise<{
+    ok: boolean;
+    reason?: string;
+    status?: import('./decision-support').TripDecisionStatusV1;
+  }> {
+    const tid = String(tripId ?? '').trim();
+    if (!tid) return { ok: false, reason: 'trip_id_required' };
+    const { PrismaService } = await import('../prisma/prisma.service');
+    const prisma =
+      (this.agentService as any).prisma ??
+      (this.agentService as any).moduleRef?.get?.(PrismaService, { strict: false });
+    if (!prisma?.trip?.findUnique) {
+      return { ok: false, reason: 'prisma_unavailable' };
+    }
+    const trip = await prisma.trip.findUnique({
+      where: { id: tid },
+      select: { metadata: true },
+    });
+    if (!trip) return { ok: false, reason: 'trip_not_found' };
+    const { buildTripDecisionStatus } = await import('./decision-support');
+    return {
+      ok: true,
+      status: buildTripDecisionStatus({ tripId: tid, metadata: trip.metadata }),
+    };
   }
 
   @Public()

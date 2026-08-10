@@ -1,0 +1,128 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "sampledAt": "2026-08-09T09:00:52.019Z",
+    "source": "restapi.amap.com/v3/place/text",
+    "corridor": "cn.route.dianzang",
+    "disclaimer": "高德 POI 文本搜首条；梅里飞来寺观景受天气影响大。"
+  },
+  "summary": {
+    "targets": 6,
+    "ok": 6,
+    "miss": 0,
+    "maxDeltaKm": 12.983,
+    "appliedCount": 4,
+    "thresholdKm": 3,
+    "apply": true
+  },
+  "rows": [
+    {
+      "nameCN": "大理",
+      "ok": true,
+      "seed": {
+        "lat": 25.692,
+        "lng": 100.23,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 25.678466,
+        "lng": 100.301614,
+        "name": "大理市",
+        "address": "大理市",
+        "id": "B03680I1JP"
+      },
+      "deltaKm": 7.332,
+      "applied": true
+    },
+    {
+      "nameCN": "丽江",
+      "ok": true,
+      "seed": {
+        "lat": 26.855,
+        "lng": 100.227,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 26.855165,
+        "lng": 100.225936,
+        "name": "丽江市",
+        "address": "古城区",
+        "id": "B037813ZRR"
+      },
+      "deltaKm": 0.107,
+      "applied": false
+    },
+    {
+      "nameCN": "香格里拉",
+      "ok": true,
+      "seed": {
+        "lat": 27.827,
+        "lng": 99.706,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 27.842185,
+        "lng": 99.743582,
+        "name": "香格里拉市",
+        "address": "香格里拉市",
+        "id": "B03770LRRU"
+      },
+      "deltaKm": 4.063,
+      "applied": true
+    },
+    {
+      "nameCN": "普达措",
+      "ok": true,
+      "seed": {
+        "lat": 27.9,
+        "lng": 99.95,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 27.856299,
+        "lng": 99.951808,
+        "name": "普达措国家公园",
+        "address": "建塘镇红坡村双桥",
+        "id": "B0377006XM"
+      },
+      "deltaKm": 4.863,
+      "applied": true
+    },
+    {
+      "nameCN": "德钦",
+      "ok": true,
+      "seed": {
+        "lat": 28.486,
+        "lng": 98.911,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 28.464213,
+        "lng": 98.917851,
+        "name": "德钦县",
+        "address": "德钦县",
+        "id": "B0FFLJ6FK4"
+      },
+      "deltaKm": 2.513,
+      "applied": false
+    },
+    {
+      "nameCN": "飞来寺观景台",
+      "ok": true,
+      "seed": {
+        "lat": 28.43,
+        "lng": 98.75,
+        "where": "place"
+      },
+      "amap": {
+        "lat": 28.444183,
+        "lng": 98.881797,
+        "name": "飞来寺",
+        "address": "云岭乡西当村梅里雪山景区",
+        "id": "B0377003PS"
+      },
+      "deltaKm": 12.983,
+      "applied": true
+    }
+  ]
+}

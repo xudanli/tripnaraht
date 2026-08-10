@@ -214,6 +214,13 @@ export class OverallTripReadinessService {
   ): boolean {
     if (typeof metadata.isSelfDrive === 'boolean') return metadata.isSelfDrive;
     if (typeof metadata.selfDrive === 'boolean') return metadata.selfDrive;
+    if (metadata.productLine === 'china_classic_self_drive') return true;
+    if (
+      typeof metadata.classicRouteId === 'string' &&
+      metadata.classicRouteId.startsWith('cn.route.')
+    ) {
+      return true;
+    }
     const mode = String(metadata.travelMode ?? metadata.transportMode ?? '').toLowerCase();
     if (mode.includes('self') || mode.includes('drive') || mode === 'car') return true;
     if (mode.includes('transit') || mode.includes('flight') || mode.includes('train')) {

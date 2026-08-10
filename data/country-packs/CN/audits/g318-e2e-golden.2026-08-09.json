@@ -1,0 +1,77 @@
+{
+  "metadata": {
+    "sampledAt": "2026-08-09T06:48:02.385Z",
+    "baseUrl": "http://127.0.0.1:3000",
+    "tripId": "85b93b63-a012-4f68-95d0-4eca7107c45d"
+  },
+  "summary": {
+    "total": 3,
+    "passed": 3,
+    "failed": 0
+  },
+  "rows": [
+    {
+      "id": "golden-cn-g318-how-to-plan",
+      "ok": true,
+      "protocolOk": true,
+      "protocolRouteClass": "QUICK_ANSWER",
+      "httpOk": true,
+      "status": 200,
+      "latency_ms": 30960,
+      "cards": {},
+      "cardOk": true,
+      "hotspotMeta": null,
+      "metaOk": true,
+      "answerPreview": "基于您绑定的「SMOKE G318 川藏南线 · 经典 14 日南线」行程（2026-09-10 至 2026-09-23），我为您提供以下专业建议：\n\n---\n\n## 一、14天是否够？—— 结论：**够，且是川藏南线最经典的黄金节奏**\n\n14天是川藏南线（G318）**最主流、最舒适**的排期长度。您的行程骨架与经典走法高度吻合：\n\n| 路段 | 天数"
+    },
+    {
+      "id": "golden-cn-mugecuo-ticket",
+      "ok": true,
+      "protocolOk": true,
+      "protocolRouteClass": "QUICK_ANSWER",
+      "httpOk": true,
+      "status": 200,
+      "latency_ms": 868,
+      "cards": {
+        "activity_booking_cards": 3,
+        "activities": 3
+      },
+      "cardOk": true,
+      "hotspotMeta": {
+        "hotspot_id": "cn.poi.mugecuo",
+        "name_cn": "木格措",
+        "hub_city_cn": "康定",
+        "consult_blurb_cn": "木格措多为「门票+观光车」套餐；旺季约 195 元门市、OTA 常略低。建议实名提前订，入园截止多在下午，飞猪价以当日商品为准。",
+        "advance_booking_days_hint": {
+          "min": 0,
+          "recommended": 1,
+          "peakHoliday": 3
+        },
+        "must_hints_cn": [
+          "门票常与往返观光车捆绑售卖，报价勿与「纯门票」混比",
+          "旺季/节假日建议至少提前 1 天实名预订",
+          "高原景区：心肺不适、孕妇等需自行评估；游船/温泉另计"
+        ],
+        "disclaimer": "规则与票价区间为公开攻略/OTA 抽样综合的示意值，须以景区当日通告与飞猪实时商品为准。"
+      },
+      "metaOk": true,
+      "answerPreview": "结论：已查到与「帮我搜索康定木格措景区8月21日的门票预订信息和价格」相关的实时门票/活动候选，详情见下方卡片。\n\n- 推荐：康定情歌（木格措）风景区、木格错、木格措栈道\n- 说明：价格与可订性以飞猪/预订页实时为准；请核对游览日期。"
+    },
+    {
+      "id": "golden-cn-kangding-car-rental",
+      "ok": true,
+      "protocolOk": true,
+      "protocolRouteClass": "QUICK_ANSWER",
+      "httpOk": true,
+      "status": 200,
+      "latency_ms": 2897,
+      "cards": {
+        "car_rental_cards": 3
+      },
+      "cardOk": true,
+      "hotspotMeta": null,
+      "metaOk": true,
+      "answerPreview": "结论：已查到与「康定」相关的实时租车结果，详情见下方卡片。\n\n- 取还车：我想在康定租一辆越野车\n- 推荐：四川成都/甘孜全域康定稻城机场租车泸定异地取还川西环线自驾游、成都租车川藏线318稻城亚丁康定九寨沟川西拉萨林芝自驾游越野车、四川成都租车普拉多自驾游川藏线318稻城亚丁康定九寨沟川西拉萨\n- 说明：价格与可订性以飞猪/预订页实时为准；异地还车请在下单"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "schemaId": "tripnara.destination_self_drive_capabilities@v1",
+  "packId": "destination.is",
+  "countryCode": "IS",
+  "version": "1.0.0",
+  "capabilities": {
+    "road_status": "SUPPORTED",
+    "vehicle_road_fit": "SUPPORTED",
+    "altitude_risk": "PARTIAL",
+    "restricted_area": "PARTIAL",
+    "seasonal_window": "SUPPORTED",
+    "ferry": "SUPPORTED",
+    "toll": "NONE",
+    "live_traffic": "PROVIDER_DEPENDENT",
+    "checkpoint": "NONE",
+    "fuel_density": "SUPPORTED",
+    "charging": "PARTIAL"
+  },
+  "notes": "IS：road.is / Gagnaveita 为路况主证据；DEM/海拔为 PARTIAL。"
+}

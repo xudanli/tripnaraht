@@ -21,6 +21,7 @@ import type {
 import { parseBudgetConfig } from '../budget-os/utils/budget-config.util';
 import { toInputJsonValue } from '../budget-os/utils/prisma-json.util';
 import { TripBudgetService, BudgetConstraint } from './trip-budget.service';
+import { assertDirectEffectivePlanWriteBlocked } from '../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import {
   buildBudgetEvidence,
   buildOptimizationProposals,
@@ -575,6 +576,10 @@ export class BudgetEvaluationService {
   ): Promise<ApplyBudgetOptimizationResult> {
     const { planId, tripId, optimizationIds } = request;
     const dryRun = request.autoCommit !== true;
+    // Agent Harness P0-1 W2 / C18：autoCommit 直写禁止；预览保留
+    if (!dryRun) {
+      assertDirectEffectivePlanWriteBlocked('budget.applyBudgetOptimizations');
+    }
 
     const trip = await this.prisma.trip.findUnique({ where: { id: tripId } });
     if (!trip) {

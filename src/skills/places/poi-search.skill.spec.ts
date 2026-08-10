@@ -75,12 +75,41 @@ describe('PoiSearchSkill', () => {
         64.1,
         -21.9,
         10,
-        undefined,
+        expect.objectContaining({ countryCode: 'IS' }),
       );
       expect(result.pois).toHaveLength(1);
       expect(result.pois[0].poi_id).toBe('1');
       expect(result.pois[0].name).toBe('测试地点');
       expect(result.pois[0].coordinates).toEqual({ lat: 64.1, lng: -21.9 });
+    });
+
+    it('透传 description / visitTipCN / duration 到 poi 证据', async () => {
+      entityResolutionService.resolveEntities.mockResolvedValue({
+        results: [
+          {
+            id: 9,
+            name: '九寨沟',
+            nameCN: '九寨沟',
+            lat: 33.2,
+            lng: 103.9,
+            category: 'ATTRACTION',
+            description: '彩池叠瀑，适合慢节奏停留。',
+            metadata: {
+              visitTipCN: '雨季注意限流',
+              estimated_duration_min: 180,
+              highlights: ['彩池'],
+            },
+          },
+        ],
+      } as any);
+
+      const result = await skill.execute({ query: '九寨沟', countryCode: 'CN' });
+      expect(result.pois[0]).toMatchObject({
+        description: '彩池叠瀑，适合慢节奏停留。',
+        visitTipCN: '雨季注意限流',
+        duration_minutes: 180,
+        tags: ['彩池'],
+      });
     });
 
     it('应该在 EntityResolutionService 失败时降级到 PlacesService', async () => {
@@ -169,7 +198,7 @@ describe('PoiSearchSkill', () => {
         undefined,
         undefined,
         10,
-        undefined,
+        expect.any(Object),
       );
     });
 
@@ -185,7 +214,7 @@ describe('PoiSearchSkill', () => {
         undefined,
         undefined,
         10,
-        { keywordOnly: true },
+        expect.objectContaining({ keywordOnly: true, countryCode: 'IS' }),
       );
     });
 

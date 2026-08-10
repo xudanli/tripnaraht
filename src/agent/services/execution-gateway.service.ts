@@ -33,7 +33,10 @@ import { AgentService } from './agent.service';
 import { runRouteAndRunMainChain } from './execution-gateway.route-and-run.orchestration';
 import { applyRouteAndRunEntryRoutingInPlace } from '../routing/route-and-run-route-class-fork.util';
 import { normalizeRouteAndRunConversationContextInPlace } from '../context/utils/conversation-context-window.util';
-import { shouldRejectDedupForStaleTraceContract } from './execution-gateway-trace-compatibility.util';
+import {
+  shouldRejectDedupForMemorySnapshotMismatch,
+  shouldRejectDedupForStaleTraceContract,
+} from './execution-gateway-trace-compatibility.util';
 import {
   attachRobustnessDashboardToResponse,
   tryBuildRobustnessDashboard,
@@ -178,6 +181,13 @@ export class ExecutionGatewayService {
     if (shouldRejectDedupForStaleTraceContract(request, cachedResponse)) {
       this.logger.debug(
         `[ExecutionGateway] dedup bypass: stale trace contract under cid-aware mode request_id=${request.request_id}`,
+      );
+      return null;
+    }
+
+    if (shouldRejectDedupForMemorySnapshotMismatch(request, cachedResponse)) {
+      this.logger.debug(
+        `[ExecutionGateway] dedup bypass: memory snapshot mismatch vs cached execution_trace_v1 request_id=${request.request_id}`,
       );
       return null;
     }

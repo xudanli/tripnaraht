@@ -2,16 +2,19 @@ import {
   applyBoundTripReviewRouteAndRunOverrideInPlace,
   isBoundTripLightConsultQuery,
   isBoundTripLodgingDiningPlanQuery,
+  isDayPaceAssessmentQuery,
   isFactualMacroStatQuery,
   isHotelInventorySearchQuery,
   isLocalClockOrTimezoneFactQuery,
   isTripStatusOverviewQuery,
+  isWeatherImpactOnItineraryQuery,
   isWeatherRoadConditionFocusedQuery,
   routingSignalsWithResolvedTaskType,
   shouldForceDataLookupForBoundTripReview,
   shouldRouteBoundTripAsItineraryAdjust,
   signalsFromRequest,
 } from './orchestration-signals.util';
+import { stripUiInjectedDayScheduleContext } from './ui-day-schedule-context.util';
 import { RouteAndRunRequestDto } from '../dto/route-and-run.dto';
 
 describe('signalsFromRequest — 行程内咨询分流', () => {
@@ -29,6 +32,21 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
     const s = signalsFromRequest(
       base({
         trip_id: 'trip_15c50a69931845ca',
+        message: msg,
+        options: { intent_mode: 'TRIP_PLANNING', use_state_machine_orchestration: true },
+        conversation_context: { context_type: 'active_trip_summary' },
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
+  });
+
+  it('有 trip_id + Day2住宿怎么选 → DATA_LOOKUP（走廊检索，非 FULL_DEEP_PLAN）', () => {
+    const msg = 'Day2住宿怎么选？';
+    expect(isHotelInventorySearchQuery(msg, msg.toLowerCase())).toBe(true);
+    expect(shouldForceDataLookupForBoundTripReview({ trip_id: 't1', message: msg })).toBe(true);
+    const s = signalsFromRequest(
+      base({
+        trip_id: '5945a3ab-75d2-4911-ae82-9647c8c29e96',
         message: msg,
         options: { intent_mode: 'TRIP_PLANNING', use_state_machine_orchestration: true },
         conversation_context: { context_type: 'active_trip_summary' },
@@ -108,6 +126,20 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
     expect(s.requiresStructuredOutput).toBe(false);
   });
 
+  it('有 trip_id +「哪些景点需要提前预定」→ DATA_LOOKUP（勿误入 SM repair halt）', () => {
+    const msg = '有哪些景点是需要我提前预定的？';
+    expect(shouldForceDataLookupForBoundTripReview({ trip_id: 't1', message: msg })).toBe(true);
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: msg,
+        options: { intent_mode: 'TRIP_PLANNING', use_state_machine_orchestration: true },
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
+    expect(s.requiresStructuredOutput).toBe(false);
+  });
+
   it('有 trip_id + 推荐酒店 → DATA_LOOKUP（不误入行程规划）', () => {
     const s = signalsFromRequest(
       base({
@@ -130,6 +162,20 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
     expect(s.taskType).toBe('DATA_LOOKUP');
     expect(s.requiresStructuredOutput).toBe(false);
     expect(s.intent_mode_resolved).toBe('DATA_LOOKUP');
+  });
+
+  it('有 trip_id +「特色餐厅要不要提前预定」→ DATA_LOOKUP（勿误入 SM repair halt）', () => {
+    const msg = '我的行程中？有没有特色的餐厅？然后这些餐厅有没有需要提前预定的？';
+    expect(shouldForceDataLookupForBoundTripReview({ trip_id: 't1', message: msg })).toBe(true);
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: msg,
+        options: { intent_mode: 'TRIP_PLANNING', use_state_machine_orchestration: true },
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
+    expect(s.requiresStructuredOutput).toBe(false);
   });
 
   it('有 trip_id + 维克超市能买什么 → DATA_LOOKUP（勿误入 POI 稀疏澄清）', () => {
@@ -234,6 +280,105 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
     );
     expect(s.taskType).toBe('DATA_LOOKUP');
     expect(s.requiresStructuredOutput).toBe(false);
+  });
+
+  it('有 trip_id + 「总体行程」短问 → DATA_LOOKUP（勿误入 FULL_TRIP → ROR DAY_PACE ASK）', () => {
+    const msg = '总体行程';
+    expect(isTripStatusOverviewQuery(msg, msg.toLowerCase())).toBe(true);
+    expect(shouldForceDataLookupForBoundTripReview({ trip_id: 't1', message: msg })).toBe(true);
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: msg,
+        options: { intent_mode: 'TRIP_PLANNING', use_state_machine_orchestration: true },
+        conversation_context: { context_type: 'active_trip_summary' },
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
+    expect(s.actionKind).toBe('TRIP_SCOPED_CONSULTATION');
+  });
+
+  it('有 trip_id + 「最大的问题是什么」→ DATA_LOOKUP（勿误入 DAY_PACE ASK_USER）', () => {
+    const msg = '我这个行程现在最大的问题是什么？';
+    expect(isTripStatusOverviewQuery(msg, msg.toLowerCase())).toBe(true);
+    expect(shouldForceDataLookupForBoundTripReview({ trip_id: 't1', message: msg })).toBe(true);
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: msg,
+        options: { intent_mode: 'TRIP_PLANNING', use_state_machine_orchestration: true },
+        conversation_context: { context_type: 'active_trip_summary' },
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
+    expect(s.actionKind).toBe('TRIP_SCOPED_CONSULTATION');
+  });
+
+  it('裸「第三天太赶了」→ 节奏诊断咨询（非改排）', () => {
+    expect(isDayPaceAssessmentQuery('第三天太赶了')).toBe(true);
+    expect(isDayPaceAssessmentQuery('第三天太赶了，轻松一点')).toBe(false);
+  });
+
+  it('「day1会不会太赶」→ DATA_LOOKUP 咨询（勿 SAFETY / 全量 PLAN_GEN）', () => {
+    const msg = 'day1会不会太赶';
+    expect(isDayPaceAssessmentQuery(msg)).toBe(true);
+    expect(shouldForceDataLookupForBoundTripReview({ trip_id: 't1', message: msg })).toBe(true);
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: msg,
+        options: { intent_mode: 'TRIP_PLANNING', use_state_machine_orchestration: true },
+        conversation_context: { context_type: 'active_trip_summary' },
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
+    expect(s.actionKind).toBe('TRIP_SCOPED_CONSULTATION');
+    expect(s.actionKind).not.toBe('SAFETY_OR_TRADEOFF_REVIEW');
+  });
+
+  it('有 trip_id + 「Day1会不会太赶」含 UI 日程后缀 → DATA_LOOKUP（勿全量 PLAN_GEN）', () => {
+    const msg = 'Day1会不会太赶\n\n[日程] Day1 Day 1 · 抵达雷克雅未克...';
+    expect(isDayPaceAssessmentQuery(stripUiInjectedDayScheduleContext(msg))).toBe(true);
+    expect(shouldForceDataLookupForBoundTripReview({ trip_id: 't1', message: msg })).toBe(true);
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: msg,
+        options: { intent_mode: 'TRIP_PLANNING', use_state_machine_orchestration: true },
+        conversation_context: { context_type: 'active_trip_summary' },
+      }),
+    );
+    expect(s.taskType).toBe('DATA_LOOKUP');
+    expect(s.actionKind).toBe('TRIP_SCOPED_CONSULTATION');
+  });
+
+  it('「现在最应该先处理什么」→ 概览/复盘咨询', () => {
+    const msg = '现在最应该先处理什么？';
+    expect(isTripStatusOverviewQuery(msg, msg.toLowerCase())).toBe(true);
+  });
+
+  it('「整体行程怎么样」→ 概览咨询', () => {
+    const msg = '整体行程怎么样';
+    expect(isTripStatusOverviewQuery(msg, msg.toLowerCase())).toBe(true);
+  });
+
+  it('有 trip_id + 「明天天气会影响行程吗」→ TRIP_PLANNING + 安全权衡（勿 slim DATA_LOOKUP）', () => {
+    const msg = '明天天气会影响行程吗？';
+    expect(isWeatherImpactOnItineraryQuery(msg)).toBe(true);
+    expect(shouldForceDataLookupForBoundTripReview({ trip_id: 't1', message: msg })).toBe(false);
+    const s = signalsFromRequest(
+      base({
+        trip_id: 't1',
+        message: msg,
+        conversation_context: { context_type: 'active_trip_summary' },
+      }),
+    );
+    expect(s.taskType).toBe('TRIP_PLANNING');
+    expect(s.actionKind).toBe('SAFETY_OR_TRADEOFF_REVIEW');
+  });
+
+  it('纯「明天天气怎么样」→ 非影响判定（仍可轻量）', () => {
+    expect(isWeatherImpactOnItineraryQuery('明天天气怎么样')).toBe(false);
   });
 
   it('有 trip_id + 全面分析 + intent_mode=TRIP_PLANNING → 仍 DATA_LOOKUP（复盘勿走规划状态机）', () => {
@@ -345,6 +490,26 @@ describe('signalsFromRequest — 行程内咨询分流', () => {
       }),
     );
     expect(s.taskType).toBe('TRIP_PLANNING');
+  });
+
+  it('有 trip_id + Day2 偏好换酒店 → DATA_LOOKUP（即使 intent_mode=TRIP_PLANNING）', () => {
+    const msg =
+      '第二天的行程我要换一个离第三天更近一点的酒店，性价比比较高，第二天不想早起\n\n[日程] Day2 Day 2 · 黄金圈';
+    expect(isHotelInventorySearchQuery(msg)).toBe(true);
+    expect(shouldForceDataLookupForBoundTripReview({ trip_id: 't1', message: msg })).toBe(true);
+    const req = base({
+      trip_id: '5945a3ab-75d2-4911-ae82-9647c8c29e96',
+      message: msg,
+      options: {
+        intent_mode: 'TRIP_PLANNING',
+        use_state_machine_orchestration: true,
+        entry_point: 'itinerary_day_editor',
+      },
+    });
+    applyBoundTripReviewRouteAndRunOverrideInPlace(req);
+    expect(req.options?.intent_mode).toBe('DATA_LOOKUP');
+    const s = signalsFromRequest(req);
+    expect(s.taskType).toBe('DATA_LOOKUP');
   });
 
   it('有 trip_id + 明确规划动词 → 仍为 TRIP_PLANNING', () => {

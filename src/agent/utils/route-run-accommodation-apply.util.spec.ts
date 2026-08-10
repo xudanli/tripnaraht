@@ -89,4 +89,28 @@ describe('route-run-accommodation-apply.util', () => {
     expect(card.checkIn).toBe('2026-06-04');
     expect(card.checkOut).toBe('2026-06-05');
   });
+
+  it('enrich fliggy card: primary CTA is 加入行程, view is secondary', () => {
+    const card = enrichRouteRunCardForClientApply(
+      {
+        id: '78309218',
+        source: 'fliggy',
+        name: '汉庭康定',
+        url: 'https://router.feizhu.com/h/1',
+        webUrl: 'https://router.feizhu.com/h/1',
+        bookingProvider: 'fliggy',
+        bookingCtaLabelZh: '去飞猪查看',
+        checkIn: '2026-06-02',
+        checkOut: '2026-06-03',
+      },
+      0,
+    );
+    expect(card.cta_zh).toBe('加入行程');
+    expect(card.primary_action?.action).toBe('add_accommodation_to_itinerary');
+    expect(card.actions?.[0]?.action).toBe('add_accommodation_to_itinerary');
+    expect(card.actions?.some((a) => a.action === 'view_accommodation')).toBe(true);
+    expect(
+      card.actions?.find((a) => a.action === 'view_accommodation')?.labelCN,
+    ).toBe('去飞猪查看');
+  });
 });

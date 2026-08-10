@@ -21,6 +21,8 @@ export interface EntityResolutionResult {
   nameCN: string;
   nameEN?: string | null;
   address?: string | null;
+  /** Place.description（含 LLM enrich） */
+  description?: string | null;
   category: string;
   lat: number;
   lng: number;
@@ -516,6 +518,7 @@ export class EntityResolutionService {
         nameCN: string;
         nameEN: string | null;
         address: string | null;
+        description: string | null;
         category: string;
         lat: number | null;
         lng: number | null;
@@ -526,6 +529,7 @@ export class EntityResolutionService {
           "nameCN",
           "nameEN",
           address,
+          description,
           category,
           metadata,
           ST_Y(location::geometry) as lat,
@@ -552,6 +556,7 @@ export class EntityResolutionService {
             nameCN: place.nameCN || '',
             nameEN: place.nameEN,
             address: place.address,
+            description: place.description,
             category: place.category,
             lat: parseFloat(place.lat.toString()),
             lng: parseFloat(place.lng.toString()),
@@ -602,6 +607,7 @@ export class EntityResolutionService {
         nameCN: string;
         nameEN: string | null;
         address: string | null;
+        description: string | null;
         category: string;
         lat: number | null;
         lng: number | null;
@@ -612,6 +618,7 @@ export class EntityResolutionService {
           "nameCN",
           "nameEN",
           address,
+          description,
           category,
           metadata,
           ST_Y(location::geometry) as lat,
@@ -634,6 +641,7 @@ export class EntityResolutionService {
             nameCN: place.nameCN || '',
             nameEN: place.nameEN,
             address: place.address,
+            description: place.description,
             category: place.category,
             lat: parseFloat(place.lat.toString()),
             lng: parseFloat(place.lng.toString()),
@@ -672,20 +680,21 @@ export class EntityResolutionService {
       options?.keywordOnly ? { keywordOnly: true } : undefined,
     );
 
-    // 转换为EntityResolutionResult格式
+    // 转换为EntityResolutionResult格式（保留 hybridSearch 回填的 description/metadata）
     return results.map(r => ({
       id: r.id,
       name: r.nameCN || r.nameEN || '',
       nameCN: r.nameCN,
       nameEN: r.nameEN,
       address: r.address,
+      description: r.description ?? null,
       category: r.category,
       lat: r.lat ?? 0, // 使用 ?? 而不是 ||，避免 0 被替换
       lng: r.lng ?? 0,
       score: r.finalScore,
       source: 'vector_search' as const,
       matchReasons: r.matchReasons || [],
-      metadata: {},
+      metadata: r.metadata ?? {},
     })).filter(r => r.lat !== 0 && r.lng !== 0); // 过滤掉没有坐标的结果
   }
 

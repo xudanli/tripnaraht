@@ -1,0 +1,294 @@
+{
+  "metadata": {
+    "mode": "needs-llm",
+    "dryRun": false,
+    "model": "deepseek-chat",
+    "candidates": 40,
+    "ok": 40,
+    "fail": 0,
+    "skipped": 0,
+    "sampledAt": "2026-08-09T09:41:10.030Z"
+  },
+  "results": [
+    {
+      "id": 47,
+      "nameCN": "北京（通州）大运河文化旅游景区",
+      "ok": true,
+      "chars": 143,
+      "nameEN": "Beijing (Tongzhou) Grand Canal Cultural Tourism Scenic Area"
+    },
+    {
+      "id": 48,
+      "nameCN": "文化和旅游部恭王府博物馆",
+      "ok": true,
+      "chars": 135,
+      "nameEN": "Prince Gong Mansion Museum"
+    },
+    {
+      "id": 52,
+      "nameCN": "北京市昌平区十三陵景区",
+      "ok": true,
+      "chars": 134,
+      "nameEN": "Ming Tombs (Shisanling)"
+    },
+    {
+      "id": 53,
+      "nameCN": "圆明园遗址公园景区",
+      "ok": true,
+      "chars": 110,
+      "nameEN": "Yuanmingyuan Ruins Park"
+    },
+    {
+      "id": 55,
+      "nameCN": "北京市奥林匹克公园景区",
+      "ok": true,
+      "chars": 114,
+      "nameEN": "Beijing Olympic Park"
+    },
+    {
+      "id": 56,
+      "nameCN": "慕田峪长城景区",
+      "ok": true,
+      "chars": 130,
+      "nameEN": "Mutianyu Great Wall"
+    },
+    {
+      "id": 163,
+      "nameCN": "天津古文化街旅游区（津门故里）",
+      "ok": true,
+      "chars": 109,
+      "nameEN": "Tianjin Ancient Culture Street (Jinmen Guli)"
+    },
+    {
+      "id": 164,
+      "nameCN": "天津盘山风景名胜区",
+      "ok": true,
+      "chars": 150,
+      "nameEN": "Panshan Scenic Area"
+    },
+    {
+      "id": 514,
+      "nameCN": "晋祠天龙山景区",
+      "ok": true,
+      "chars": 171,
+      "nameEN": "Jinci Temple and Tianlong Mountain Scenic Area"
+    },
+    {
+      "id": 515,
+      "nameCN": "云冈区云冈石窟景区",
+      "ok": true,
+      "chars": 136,
+      "nameEN": "Yungang Grottoes"
+    },
+    {
+      "id": 516,
+      "nameCN": "五台山风景区",
+      "ok": true,
+      "chars": 120,
+      "nameEN": "Mount Wutai Scenic Area"
+    },
+    {
+      "id": 517,
+      "nameCN": "代县雁门关景区",
+      "ok": true,
+      "chars": 124,
+      "nameEN": "Yanmen Pass Scenic Area"
+    },
+    {
+      "id": 518,
+      "nameCN": "平遥县平遥古城景区",
+      "ok": true,
+      "chars": 150,
+      "nameEN": "Pingyao Ancient City"
+    },
+    {
+      "id": 519,
+      "nameCN": "介休市绵山风景区",
+      "ok": true,
+      "chars": 128,
+      "nameEN": "Mianshan Scenic Area"
+    },
+    {
+      "id": 520,
+      "nameCN": "祁县乔家大院文化园区",
+      "ok": true,
+      "chars": 137,
+      "nameEN": "Qiao Family Compound"
+    },
+    {
+      "id": 521,
+      "nameCN": "壶关县太行山大峡谷八泉峡景区",
+      "ok": true,
+      "chars": 122,
+      "nameEN": "Baquan Gorge, Taihang Mountain Grand Canyon"
+    },
+    {
+      "id": 522,
+      "nameCN": "阳城县皇城相府生态文化旅游区",
+      "ok": true,
+      "chars": 146,
+      "nameEN": "Huangcheng Xiangfu Ecological and Cultural Tourism Area"
+    },
+    {
+      "id": 523,
+      "nameCN": "洪洞大槐树寻根祭祖园景区",
+      "ok": true,
+      "chars": 150,
+      "nameEN": "Hongtong Grand Pagoda Tree Root-Seeking Memorial Park"
+    },
+    {
+      "id": 524,
+      "nameCN": "乡宁县云丘山景区",
+      "ok": true,
+      "chars": 136,
+      "nameEN": "Yunqiu Mountain Scenic Area"
+    },
+    {
+      "id": 525,
+      "nameCN": "黄河壶口瀑布旅游区（山西省临汾市）",
+      "ok": true,
+      "chars": 132,
+      "nameEN": "Hukou Waterfall Scenic Area (Linfen, Shanxi)"
+    },
+    {
+      "id": 1125,
+      "nameCN": "太阳岛风景区",
+      "ok": true,
+      "chars": 142,
+      "nameEN": "Sun Island Scenic Area"
+    },
+    {
+      "id": 1126,
+      "nameCN": "牡丹江市镜泊湖景区",
+      "ok": true,
+      "chars": 114,
+      "nameEN": "Jingpo Lake Scenic Area"
+    },
+    {
+      "id": 1127,
+      "nameCN": "虎头旅游景区",
+      "ok": true,
+      "chars": 124,
+      "nameEN": "Hutou Scenic Area"
+    },
+    {
+      "id": 1128,
+      "nameCN": "汤旺河林海奇石景区",
+      "ok": true,
+      "chars": 171,
+      "nameEN": "Tangwanghe Forest Sea and Strange Stone Scenic Area"
+    },
+    {
+      "id": 1129,
+      "nameCN": "五大连池风景区",
+      "ok": true,
+      "chars": 116,
+      "nameEN": "Wudalianchi Scenic Area"
+    },
+    {
+      "id": 1407,
+      "nameCN": "南京市钟山风景名胜区-中山陵园风景区",
+      "ok": true,
+      "chars": 133,
+      "nameEN": "Zhongshan Mausoleum Scenic Area"
+    },
+    {
+      "id": 1408,
+      "nameCN": "南京市夫子庙—秦淮风光带景区",
+      "ok": true,
+      "chars": 145,
+      "nameEN": "Confucius Temple & Qinhuai River Scenic Area"
+    },
+    {
+      "id": 1409,
+      "nameCN": "无锡市惠山古镇景区",
+      "ok": true,
+      "chars": 131,
+      "nameEN": "Huishan Ancient Town Scenic Area"
+    },
+    {
+      "id": 1410,
+      "nameCN": "中央电视台无锡影视基地三国水浒景区",
+      "ok": true,
+      "chars": 144,
+      "nameEN": "CCTV Wuxi Film Base (Three Kingdoms & Water Margin Scenic Area)"
+    },
+    {
+      "id": 1411,
+      "nameCN": "无锡市灵山景区",
+      "ok": true,
+      "chars": 109,
+      "nameEN": "Lingshan Scenic Area"
+    },
+    {
+      "id": 1412,
+      "nameCN": "无锡市鼋头渚风景区",
+      "ok": true,
+      "chars": 146,
+      "nameEN": "Yuantouzhu Scenic Area"
+    },
+    {
+      "id": 1413,
+      "nameCN": "徐州市云龙湖景区",
+      "ok": true,
+      "chars": 104,
+      "nameEN": "Yunlong Lake Scenic Area"
+    },
+    {
+      "id": 1414,
+      "nameCN": "常州市环球恐龙城休闲旅游区",
+      "ok": true,
+      "chars": 127,
+      "nameEN": "Global Dinosaur City"
+    },
+    {
+      "id": 1415,
+      "nameCN": "常州市天目湖景区",
+      "ok": true,
+      "chars": 152,
+      "nameEN": "Tianmu Lake Scenic Area"
+    },
+    {
+      "id": 1416,
+      "nameCN": "常州市中国春秋淹城旅游区",
+      "ok": true,
+      "chars": 162,
+      "nameEN": "China Spring and Autumn Yancheng Tourism Zone"
+    },
+    {
+      "id": 1417,
+      "nameCN": "苏州市周庄古镇景区",
+      "ok": true,
+      "chars": 144,
+      "nameEN": "Zhouzhuang Ancient Town"
+    },
+    {
+      "id": 1418,
+      "nameCN": "苏州园林景区",
+      "ok": true,
+      "chars": 158,
+      "nameEN": "Suzhou Classical Gardens"
+    },
+    {
+      "id": 1419,
+      "nameCN": "苏州市同里古镇景区",
+      "ok": true,
+      "chars": 138,
+      "nameEN": "Tongli Ancient Town"
+    },
+    {
+      "id": 1420,
+      "nameCN": "苏州市金鸡湖景区",
+      "ok": true,
+      "chars": 117,
+      "nameEN": "Jinji Lake Scenic Area"
+    },
+    {
+      "id": 1421,
+      "nameCN": "苏州市吴中太湖旅游区",
+      "ok": true,
+      "chars": 150,
+      "nameEN": "Taihu Lake Tourist Area (Wuzhong, Suzhou)"
+    }
+  ]
+}

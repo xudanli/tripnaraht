@@ -61,6 +61,21 @@ describe('segment-distance-threshold.util', () => {
     });
   });
 
+  it('seeds China national and plateau pack defaults', () => {
+    const cn: Record<string, unknown> = {};
+    mergeSeededTripConstraints('CN', cn);
+    expect(cn.constraints).toEqual({
+      maxSegmentDistanceKm: 350,
+      warnSegmentDistanceKm: 220,
+    });
+    const xz: Record<string, unknown> = {};
+    mergeSeededTripConstraints('CN_XIZANG', xz);
+    expect(xz.constraints).toEqual({
+      maxSegmentDistanceKm: 250,
+      warnSegmentDistanceKm: 160,
+    });
+  });
+
   it('does not seed when user already set maxSegmentDistanceKm', () => {
     expect(
       seedDefaultTripConstraintsMetadata('IS', { maxSegmentDistanceKm: 400 }),

@@ -1,0 +1,9 @@
+{
+  "schemaId": "tripnara.iceland.daylight_driving_policy@v1",
+  "version": "1.0.0",
+  "status": "ACTIVE",
+  "nightExposureWarnMinutes": 60,
+  "nightExposureBlockMinutes": 180,
+  "comfortWindowMinutes": 480,
+  "unfamiliarRoadNightMultiplier": 1.25
+}

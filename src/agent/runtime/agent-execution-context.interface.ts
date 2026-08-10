@@ -26,4 +26,9 @@ export interface AgentExecutionContext {
    * 请求级 Context Package L1（ALS 内生死；跨并发请求隔离）。
    */
   contextPackageL1Cache?: Map<string, { package: ContextPackage; timestamp: number }>;
+  /**
+   * TMR 选择性 CONSUME hints（prepare 注入；OPTIMIZE/CGUS 可读）。
+   * advisoryOnly，不替代旧 Memory OS。
+   */
+  travelMemoryDecisionHints?: import('../../travel-memory/context-assembly/selective-consume.util').TravelMemoryDecisionHintV1[];
 }

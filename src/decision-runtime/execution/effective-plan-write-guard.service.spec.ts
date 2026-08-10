@@ -41,8 +41,14 @@ describe('EffectivePlanWriteGuardService', () => {
   });
 
   it('no-op when guard disabled', () => {
-    delete process.env.EFFECTIVE_PLAN_WRITE_GUARD;
+    process.env.EFFECTIVE_PLAN_WRITE_GUARD = 'OFF';
     const guard = new EffectivePlanWriteGuardService();
     expect(() => guard.assertSetEffectiveAllowed('test')).not.toThrow();
+  });
+
+  it('P0-1 W0: unset GUARD defaults to ENFORCE', () => {
+    delete process.env.EFFECTIVE_PLAN_WRITE_GUARD;
+    const guard = new EffectivePlanWriteGuardService();
+    expect(() => guard.assertSetEffectiveAllowed('test')).toThrow(EffectivePlanWriteBypassError);
   });
 });

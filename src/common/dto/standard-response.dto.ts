@@ -85,9 +85,21 @@ export enum ErrorCode {
   // 请求错误
   BAD_REQUEST = 'BAD_REQUEST',
 
+  /** 通用资源冲突（HTTP 409） */
+  CONFLICT = 'CONFLICT',
+
   /** 日程写库冲突（缓冲/顺延与现有项重叠） */
   SCHEDULE_CONFLICT = 'SCHEDULE_CONFLICT',
 
   /** Travel Context revision 乐观锁冲突（RFC-003 §8.2） */
   REVISION_CONFLICT = 'REVISION_CONFLICT',
+
+  /** 非行程成员 */
+  NOT_TRIP_MEMBER = 'NOT_TRIP_MEMBER',
+
+  /** Team Tasks */
+  TASK_NOT_FOUND = 'TASK_NOT_FOUND',
+  TEMPLATE_NOT_FOUND = 'TEMPLATE_NOT_FOUND',
+  TASK_ALREADY_CLAIMED = 'TASK_ALREADY_CLAIMED',
+  TASK_INVALID_TRANSITION = 'TASK_INVALID_TRANSITION',
 }

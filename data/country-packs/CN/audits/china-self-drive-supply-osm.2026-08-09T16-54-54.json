@@ -1,0 +1,219 @@
+{
+  "at": "2026-08-09T16:54:54.542Z",
+  "dryRun": true,
+  "source": "osm-overpass",
+  "routeArg": "g318",
+  "routes": [
+    "cn.route.g318"
+  ],
+  "radiusM": 8000,
+  "limitPerAnchor": 5,
+  "queries": [
+    "fuel",
+    "charging"
+  ],
+  "candidateCount": 23,
+  "byCanonicalType": {
+    "FUEL_STATION": 16,
+    "EV_CHARGING": 7
+  },
+  "created": 23,
+  "updated": 0,
+  "skipped": 0,
+  "errors": [
+    {
+      "anchor": "理塘",
+      "info": "getaddrinfo EAI_AGAIN overpass.kumi.systems"
+    },
+    {
+      "anchor": "芒康",
+      "info": "getaddrinfo EAI_AGAIN overpass.kumi.systems"
+    }
+  ],
+  "sample": [
+    {
+      "osmKey": "way/1138328526",
+      "nameCN": "中国石油",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/5787211751",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/1373232450",
+      "nameCN": "中国石油",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/778944127",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/958215031",
+      "nameCN": "交投能源",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/9173653462",
+      "nameCN": "蓝电快充",
+      "canonicalType": "EV_CHARGING",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/9181729468",
+      "nameCN": "EV_CHARGING",
+      "canonicalType": "EV_CHARGING",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/3070069509",
+      "nameCN": "Tesla Supercharger",
+      "canonicalType": "EV_CHARGING",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/1413406456",
+      "nameCN": "特来电汽车充电站（快充区）",
+      "canonicalType": "EV_CHARGING",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/1413406455",
+      "nameCN": "特来电汽车充电站（慢充区）",
+      "canonicalType": "EV_CHARGING",
+      "category": "SUPPLY",
+      "anchorCN": "成都",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/6720648490",
+      "nameCN": "China Petro Station",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "康定",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/5923678786",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "康定",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/4817477022",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "林芝",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/4817477025",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "林芝",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/5024001940",
+      "nameCN": "中国石油东郊加油站",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "林芝",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/858603257",
+      "nameCN": "中国石油",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "林芝",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/5024001957",
+      "nameCN": "珠峰加油站",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "林芝",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/11308826968",
+      "nameCN": "蔚来换电站",
+      "canonicalType": "EV_CHARGING",
+      "category": "SUPPLY",
+      "anchorCN": "林芝",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/311738367",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "拉萨",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/4589422475",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "拉萨",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/1041721614",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "拉萨",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/12155278855",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "拉萨",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/13296588601",
+      "nameCN": "EV_CHARGING",
+      "canonicalType": "EV_CHARGING",
+      "category": "SUPPLY",
+      "anchorCN": "拉萨",
+      "routeId": "cn.route.g318"
+    }
+  ]
+}

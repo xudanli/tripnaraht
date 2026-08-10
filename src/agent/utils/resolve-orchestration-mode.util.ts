@@ -14,6 +14,8 @@ export interface OrchestrationOptions {
   // 以下字段用于策略决策，但不影响模式判定
   dry_run?: boolean;
   allow_webbrowse?: boolean;
+  /** 用户显式决策授权 → DECISION_AUTHORIZED（不影响编排模式判定） */
+  decision_consent?: boolean;
 }
 
 /**

@@ -1,17 +1,19 @@
 /**
- * Per-corridor UWC write modes (UWC-1b/1c).
+ * Per-corridor UWC write modes (UWC-1b/1c + UWC-CUTOVER-01).
  *
- * AUTHORITATIVE unlock requires TWO independent gates:
- * - UWC_1C_OCC_CODE_COMPLETE (engineering: OCC contract landed)
- * - UWC_1C_OCC_SWITCH_AUTHORIZED (release/ops: explicit switch authorization)
+ * Global AUTHORITATIVE unlock requires TWO independent gates:
+ * - UWC_1C_OCC_CODE_COMPLETE
+ * - UWC_1C_OCC_SWITCH_AUTHORIZED
  *
- * UWC-1c completes the code gate only; AUTHORITATIVE remains blocked until switch auth.
+ * Additionally, UWC-CUTOVER-01 may authorize a **single** corridor via
+ * `isCorridorAuthoritativeAuthorized` without flipping the global switch.
  */
 
 import {
   AUTHORITATIVE_WRITE_V1_CORRIDORS,
   type AuthoritativeWriteCorridorId,
 } from './authoritative-write.types';
+import { isCorridorAuthoritativeAuthorized } from './corridor-authoritative.gate';
 
 export const CORRIDOR_WRITE_MODES = [
   'DISABLED',
@@ -25,14 +27,14 @@ export type CorridorWriteMode = (typeof CORRIDOR_WRITE_MODES)[number];
 export const UWC_1C_OCC_CODE_COMPLETE = true as const;
 
 /**
- * Gate B — independent switch authorization (RRR / Release Owner).
- * Remains false after UWC-1c; do not flip in this ticket.
+ * Gate B — independent **global** switch authorization.
+ * UWC-OCC-UNLOCK-01 (2026-07-24): authorized after D1–D3 APPROVED + explicit decision.
+ * Compensation exec remains independently locked.
  */
-export const UWC_1C_OCC_SWITCH_AUTHORIZED = false as const;
+export const UWC_1C_OCC_SWITCH_AUTHORIZED = true as const;
 
 /**
- * Effective unlock for AUTHORITATIVE. Requires BOTH gates.
- * Still false after UWC-1c (switch not authorized).
+ * Effective **global** unlock for AUTHORITATIVE. Requires BOTH dual gates.
  */
 export const UWC_1C_OCC_UNLOCKED = (UWC_1C_OCC_CODE_COMPLETE &&
   UWC_1C_OCC_SWITCH_AUTHORIZED) as boolean;
@@ -78,6 +80,13 @@ function parseMode(raw: string | undefined): CorridorWriteMode | null {
   return null;
 }
 
+/** Global dual-gate OR per-corridor cutover authorization. */
+export function isAuthoritativeAllowedForCorridor(
+  corridor: AuthoritativeWriteCorridorId,
+): boolean {
+  return UWC_1C_OCC_UNLOCKED || isCorridorAuthoritativeAuthorized(corridor);
+}
+
 export type ResolvedCorridorWriteMode = {
   corridor: AuthoritativeWriteCorridorId;
   requested: CorridorWriteMode;
@@ -85,11 +94,12 @@ export type ResolvedCorridorWriteMode = {
   authoritativeHardBlocked: boolean;
   blockReason?: typeof UWC_AUTHORITATIVE_HARD_BLOCK_REASON;
   dualGates: typeof UWC_AUTHORITATIVE_DUAL_GATE_STATUS;
+  corridorAuthoritativeAuthorized: boolean;
 };
 
 /**
- * Resolve effective mode. AUTHORITATIVE requests are coerced to DISABLED
- * while dual gates are not both true.
+ * Resolve effective mode.
+ * AUTHORITATIVE allowed when global unlock OR corridor cutover auth (D1+).
  */
 export function resolveCorridorWriteMode(
   corridor: AuthoritativeWriteCorridorId,
@@ -97,8 +107,10 @@ export function resolveCorridorWriteMode(
 ): ResolvedCorridorWriteMode {
   const fromEnv = parseMode(env[ENV_KEYS[corridor]]);
   const requested = fromEnv ?? UWC_1B_DEFAULT_MODES[corridor];
+  const corridorAuthoritativeAuthorized =
+    isCorridorAuthoritativeAuthorized(corridor);
 
-  if (requested === 'AUTHORITATIVE' && !UWC_1C_OCC_UNLOCKED) {
+  if (requested === 'AUTHORITATIVE' && !isAuthoritativeAllowedForCorridor(corridor)) {
     return {
       corridor,
       requested,
@@ -106,6 +118,7 @@ export function resolveCorridorWriteMode(
       authoritativeHardBlocked: true,
       blockReason: UWC_AUTHORITATIVE_HARD_BLOCK_REASON,
       dualGates: UWC_AUTHORITATIVE_DUAL_GATE_STATUS,
+      corridorAuthoritativeAuthorized,
     };
   }
 
@@ -115,6 +128,7 @@ export function resolveCorridorWriteMode(
     effective: requested,
     authoritativeHardBlocked: false,
     dualGates: UWC_AUTHORITATIVE_DUAL_GATE_STATUS,
+    corridorAuthoritativeAuthorized,
   };
 }
 
@@ -136,12 +150,18 @@ export function assertAuthoritativeNotEnabled(
   env?: NodeJS.ProcessEnv,
 ): void {
   const resolved = resolveCorridorWriteMode(corridor, env);
-  if (resolved.requested === 'AUTHORITATIVE' && !UWC_1C_OCC_UNLOCKED) {
+  if (
+    resolved.requested === 'AUTHORITATIVE' &&
+    !isAuthoritativeAllowedForCorridor(corridor)
+  ) {
     throw new Error(
-      `${UWC_AUTHORITATIVE_HARD_BLOCK_REASON}: corridor=${corridor} codeComplete=${UWC_1C_OCC_CODE_COMPLETE} switchAuthorized=${UWC_1C_OCC_SWITCH_AUTHORIZED}`,
+      `${UWC_AUTHORITATIVE_HARD_BLOCK_REASON}: corridor=${corridor} codeComplete=${UWC_1C_OCC_CODE_COMPLETE} switchAuthorized=${UWC_1C_OCC_SWITCH_AUTHORIZED} corridorAuth=${isCorridorAuthoritativeAuthorized(corridor)}`,
     );
   }
-  if (resolved.effective === 'AUTHORITATIVE' && !UWC_1C_OCC_UNLOCKED) {
+  if (
+    resolved.effective === 'AUTHORITATIVE' &&
+    !isAuthoritativeAllowedForCorridor(corridor)
+  ) {
     throw new Error(
       `${UWC_AUTHORITATIVE_HARD_BLOCK_REASON}: corridor=${corridor}`,
     );

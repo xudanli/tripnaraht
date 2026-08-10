@@ -35,6 +35,35 @@ export function parseScheduleAffectedDayNumbers(values: string[] | undefined): n
   return [...days].sort((a, b) => a - b);
 }
 
+/** Normalize day indices for iOS Day bar (Day1=1). Empty = trip-level, never expand to all days. */
+export function normalizePlanningAffectedDayNumbers(input: {
+  affectedDays?: Array<number | string> | null;
+  affectedDayNumbers?: Array<number | string> | null;
+  fromDayNumber?: number | null;
+  toDayNumber?: number | null;
+  tripDayCount?: number;
+}): number[] {
+  const days = new Set<number>();
+  const push = (raw: number | string | null | undefined) => {
+    if (raw == null) return;
+    if (typeof raw === 'string') {
+      for (const n of parseScheduleAffectedDayNumbers([raw])) days.add(n);
+      return;
+    }
+    if (Number.isFinite(raw) && raw > 0 && raw <= 60) days.add(raw);
+  };
+  for (const d of input.affectedDayNumbers ?? []) push(d);
+  for (const d of input.affectedDays ?? []) push(d);
+  push(input.fromDayNumber);
+  push(input.toDayNumber);
+
+  let out = [...days].sort((a, b) => a - b);
+  if (input.tripDayCount != null && input.tripDayCount > 0) {
+    out = out.filter((d) => d <= input.tripDayCount);
+  }
+  return out;
+}
+
 /** 与前端 isLunchValidationConflict 对齐：低优先级餐饮窗校验噪声 */
 export function isLunchValidationNoise(conflict: ConflictDto): boolean {
   const lunchTypes = new Set<ConflictType>([
@@ -130,6 +159,12 @@ export function isScheduleConflictCoveredByAnyIssue(
 export function feasibilityIssueToPlanningItem(issue: FeasibilityIssueDto): PlanningConflictItem {
   const enriched = enrichTravelScopeBffFields(issue);
   const semanticKey = buildFeasibilityIssueDedupeKey(enriched);
+  const affectedDays = normalizePlanningAffectedDayNumbers({
+    affectedDays: enriched.affectedDays,
+    affectedDayNumbers: enriched.affectedDayNumbers,
+    fromDayNumber: enriched.anchors?.fromDayNumber,
+    toDayNumber: enriched.anchors?.toDayNumber,
+  });
   return {
     id: enriched.id,
     source: 'feasibility',
@@ -137,23 +172,26 @@ export function feasibilityIssueToPlanningItem(issue: FeasibilityIssueDto): Plan
     category: (enriched.category as PlanningConflictCategory) ?? 'other',
     title: enriched.title,
     message: enriched.message,
-    affectedDays: enriched.affectedDays?.length ? [...enriched.affectedDays] : undefined,
-    affectedDayNumbers: enriched.affectedDayNumbers,
+    // Empty = trip-level (do NOT expand to all days). Non-empty = Day1-based indices.
+    affectedDays: affectedDays.length ? affectedDays : [],
+    affectedDayNumbers: affectedDays.length ? affectedDays : [],
     affectedScopeSummary: enriched.affectedScopeSummary,
     semanticKey,
-    issue: { ...enriched, semanticKey },
+    issue: {
+      ...enriched,
+      semanticKey,
+      affectedDays: affectedDays.length ? affectedDays : enriched.affectedDays,
+      affectedDayNumbers: affectedDays.length ? affectedDays : enriched.affectedDayNumbers,
+    },
   };
 }
 
 export function scheduleConflictToPlanningItem(conflict: ConflictDto): PlanningConflictItem {
-  const affectedDays = parseScheduleAffectedDayNumbers(conflict.affectedDays);
-  if (conflict.fromDayNumber && !affectedDays.includes(conflict.fromDayNumber)) {
-    affectedDays.push(conflict.fromDayNumber);
-  }
-  if (conflict.toDayNumber && !affectedDays.includes(conflict.toDayNumber)) {
-    affectedDays.push(conflict.toDayNumber);
-  }
-  affectedDays.sort((a, b) => a - b);
+  const affectedDays = normalizePlanningAffectedDayNumbers({
+    affectedDays: parseScheduleAffectedDayNumbers(conflict.affectedDays),
+    fromDayNumber: conflict.fromDayNumber,
+    toDayNumber: conflict.toDayNumber,
+  });
 
   const scopeFields = buildTravelScopeBffFieldsFromConflict(conflict, affectedDays);
 
@@ -164,8 +202,8 @@ export function scheduleConflictToPlanningItem(conflict: ConflictDto): PlanningC
     category: mapScheduleConflictCategory(conflict.type),
     title: conflict.title,
     message: conflict.description,
-    affectedDays: affectedDays.length ? affectedDays : undefined,
-    affectedDayNumbers: scopeFields?.affectedDayNumbers,
+    affectedDays: affectedDays.length ? affectedDays : [],
+    affectedDayNumbers: affectedDays.length ? affectedDays : [],
     affectedScopeSummary: scopeFields?.affectedScopeSummary,
     studioConflict: conflict,
   };

@@ -43,6 +43,8 @@ export class ClarificationHandlerService {
     const relGate = answers.find((a) => a.questionId === 'gate_eval_relax_constraints');
     const relVerify = answers.find((a) => a.questionId === 'verify_relax_constraints');
     const relPlanning = answers.find((a) => a.questionId === 'planning_conflicts_relax_constraints');
+    const relRepairHalt = answers.find((a) => a.questionId === 'repair_halt_confirmation');
+    const relUtilityHalt = answers.find((a) => a.questionId === 'utility_decay_halt_confirmation');
 
     const toPicked = (rel: typeof relPlanGen): string[] => {
       if (!rel) return [];
@@ -53,6 +55,8 @@ export class ClarificationHandlerService {
     const pickedGate = toPicked(relGate);
     const pickedVerify = toPicked(relVerify);
     const pickedPlanning = toPicked(relPlanning);
+    const pickedRepairHalt = toPicked(relRepairHalt);
+    const pickedUtilityHalt = toPicked(relUtilityHalt);
     const RELAX_ATOMS = new Set([
       'upgrade_vehicle_to_4wd',
       'increase_days_by_1',
@@ -72,6 +76,8 @@ export class ClarificationHandlerService {
       ...pickedGate,
       ...pickedVerify,
       ...pickedPlanning,
+      ...pickedRepairHalt,
+      ...pickedUtilityHalt,
     ];
 
     const next: TripPlanRequest = this.deepClone(base);

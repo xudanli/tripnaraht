@@ -267,6 +267,20 @@ export interface SystemState {
   userRepairResolutionLog?: UserRepairResolutionEvent[];
 
   /**
+   * CGUS Decision Outcome Loop：按 decision_id upsert 的 Trace 日志（Action/Outcome/Diagnosis）。
+   * 与 `optimizationHints.cgusDecisionTrace`（当前决策镜像）配合。
+   */
+  cgusDecisionTraceLog?: import('../../trips/decision/optimization/cgus-decision-trace.types').CgusDecisionTraceV1[];
+
+  /**
+   * Trip Shadow compare cases（Outcome 回填后累积；供 Benefit/Harm）。
+   */
+  tripShadowCaseLog?: import('../../travel-memory/validation/memory-validation-loop.types').ShadowMemoryCompareCaseV1[];
+
+  /** 最近一次 Trip Shadow 汇总（可选缓存） */
+  tripShadowEvaluation?: import('../../travel-memory/validation/memory-validation-loop.types').ShadowMemoryEvaluationBundleV1;
+
+  /**
    * Emergency constraints persisted on the DecisionState (Sentinel hard mask).
    * Purpose: ensure auto-heal retries and multi-turn planning retain the same physical禁区
    * until env/signature changes.
@@ -277,6 +291,18 @@ export interface SystemState {
     max_wind_speed_tolerance_mps?: number;
     reason_code?: string;
   };
+
+  /**
+   * 行程 metadata 快照（供 OPTIMIZE Policy Projector 读取合同 / icelandSelfDrive）。
+   * 外层投影一次；CGUS 只吃投影后的 CGUSOptimizationPolicy，勿在搜索内再读最新合同。
+   */
+  tripMetadata?: Record<string, unknown>;
+
+  /**
+   * TMR 选择性 CONSUME 决策提示（advisoryOnly）。
+   * 与 tripMetadata / Contract / Self-drive 分槽；不得当作硬禁止令。
+   */
+  travelMemoryDecisionHints?: import('../../travel-memory/context-assembly/selective-consume.util').TravelMemoryDecisionHintV1[];
 
   /** Persona closure loop 审计（Neptune REPLACE → Abu 重验）；供 REPAIR skip 与 explain 投影 */
   personaClosureAudit?: PersonaClosureAudit;
@@ -494,6 +520,8 @@ export interface OptimizationHints {
     violations?: Array<Pick<ConstraintViolationItem, 'type' | 'severity' | 'degree' | 'detail'>>;
     /** 用于多样性去重的签名（内部诊断字段） */
     diversitySignature?: string;
+    /** CGUS V1 分项效用（与 cgusDecisionTrace.candidate_scores 对齐） */
+    utilityBreakdown?: import('../../trips/decision/optimization/cgus-decision-trace.types').CgusCandidateUtilityBreakdownV1;
   }>;
   /** 推荐候选 id（若已计算） */
   recommendedAlternativeId?: string;
@@ -543,6 +571,26 @@ export interface OptimizationHints {
     crossSpread?: number;
     hint?: string;
   };
+
+  /**
+   * CGUS V1 Decision Trace。
+   * 排序侧：OPTIMIZE 写出。后半段：Outcome Loop 回写（Action → Outcome/Regret → Diagnosis）。
+   * @see CGUS_V1_OPERATIONAL_VALIDATION_01.md
+   */
+  cgusDecisionTrace?: import('../../trips/decision/optimization/cgus-decision-trace.types').CgusDecisionTraceV1;
+
+  /**
+   * Travel Memory Decision Trace（证明 Memory 是否改变了推荐）。
+   * used=true 仅当偏好序可证明改变 top1；否则 false。
+   */
+  memoryDecisionTrace?: import('../../travel-memory/runtime/memory-decision-trace.types').MemoryDecisionTraceV1;
+
+  /**
+   * 真 Trip Shadow 观测摘要：Without vs With TMR Decision Pair。
+   */
+  tripShadowPair?: Record<string, unknown>;
+  /** 完整 Pair（供 Outcome Loop 回填）；勿只存摘要 */
+  tripShadowPairRecord?: import('../../travel-memory/validation/build-trip-shadow-pair.util').TripShadowPairV1;
 }
 
 /** VOI 编排：观测类 TripAction 建议 */
@@ -889,6 +937,12 @@ export interface DecisionState {
 
   /** RESEARCH / world.buildContext 共识镜像（含 worldModel） */
   research_data?: Record<string, unknown>;
+
+  /**
+   * 上层认知四切片（看清现实 → 发现关系 → 聚焦问题 → 预演未来）。
+   * 工程阶段名不变；Gate/Plan/Narrator 应优先消费此契约而非各自重解释现实。
+   */
+  cognition?: import('./decision-cognition.types').DecisionCognitionSlice;
 }
 
 export type VerificationIssueClass = 'FATAL' | 'CONFLICT' | 'ADVISORY';

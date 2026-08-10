@@ -5,6 +5,7 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import type { PrismaService } from '../../../prisma/prisma.service';
+import { assertDirectEffectivePlanWriteBlocked } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import type {
   FeasibilityIssueAnchorsDto,
   FeasibilityRepairOptionDto,
@@ -284,6 +285,7 @@ export async function applyMinuteTimingShiftRepair(
   prisma: PrismaService,
   payload: Record<string, unknown>,
 ): Promise<{ itemId: string; shiftMinutes: number; newStartTime?: string }> {
+  assertDirectEffectivePlanWriteBlocked('travel-timing-repair.applyMinuteTimingShift');
   const itemId = typeof payload.itemId === 'string' ? payload.itemId : undefined;
   const shiftMinutes =
     typeof payload.shiftMinutes === 'number'
@@ -353,6 +355,7 @@ export async function applySuggestedStartTimeRepair(
   prisma: PrismaService,
   payload: Record<string, unknown>,
 ): Promise<{ itemId: string; newStartTime: string }> {
+  assertDirectEffectivePlanWriteBlocked('travel-timing-repair.applySuggestedStartTime');
   const itemId = typeof payload.itemId === 'string' ? payload.itemId : undefined;
   const suggestedValue = typeof payload.suggestedValue === 'string' ? payload.suggestedValue : undefined;
 

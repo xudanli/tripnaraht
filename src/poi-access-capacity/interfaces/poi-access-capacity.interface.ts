@@ -150,7 +150,7 @@ export interface AccessCapacityEvaluationInput {
   placeOntologyRules?: unknown;
   dateISO: string;
   /** 到达时刻 HH:mm（目的地当地） */
-  arrivalTime: string;
+  arrivalTime?: string;
   timezone?: string;
   vehicleType?: string;
   /** 用户已确认的预约/库存凭证 */

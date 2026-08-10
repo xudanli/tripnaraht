@@ -2,7 +2,9 @@
 
 **状态：** `P0 Functional Complete` → **Pilot Validation / Productization Hardening**  
 **日期：** 2026-07-17  
-**主线工作项：** Iceland Wind Causal Decision Pilot Validation
+**主线工作项：** Iceland Wind Causal Decision Pilot Validation  
+
+**能力边界：** 见 [TRIPNARA-CAPABILITY-BOUNDARIES.md](../../internal-docs/product/TRIPNARA-CAPABILITY-BOUNDARIES.md) — 本模块为**规则型因果预测**读模型与 Pilot，不宣称隐式结构挖掘或学习型世界模型。
 
 ---
 

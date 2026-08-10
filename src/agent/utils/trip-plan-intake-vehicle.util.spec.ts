@@ -20,6 +20,33 @@ describe('trip-plan-intake-vehicle.util', () => {
     ).toEqual(['6月5日想极昼自驾环岛', '继续规划']);
   });
 
+  it('filterUserAuthoredIntakeLines drops 系统注入 preference / trip summary blocks', () => {
+    expect(
+      filterUserAuthoredIntakeLines([
+        '[系统注入·用户长期偏好摘要]\n- 偏好从杭州自驾出发\n- 偏好E人社交',
+        '[系统注入·当前行程摘要]\n冰岛自驾 · IS',
+        '第二天安排黄金圈一日游',
+      ]),
+    ).toEqual(['第二天安排黄金圈一日游']);
+  });
+
+  it('buildUserAuthoredIntakeTextBundle ignores 杭州 in standing preference inject', () => {
+    const bundle = buildUserAuthoredIntakeTextBundle('第二天安排黄金圈一日游', [
+      '[系统注入·用户长期偏好摘要]\n- 偏好从杭州自驾出发',
+      '用户: 继续',
+    ]);
+    expect(bundle).toContain('黄金圈');
+    expect(bundle).not.toContain('杭州');
+  });
+
+  it('stripSystemMessageBlocksForIntakeNl strips 系统注入 preference city noise', () => {
+    const raw =
+      '[系统注入·用户长期偏好摘要]\n- 偏好从杭州自驾出发\n\n第二天安排黄金圈一日游';
+    const stripped = stripSystemMessageBlocksForIntakeNl(raw);
+    expect(stripped).toContain('黄金圈');
+    expect(stripped).not.toContain('杭州');
+  });
+
   it('does not infer 2WD from user marathon message alone', () => {
     const msg = '6月5日想利用极昼，24小时不间断自驾环岛';
     expect(parseVehicleTypeFromUserIntakeText(msg)).toBeUndefined();
@@ -59,6 +86,20 @@ describe('trip-plan-intake-vehicle.util', () => {
     );
     expect(out.constraints?.vehicle_type).toBeUndefined();
     expect(out.constraints).toBeUndefined();
+  });
+
+  it('reconcileTripPlanVehicleConstraints preserves trip-confirmed 4WD when NL omits vehicle', () => {
+    const out = reconcileTripPlanVehicleConstraints(
+      {
+        request_id: 'r1',
+        origin: 'x',
+        destination: '冰岛',
+        constraints: { vehicle_type: '4WD', excludeFRoad: true },
+        message: '我需要有一天的活动，有直升机观光峡湾地貌',
+      } as any,
+      '我需要有一天的活动，有直升机观光峡湾地貌',
+    );
+    expect(out.constraints?.vehicle_type).toBe('4WD');
   });
 
   it('buildUserAuthoredIntakeTextBundle excludes assistant 2WD narrative', () => {

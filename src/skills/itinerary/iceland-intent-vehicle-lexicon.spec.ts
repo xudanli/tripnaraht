@@ -20,4 +20,19 @@ describe('iceland-intent-vehicle-lexicon', () => {
     const n = normalizeIcelandVehicleIntentText('economy duster rental');
     expect(lexiconMatchFourWheelIntent(n)).toBe(true);
   });
+
+  it('does not treat FITNESS_PROFILE / outfit / benefit as Honda Fit', () => {
+    for (const raw of [
+      '[SYSTEM_MESSAGE][FITNESS_PROFILE]\nmoderate band',
+      'outfit for glacier hike',
+      'benefit of early sunrise',
+    ]) {
+      expect(lexiconMatchTwoWheelIntent(normalizeIcelandVehicleIntentText(raw))).toBe(false);
+    }
+  });
+
+  it('still matches whole-word Honda Fit / Jazz', () => {
+    expect(lexiconMatchTwoWheelIntent(normalizeIcelandVehicleIntentText('rent a Honda Fit'))).toBe(true);
+    expect(lexiconMatchTwoWheelIntent(normalizeIcelandVehicleIntentText('Honda Jazz 1.2'))).toBe(true);
+  });
 });

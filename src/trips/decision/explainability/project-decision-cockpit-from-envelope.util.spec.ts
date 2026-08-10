@@ -77,4 +77,52 @@ describe('projectDecisionCockpitFromEnvelope (decision-cockpit@v1)', () => {
     });
     expect(projectDecisionCockpitFromEnvelope({ envelope: sparse })).toBeUndefined();
   });
+
+  it('attaches cognition echo and can project cognition-only cockpit', () => {
+    const withCog = projectDecisionCockpitFromEnvelope({
+      envelope,
+      cognition: {
+        decisionDepth: 'FULL_SIMULATION',
+        markers: ['PROBLEM_FOCUSED', 'DECISION_AUTHORIZED'],
+        focusedProblem: {
+          schema: 'tripnara/focused-decision-problem@v1',
+          problemId: 'focus_wind',
+          type: 'RISK',
+          question: '是否继续高风路段？',
+          rootCause: { evidenceRefs: [] },
+          affectedScope: {},
+          urgency: 'NOW',
+          severity: 0.9,
+          confidence: 0.8,
+          whyThisProblem: '预测失败链',
+          suppressedSecondaryProblems: [],
+          gateDisposition: 'ALLOW',
+        },
+      },
+    });
+    expect(withCog?.cognition?.focused_problem?.problemId).toBe('focus_wind');
+    expect(withCog?.cognition?.markers).toContain('DECISION_AUTHORIZED');
+    expect(withCog?.cognition_cards?.cards.some((c) => c.kind === 'FOCUSED_PROBLEM')).toBe(true);
+
+    const onlyCog = projectDecisionCockpitFromEnvelope({
+      requestId: 'req-cog-only',
+      cognition: {
+        markers: ['REALITY_READY'],
+        realitySnapshot: {
+          schema: 'tripnara/decision-reality-snapshot@v1',
+          snapshotId: 'snap1',
+          builtAt: '2026-01-01T00:00:00.000Z',
+          tripState: {},
+          worldState: {},
+          evidence: [],
+          unknowns: [],
+          freshness: { status: 'VALID' },
+          confidence: 0.7,
+        },
+      },
+    });
+    expect(onlyCog?.cognition?.reality?.snapshotId).toBe('snap1');
+    expect(onlyCog?.cognition_cards?.cards.some((c) => c.kind === 'REALITY')).toBe(true);
+    expect(onlyCog?.decision_trace_rows).toEqual([]);
+  });
 });

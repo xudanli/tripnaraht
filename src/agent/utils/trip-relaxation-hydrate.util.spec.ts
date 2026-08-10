@@ -36,4 +36,21 @@ describe('hydrateRelaxationConstraintsFromTripRecord', () => {
     });
     expect(plan.constraints?.vehicle_type).toBe('2WD');
   });
+
+  it('hydrates vehicle_type from metadata.constraints when agent_plan/pacing absent', () => {
+    const plan: TripPlanRequest = {
+      request_id: 'r1',
+      origin: 'Reykjavik',
+      destination: 'IS',
+      constraints: {},
+    };
+    const filled = hydrateRelaxationConstraintsFromTripRecord(plan, {
+      metadata: {
+        constraints: { vehicleType: '4WD', vehicle_type: '4WD', excludeFRoad: true },
+      },
+      pacingConfig: { travelMode: 'DRIVING' },
+    });
+    expect(plan.constraints?.vehicle_type).toBe('4WD');
+    expect(filled).toContain('constraints.vehicle_type');
+  });
 });

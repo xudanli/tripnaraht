@@ -66,4 +66,17 @@ describe('route-and-run-async-delegation.util', () => {
       }),
     ).toBe(true);
   });
+
+  it('never re-delegates when skip_async_delegation is set (worker guard)', () => {
+    const request = baseRequest({
+      options: { async_mode: 'FORCE', skip_async_delegation: true },
+    });
+    expect(
+      shouldDelegateRouteAndRunToAsync({
+        request,
+        signals: signalsFromRequest(request),
+        planDelta: [{ target: { type: 'POI' } }],
+      }),
+    ).toBe(false);
+  });
 });

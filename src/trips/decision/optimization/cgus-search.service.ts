@@ -5,14 +5,20 @@
  * 步骤 1：可行域投影 → 2：效用先验估计（可选）→ 3：不确定性采样 → 4：世界模型推演（可选）→ 5：最优选择
  *
  * 参考：docs/Decision_OS_技术交底书.md 3.6.1
+ *
+ * V1 运营验证期（非图 13 公式补齐期）：
+ * - 策略：./CGUS_V1_OPERATIONAL_POLICY.md
+ * - 主链已 RELEASED；EU-200/300 FROZEN；EU-500 budget = KNOWN_GAP；L5 权重禁止进主排序
+ * - Trace：./cgus-decision-trace.types.ts
+ * - WeightLearner exists ≠ authorized：见 cgus-v1-authorization.ts
  */
 
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   UnifiedDecisionFormulaService,
   UnifiedDecisionFormulaInput,
-  DEFAULT_UNIFIED_WEIGHTS,
 } from './unified-decision-formula.service';
+import { resolveCgusUnifiedRankingWeights } from './cgus-v1-authorization';
 import { ExpectedUtilityService, DEFAULT_MONTE_CARLO_CONFIG } from './probabilistic/expected-utility.service';
 import { ProbabilisticWorldModelService } from './probabilistic/probabilistic-world-model.service';
 import { DEFAULT_UNCERTAINTY_CONFIG } from './probabilistic/probabilistic-world-model.interface';
@@ -42,6 +48,10 @@ import {
   type RetrievalCategoryEvidence,
 } from './retrieval-category-constraint-boost';
 import { routeSkeletonSignature } from './cgus-route-skeleton.util';
+import { buildCgusUtilityBreakdown } from './cgus-decision-trace.util';
+import type { CgusCandidateUtilityBreakdownV1 } from './cgus-decision-trace.types';
+import type { CGUSOptimizationPolicy } from './cgus-optimization-policy.types';
+import { scoreCandidatePreferenceAgainstPolicy } from './apply-cgus-optimization-policy.util';
 
 /** 候选方案（动作 a） */
 export interface CGUSCandidate {
@@ -98,6 +108,11 @@ export interface CGUSSearchResult {
     samplingDetails?: { totalSamples: number; effectiveSampleSize?: number };
     /** Optional learned / auxiliary scores; never carries Gate verdicts. */
     scorerSidecar?: CandidateScorerPerCandidateOutput;
+    /**
+     * V1 Utility Trace 分项（安全/体验/哲学/惩罚）。
+     * 由搜索时已算的维度挂载；勿在下游重新发明 scenic 等未实现维。
+     */
+    utilityBreakdown?: CgusCandidateUtilityBreakdownV1;
   }>;
   /** 推荐方案（最高效用且可行） */
   recommended?: CGUSCandidate;
@@ -235,6 +250,11 @@ export class CGUSSearchService {
        * 物理不完整 / 草稿期：锚定路由骨架，禁止跨候选替换 segment 集合（仅允许时间/软约束变体）。
        */
       freezeRouteSelection?: boolean;
+      /**
+       * 外层 Policy Projector 快照：软偏好仅经 preferenceScore / 体验倾向消费；
+       * executionAuthority 禁止参与评分。
+       */
+      optimizationPolicy?: CGUSOptimizationPolicy;
     },
   ): Promise<CGUSSearchResult> {
     const freezeRoute = options?.freezeRouteSelection === true;
@@ -337,19 +357,30 @@ export class CGUSSearchService {
 
     // Step 2：效用先验估计 Û(a)（可选，用于加速排序或加权采样）
     const withPrior = toRank.map((candidate) => {
-      const dimensionScores = this.deriveDimensionScores(candidate, worldContext);
+      const { dimensionScores, utilityBreakdown } = this.deriveScoresAndBreakdown(
+        candidate,
+        worldContext,
+      );
       const utilityPrior =
         options?.useUtilityPrior === true
           ? Object.values(dimensionScores).reduce((s, v) => s + (v ?? 0), 0) / Math.max(1, Object.keys(dimensionScores).length)
           : undefined;
+      // V1：静态权重；学得权重须 CGUS_WEIGHT_LEARNING_INTO_RANKING_AUTHORIZED。
+      // 软偏好经 Policy.scoringHints → preferenceScore，不做合同字段→权重硬映射。
+      const preferenceScore = options?.optimizationPolicy
+        ? scoreCandidatePreferenceAgainstPolicy(
+            candidate,
+            options.optimizationPolicy.scoringHints,
+          )
+        : 0;
       const input: UnifiedDecisionFormulaInput = {
         dimensionScores,
-        weights: DEFAULT_UNIFIED_WEIGHTS,
+        weights: resolveCgusUnifiedRankingWeights(),
         constraintViolations: candidate.constraintViolations,
         constraintPenaltyCoefficients:
           Object.keys(retrievalConstraintCoeffs).length > 0 ? retrievalConstraintCoeffs : undefined,
-        riskPenalty: this.deriveRiskPenalty(candidate, worldContext),
-        preferenceScore: 0,
+        riskPenalty: utilityBreakdown.risk_penalty ?? 0,
+        preferenceScore,
       };
       let utility = this.unifiedFormula.computeUnifiedScore(input);
       const routingAudit = this.evaluateCandidateRouting(candidate, worldContext, routingWeights);
@@ -358,7 +389,7 @@ export class CGUSSearchService {
         const penaltyFactor = Math.min(0.92, routingAudit.utilityPenalty);
         utility = Math.max(0, utility * (1 - penaltyFactor));
       }
-      return { candidate, utility, utilityPrior };
+      return { candidate, utility, utilityPrior, utilityBreakdown };
     });
 
     // 按 U(a) 降序排序；广义边成本作为体验路由平局破除（低摩擦优先）
@@ -385,6 +416,10 @@ export class CGUSSearchService {
       rolloutPrediction: undefined as { feasibilityProbability: number; estimatedUtility: number } | undefined,
       samplingDetails: undefined as { totalSamples: number; effectiveSampleSize?: number } | undefined,
       scorerSidecar: undefined as CandidateScorerPerCandidateOutput | undefined,
+      utilityBreakdown: {
+        ...r.utilityBreakdown,
+        utility: r.utility,
+      } as CgusCandidateUtilityBreakdownV1,
     }));
 
     // Step 3：不确定性采样 — 当有条件时执行 Monte Carlo
@@ -507,21 +542,28 @@ export class CGUSSearchService {
           // To keep CGUS constraint-guidance meaningful, we must reflect soft constraint penalties in E[U]
           // (hard constraints are handled by feasible-candidate projection in Step 1).
           const dimensionScores = this.deriveDimensionScores(candidate, worldContext);
+          const rankingWeights = resolveCgusUnifiedRankingWeights();
+          const preferenceScore = options?.optimizationPolicy
+            ? scoreCandidatePreferenceAgainstPolicy(
+                candidate,
+                options.optimizationPolicy.scoringHints,
+              )
+            : 0;
           const scoreNoConstraints = this.unifiedFormula.computeUnifiedScore({
             dimensionScores,
-            weights: DEFAULT_UNIFIED_WEIGHTS,
+            weights: rankingWeights,
             constraintViolations: [],
             riskPenalty: this.deriveRiskPenalty(candidate, worldContext),
-            preferenceScore: 0,
+            preferenceScore,
           });
           const scoreWithConstraints = this.unifiedFormula.computeUnifiedScore({
             dimensionScores,
-            weights: DEFAULT_UNIFIED_WEIGHTS,
+            weights: rankingWeights,
             constraintViolations: candidate.constraintViolations ?? [],
             constraintPenaltyCoefficients:
               Object.keys(retrievalConstraintCoeffs).length > 0 ? retrievalConstraintCoeffs : undefined,
             riskPenalty: this.deriveRiskPenalty(candidate, worldContext),
-            preferenceScore: 0,
+            preferenceScore,
           });
           const softPenaltyDelta =
             Number.isFinite(scoreNoConstraints) && Number.isFinite(scoreWithConstraints)
@@ -536,6 +578,12 @@ export class CGUSSearchService {
             0,
             Math.min(1, (result.expectedUtility - softPenaltyDelta) * (1 - Math.min(0.92, routingPenalty))),
           );
+          if (finalResults[i].utilityBreakdown) {
+            finalResults[i].utilityBreakdown = {
+              ...finalResults[i].utilityBreakdown,
+              expected_utility: finalResults[i].expectedUtility,
+            };
+          }
           let terrainInflation = 1;
           if (this.planFeatures) {
             const effort01 = this.planFeatures.extract(candidate.plan).effort01;
@@ -959,6 +1007,57 @@ export class CGUSSearchService {
   }
 
   /**
+   * 一次评估产出公式维度 + Trace 分项，避免重复 evaluate。
+   */
+  private deriveScoresAndBreakdown(
+    candidate: CGUSCandidate,
+    worldContext: WorldModelContext,
+  ): {
+    dimensionScores: Record<string, number>;
+    utilityBreakdown: CgusCandidateUtilityBreakdownV1;
+  } {
+    const riskPenalty = this.deriveRiskPenalty(candidate, worldContext);
+
+    if (this.objectiveFunction && candidate.plan) {
+      try {
+        const evaluation = this.objectiveFunction.evaluate(candidate.plan, worldContext);
+        const dimensionScores = {
+          safety: evaluation.breakdown.safetyScore,
+          experienceDensity: evaluation.breakdown.experienceScore,
+          philosophyAlignment: evaluation.breakdown.philosophyScore,
+          timeSlack: evaluation.breakdown.timeSlackScore,
+        };
+        return {
+          dimensionScores,
+          utilityBreakdown: buildCgusUtilityBreakdown({
+            safety: dimensionScores.safety,
+            experience: dimensionScores.experienceDensity,
+            philosophy: dimensionScores.philosophyAlignment,
+            timeSlack: dimensionScores.timeSlack,
+            riskPenalty,
+            budgetPenalty: evaluation.breakdown.budgetOverrunPenalty ?? 0,
+          }),
+        };
+      } catch (err) {
+        this.logger.warn(`[CGUS] ObjectiveFunction 评估失败，使用启发式: ${(err as Error)?.message}`);
+      }
+    }
+
+    const dimensionScores = this.deriveHeuristicDimensionScores(candidate, worldContext);
+    return {
+      dimensionScores,
+      utilityBreakdown: buildCgusUtilityBreakdown({
+        safety: dimensionScores.safety,
+        experience: dimensionScores.experienceDensity,
+        philosophy: dimensionScores.philosophyAlignment,
+        timeSlack: dimensionScores.timeSlack,
+        riskPenalty,
+        budgetPenalty: 0,
+      }),
+    };
+  }
+
+  /**
    * 从候选方案和世界上下文推导各维度得分
    * 专利实现：接入 ObjectiveFunctionService 进行真实评估
    */
@@ -966,23 +1065,7 @@ export class CGUSSearchService {
     candidate: CGUSCandidate,
     worldContext: WorldModelContext,
   ): Record<string, number> {
-    // 如果 ObjectiveFunctionService 可用，使用真实评估
-    if (this.objectiveFunction && candidate.plan) {
-      try {
-        const evaluation = this.objectiveFunction.evaluate(candidate.plan, worldContext);
-        return {
-          safety: evaluation.breakdown.safetyScore,
-          experienceDensity: evaluation.breakdown.experienceScore,
-          philosophyAlignment: evaluation.breakdown.philosophyScore,
-          timeSlack: evaluation.breakdown.timeSlackScore,
-        };
-      } catch (err) {
-        this.logger.warn(`[CGUS] ObjectiveFunction 评估失败，使用启发式: ${(err as Error)?.message}`);
-      }
-    }
-
-    // 降级方案：基于世界上下文的启发式评估
-    return this.deriveHeuristicDimensionScores(candidate, worldContext);
+    return this.deriveScoresAndBreakdown(candidate, worldContext).dimensionScores;
   }
 
   /**

@@ -44,6 +44,17 @@ import {
   DSO_FEEDBACK_PERSISTENCE,
   type IDsoFeedbackPersistence,
 } from './dso-feedback-persistence.interface';
+import {
+  buildCgusOutcomeLoopDsoPatch,
+  findCgusDecisionTrace,
+  listCgusDecisionTraces,
+  projectCgusTripReviewSummary,
+  type CgusOutcomeLoopWritePayload,
+  type CgusTripReviewSummaryV1,
+} from '../../trips/decision/optimization/cgus-trip-review.util';
+import { CgusOutcomeLoopError } from '../../trips/decision/optimization/cgus-decision-outcome-loop.util';
+import { TravelMemoryRuntimeService } from '../../travel-memory/runtime/travel-memory-runtime.service';
+import type { CgusDecisionTraceV1 } from '../../trips/decision/optimization/cgus-decision-trace.types';
 import { REPLAN_TRIGGER, type IReplanTrigger } from './replan-trigger.interface';
 import type { DecisionStateFeedback } from './decision-state.types';
 import {
@@ -197,6 +208,8 @@ export class DecisionKernelService {
     @Optional() private readonly observationHarness?: ObservationHarnessService,
     @Optional() private readonly contextLint?: OrchestratorContextLintService,
     @Optional() private readonly multiPersonDecision?: MultiPersonDecisionService,
+    /** Travel Memory Runtime：CGUS Outcome → Episode → Ledger（失败不阻断主路径） */
+    @Optional() private readonly travelMemoryRuntime?: TravelMemoryRuntimeService,
   ) {
     if (this.kernelHard) {
       this.logger.warn(
@@ -2372,6 +2385,159 @@ export class DecisionKernelService {
       feedbackPhase,
     });
     return { ok: true, persisted: true };
+  }
+
+  /**
+   * CGUS V1 Outcome Loop 回写（OPS-CGUS-01/02/03）。
+   * 写入 `optimizationHints.cgusDecisionTrace` + `systemState.cgusDecisionTraceLog`。
+   * 不修改 EU 公式；override ≠ failure。
+   */
+  async writeCgusDecisionOutcomeLoop(params: {
+    tripRunId: string;
+    decision_id?: string;
+    payload: CgusOutcomeLoopWritePayload;
+  }): Promise<{
+    ok: boolean;
+    persisted: boolean;
+    trace?: CgusDecisionTraceV1;
+    summary?: CgusTripReviewSummaryV1;
+    tripShadowPair?: Record<string, unknown>;
+    tripShadowNorthStar?: {
+      question: string;
+      answerable: boolean;
+      preventedMistakeCount: number;
+      harmCount: number;
+      promotionBlocked: boolean;
+      summaryZh: string;
+    };
+    error?: string;
+  }> {
+    if (!this.feedbackPersistence) {
+      return { ok: false, persisted: false, error: 'DSO feedback persistence not available' };
+    }
+
+    const dso = await this.feedbackPersistence.getDso(params.tripRunId);
+    if (!dso) {
+      return { ok: false, persisted: false, error: `DSO not found for ${params.tripRunId}` };
+    }
+
+    try {
+      const {
+        nextTrace,
+        optimizationHints,
+        cgusDecisionTraceLog,
+        tripShadowCaseLog,
+        tripShadowEvaluation,
+        tripShadowNorthStar,
+      } = buildCgusOutcomeLoopDsoPatch(
+        dso,
+        params.payload,
+        params.decision_id,
+      );
+      const recordedAt = new Date().toISOString();
+      const historyDelta: StateHistoryDelta = {
+        type: 'cgus_outcome_loop',
+        summary: `cgus_outcome_loop kind=${params.payload.kind} decision_id=${nextTrace.decision_id}`,
+        at: recordedAt,
+        meta: {
+          decision_id: nextTrace.decision_id,
+          kind: params.payload.kind,
+          user_action: nextTrace.user_action,
+          chosen_candidate: nextTrace.chosen_candidate,
+          root_cause: nextTrace.root_cause,
+          trip_shadow_north_star_ready: tripShadowNorthStar?.answerable ?? false,
+        },
+      };
+
+      const newState = this.stateManager.merge(dso, {
+        optimizationHints,
+        systemState: {
+          requestId: dso.systemState?.requestId ?? dso.requestId,
+          cgusDecisionTraceLog,
+          ...(tripShadowCaseLog ? { tripShadowCaseLog } : {}),
+          ...(tripShadowEvaluation ? { tripShadowEvaluation } : {}),
+        },
+        history: [historyDelta],
+      });
+
+      await this.feedbackPersistence.persistDso(params.tripRunId, newState);
+
+      // Travel Memory：Trace → Episode → Attribution → Ledger（不阻断 Outcome Loop）
+      this.feedTravelMemoryFromCgusOutcome({
+        trace: nextTrace,
+        kind: params.payload.kind,
+        userId:
+          (dso as { userId?: string }).userId ??
+          (dso.userIntent as { userId?: string } | undefined)?.userId ??
+          null,
+      });
+
+      return {
+        ok: true,
+        persisted: true,
+        trace: nextTrace,
+        summary: projectCgusTripReviewSummary(nextTrace),
+        ...(optimizationHints?.tripShadowPair
+          ? { tripShadowPair: optimizationHints.tripShadowPair }
+          : {}),
+        ...(tripShadowNorthStar ? { tripShadowNorthStar } : {}),
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!(err instanceof CgusOutcomeLoopError)) {
+        this.logger.warn(`[Kernel] writeCgusDecisionOutcomeLoop: ${msg}`);
+      }
+      return { ok: false, persisted: false, error: msg };
+    }
+  }
+
+  /**
+   * CGUS Outcome Loop → Travel Memory Runtime。
+   * Optional 注入；任何异常仅 warn，绝不回滚 DSO 回写。
+   */
+  private feedTravelMemoryFromCgusOutcome(input: {
+    trace: CgusDecisionTraceV1;
+    kind: CgusOutcomeLoopWritePayload['kind'];
+    userId?: string | null;
+  }): void {
+    if (!this.travelMemoryRuntime) return;
+    try {
+      this.travelMemoryRuntime.ingestCgusOutcomeLoop({
+        trace: input.trace,
+        kind: input.kind,
+        userId: input.userId,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`[Kernel] travelMemory ingest skipped: ${msg}`);
+    }
+  }
+
+  /**
+   * 读取 CGUS Trip Review 摘要（推荐 vs 选择 vs Outcome）。
+   */
+  async getCgusTripReview(params: {
+    tripRunId: string;
+    decision_id?: string;
+  }): Promise<{
+    ok: boolean;
+    traces?: CgusDecisionTraceV1[];
+    summary?: CgusTripReviewSummaryV1;
+    error?: string;
+  }> {
+    if (!this.feedbackPersistence) {
+      return { ok: false, error: 'DSO feedback persistence not available' };
+    }
+    const dso = await this.feedbackPersistence.getDso(params.tripRunId);
+    if (!dso) {
+      return { ok: false, error: `DSO not found for ${params.tripRunId}` };
+    }
+    const traces = listCgusDecisionTraces(dso);
+    const trace = findCgusDecisionTrace(dso, params.decision_id);
+    if (!trace) {
+      return { ok: true, traces, error: 'No CGUS decision trace yet' };
+    }
+    return { ok: true, traces, summary: projectCgusTripReviewSummary(trace) };
   }
 
   /**

@@ -1,0 +1,38 @@
+{
+  "schemaId": "tripnara.road_repair_templates@v1",
+  "countryCode": "CN",
+  "roadRegions": {
+    "G318": ["CN_SICHUAN", "CN_XIZANG", "CN_G318"],
+    "G318-WEST-SICHUAN": ["CN_SICHUAN", "CN_G318"]
+  },
+  "poiIntent": {
+    "cn.kangding": { "intents": ["intent_acclimatize", "intent_overnight"], "categories": ["MOUNTAIN"] },
+    "cn.litang": { "intents": ["intent_overnight", "intent_altitude"], "categories": ["MOUNTAIN"] },
+    "cn.linzhi": { "intents": ["intent_acclimatize", "intent_overnight"], "categories": ["MOUNTAIN"] }
+  },
+  "templates": [
+    {
+      "templateId": "cn_g318_hold_kangding",
+      "generationMethod": "LOCAL_SUBSTITUTION",
+      "regionCodes": ["CN_SICHUAN", "CN_G318"],
+      "experienceCategories": ["MOUNTAIN"],
+      "intentRefs": ["intent_acclimatize"],
+      "requiresOpenRoadIds": [],
+      "substitutePoiId": "cn.kangding",
+      "estimatedIntentPreservation": 0.88,
+      "estimatedAddedDurationMinutes": 1440,
+      "noteZh": "前段封路或急升风险时：康定多留适应日，勿一日冲理塘。"
+    },
+    {
+      "templateId": "cn_g318_buffer_day",
+      "generationMethod": "ROUTE_REPAIR",
+      "regionCodes": ["CN_SICHUAN", "CN_XIZANG", "CN_G318"],
+      "experienceCategories": ["MOUNTAIN"],
+      "intentRefs": ["intent_overnight"],
+      "requiresOpenRoadIds": [],
+      "estimatedIntentPreservation": 0.9,
+      "estimatedAddedDurationMinutes": 1440,
+      "noteZh": "雨季塌方或检查站延误：插入缓冲日，优先就近过夜城（康定/理塘/芒康/林芝）。"
+    }
+  ]
+}

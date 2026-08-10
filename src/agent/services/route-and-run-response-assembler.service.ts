@@ -14,6 +14,7 @@ import { enrichClientUiDisplay, type ClientUiEnrichmentInput } from '../utils/cl
 import { buildFlawedDraftDescriptorV1 } from '../utils/build-flawed-draft-descriptor.util';
 import { buildAgentRunTraceV1 } from '../orchestration/agent-run-trace.util';
 import { projectTrustedDeliveryV1 } from '../delivery/utils/trusted-delivery.project.util';
+import { attachConversationTurnToRouteAndRunResponse } from '../delivery/conversation/attach-conversation-turn.util';
 import type { DecisionCandidateDto } from '../dto/route-and-run.dto';
 import { TokenCalculator } from '../utils/token-calculator.util';
 import type { OrchestrationResult, RoutingDecision } from '../interfaces/claude-orchestration.interface';
@@ -344,8 +345,56 @@ export class RouteAndRunResponseAssemblerService {
   private resolveUiSurfaceForPayload(
     orchestrationResult: OrchestrationResult,
     consultationUi: boolean,
-  ): 'consultation' | 'planning' {
+  ):
+    | 'consultation'
+    | 'planning'
+    | 'car_rental_cards'
+    | 'accommodation_cards'
+    | 'flight_cards'
+    | 'activity_booking_cards' {
     if (this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)) return 'planning';
+    const r = orchestrationResult.result as
+      | {
+          ui_surface?: string;
+          car_rental_cards?: unknown[];
+          car_rentals?: unknown[];
+          carRentalCardFastPath?: boolean;
+          accommodation_cards?: unknown[];
+          accommodations?: unknown[];
+          hotelCardFastPath?: boolean;
+          flight_cards?: unknown[];
+          flightCardFastPath?: boolean;
+          activity_booking_cards?: unknown[];
+          activities?: unknown[];
+          activityCardFastPath?: boolean;
+        }
+      | undefined;
+    const hasFlightCards =
+      (Array.isArray(r?.flight_cards) && r!.flight_cards!.length > 0) ||
+      r?.ui_surface === 'flight_cards' ||
+      r?.flightCardFastPath === true;
+    if (hasFlightCards) return 'flight_cards';
+    const hasActivityCards =
+      (Array.isArray(r?.activity_booking_cards) && r!.activity_booking_cards!.length > 0) ||
+      (r?.activityCardFastPath === true &&
+        Array.isArray(r?.activities) &&
+        r!.activities!.length > 0) ||
+      r?.ui_surface === 'activity_booking_cards';
+    if (hasActivityCards) return 'activity_booking_cards';
+    const hasCarCards =
+      (Array.isArray(r?.car_rental_cards) && r!.car_rental_cards!.length > 0) ||
+      (r?.carRentalCardFastPath === true &&
+        Array.isArray(r?.car_rentals) &&
+        r!.car_rentals!.length > 0) ||
+      r?.ui_surface === 'car_rental_cards';
+    if (hasCarCards) return 'car_rental_cards';
+    const hasHotelCards =
+      (Array.isArray(r?.accommodation_cards) && r!.accommodation_cards!.length > 0) ||
+      (r?.hotelCardFastPath === true &&
+        Array.isArray(r?.accommodations) &&
+        r!.accommodations!.length > 0) ||
+      r?.ui_surface === 'accommodation_cards';
+    if (hasHotelCards) return 'accommodation_cards';
     return consultationUi ? 'consultation' : 'planning';
   }
 
@@ -713,6 +762,7 @@ export class RouteAndRunResponseAssemblerService {
     }));
     return {
       accommodations: enrichedAccommodations,
+      accommodation_cards: enrichedAccommodations,
       ...(r?.['airbnbListings'] != null ? { airbnbListings: r['airbnbListings'] } : {}),
       ...(r?.['routing'] != null ? { routing: r['routing'] } : {}),
       ...(enrichedNightGroups?.length ? { accommodation_night_groups: enrichedNightGroups } : {}),
@@ -3081,7 +3131,8 @@ export class RouteAndRunResponseAssemblerService {
       needsUserConfirmation,
     });
 
-    return response;
+    // iOS / Chat 主读 conversation_turn_result；租车/住宿库存卡挂在信封内
+    return attachConversationTurnToRouteAndRunResponse(response);
   }
 
   /** P0-1 comparison + P0-2 relaxation 读模型（Plan Studio 矩阵 / RelaxationSuggestionBar） */
@@ -3719,6 +3770,22 @@ export class RouteAndRunResponseAssemblerService {
                   : {}),
               }
             : {}),
+          ...((orchestrationResult.result as any)?.car_rental_cards?.length
+            ? {
+                schema_id:
+                  (orchestrationResult.result as any)?.schema_id ??
+                  'tripnara/chat_car_rental_cards@v1',
+                car_rental_cards: (orchestrationResult.result as any).car_rental_cards,
+              }
+            : Array.isArray((orchestrationResult.result as any)?.car_rentals) &&
+                (orchestrationResult.result as any).car_rentals.length > 0 &&
+                ((orchestrationResult.result as any)?.carRentalCardFastPath === true ||
+                  (orchestrationResult.result as any)?.ui_surface === 'car_rental_cards')
+              ? {
+                  schema_id: 'tripnara/chat_car_rental_cards@v1',
+                  car_rental_cards: (orchestrationResult.result as any).car_rentals,
+                }
+              : {}),
           ...((orchestrationResult.result as any)?.iceland_rental_guidance
             ? { iceland_rental_guidance: (orchestrationResult.result as any).iceland_rental_guidance }
             : {}),
@@ -3750,6 +3817,49 @@ export class RouteAndRunResponseAssemblerService {
                 flight_inventory_snapshot: (orchestrationResult.result as any).flight_inventory_snapshot,
               }
             : {}),
+          ...((orchestrationResult.result as any)?.flight_cards?.length
+            ? {
+                schema_id:
+                  (orchestrationResult.result as any)?.schema_id ??
+                  'tripnara/chat_flight_cards@v1',
+                flight_cards: (orchestrationResult.result as any).flight_cards,
+              }
+            : {}),
+          ...((orchestrationResult.result as any)?.activity_booking_cards?.length
+            ? {
+                schema_id:
+                  (orchestrationResult.result as any)?.schema_id ??
+                  'tripnara/chat_activity_booking_cards@v1',
+                activity_booking_cards: (orchestrationResult.result as any)
+                  .activity_booking_cards,
+                activities:
+                  (orchestrationResult.result as any)?.activities ??
+                  (orchestrationResult.result as any).activity_booking_cards,
+                ...((orchestrationResult.result as any)?.activity_search_meta
+                  ? {
+                      activity_search_meta: (orchestrationResult.result as any)
+                        .activity_search_meta,
+                    }
+                  : {}),
+              }
+            : Array.isArray((orchestrationResult.result as any)?.activities) &&
+                (orchestrationResult.result as any).activities.length > 0 &&
+                ((orchestrationResult.result as any)?.activityCardFastPath === true ||
+                  (orchestrationResult.result as any)?.ui_surface ===
+                    'activity_booking_cards')
+              ? {
+                  schema_id: 'tripnara/chat_activity_booking_cards@v1',
+                  activity_booking_cards: (orchestrationResult.result as any)
+                    .activities,
+                  activities: (orchestrationResult.result as any).activities,
+                  ...((orchestrationResult.result as any)?.activity_search_meta
+                    ? {
+                        activity_search_meta: (orchestrationResult.result as any)
+                          .activity_search_meta,
+                      }
+                    : {}),
+                }
+              : {}),
           ...((orchestrationResult.result as any)?.inventory_snapshots_meta
             ? {
                 inventory_snapshots_meta: (orchestrationResult.result as any).inventory_snapshots_meta,
@@ -4017,7 +4127,8 @@ export class RouteAndRunResponseAssemblerService {
       });
     }
 
-    return response;
+    // iOS / Chat 主读 conversation_turn_result；缺信封时渠道往往不渲染顶层 car_rental_cards
+    return attachConversationTurnToRouteAndRunResponse(response);
   }
 
   // ==================== helpers (migrated from AgentService) ====================

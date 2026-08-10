@@ -121,13 +121,16 @@ export function evaluateCompensationDecision(
   }
 
   // compensation_auth_gate
-  const execOk = isCompensationExecAuthorized() && !shadowOnly;
+  const gateOpen = isCompensationExecAuthorized();
+  const execOk = gateOpen && !shadowOnly;
   stages.push({
     stage: 'compensation_auth_gate',
     pass: true, // gate check always runs; failure changes outcome not stage crash
     detail: execOk
       ? 'EXEC_AUTHORIZED'
-      : UWC_COMPENSATION_EXEC_HARD_BLOCK_REASON,
+      : gateOpen
+        ? 'SHADOW_ONLY_NO_WRITE'
+        : UWC_COMPENSATION_EXEC_HARD_BLOCK_REASON,
   });
 
   // Layer 1: transaction abort — no compensating write
@@ -271,10 +274,13 @@ export function evaluateCompensationDecision(
       pass: true,
       detail: 'decision_only',
     });
+    const blockReasons = gateOpen
+      ? (['SHADOW_ONLY_NO_WRITE', 'WOULD_APPLY_IF_NOT_SHADOW'] as const)
+      : ([UWC_COMPENSATION_EXEC_HARD_BLOCK_REASON, 'WOULD_APPLY_IF_AUTHORIZED'] as const);
     return finish(
       command,
       'NOT_AUTHORIZED',
-      [UWC_COMPENSATION_EXEC_HARD_BLOCK_REASON, 'WOULD_APPLY_IF_AUTHORIZED'],
+      [...blockReasons],
       stages,
       false,
     );

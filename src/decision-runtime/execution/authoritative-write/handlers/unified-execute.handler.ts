@@ -1,15 +1,20 @@
 import {
   AUTHORITATIVE_WRITE_CONTRACT_VERSION,
+  AUTHORITATIVE_WRITE_ERROR_CODES,
   type AuthoritativeWriteCommand,
   type AuthoritativeWriteResult,
 } from '../authoritative-write.types';
 import type { CorridorShadowHandler } from '../corridor-handler.types';
 import type { ExpectedWriteVersion, ObservedWriteVersion } from '../expected-write-version';
 import {
-  hardBlockAuthoritativeApply,
+  assertAuthoritativeApplyAllowed,
   runShadowGatePipeline,
 } from '../shadow-validate.util';
 import { getCorridorWriteTargetProfile } from '../write-target.registry';
+import {
+  executeUnifiedExecuteAuthoritativeCanary,
+  type UnifiedExecuteCanaryPrisma,
+} from '../unified-execute-canary.executor';
 
 function buildExpected(input: Record<string, unknown>): ExpectedWriteVersion {
   const expectedPlanVersionId = String(
@@ -88,6 +93,69 @@ export class UnifiedExecuteCorridorHandler implements CorridorShadowHandler {
   async authoritativeApply(
     command: AuthoritativeWriteCommand,
   ): Promise<AuthoritativeWriteResult> {
-    hardBlockAuthoritativeApply(command);
+    assertAuthoritativeApplyAllowed(command);
+    const legacy = (command.payload?.legacy ?? {}) as Record<string, unknown>;
+    const prisma = legacy.prisma as UnifiedExecuteCanaryPrisma | undefined;
+    const decisionId = String(
+      legacy.decisionId ??
+        command.authority.decisionId ??
+        command.audit.correlationId ??
+        '',
+    );
+    const planVersionId = String(
+      legacy.planVersionId ?? legacy.pendingPlanVersionId ?? '',
+    );
+    const expectedEffective =
+      command.expectedWriteVersion.kind === 'PLAN_VERSION'
+        ? command.expectedWriteVersion.expectedPlanVersionId
+        : String(
+            legacy.expectedEffectivePlanVersionId ??
+              legacy.expectedPlanVersionId ??
+              legacy.basePlanVersionId ??
+              '',
+          );
+
+    if (!prisma || !decisionId || !planVersionId) {
+      return {
+        schemaId: 'tripnara.authoritative_write_result@v1',
+        contractVersion: AUTHORITATIVE_WRITE_CONTRACT_VERSION,
+        outcome: 'REJECTED',
+        corridor: 'UNIFIED_EXECUTE',
+        errorCode: AUTHORITATIVE_WRITE_ERROR_CODES.FORBIDDEN_CAPABILITY,
+        reasonCodes: [
+          'UNIFIED_AUTHORITATIVE_REQUIRES_PRISMA_DECISION_PLAN_VERSION',
+          'UWC_CUTOVER_01_D3_PLAN_VERSION_ONLY',
+        ],
+        writeTargetsTouched: [],
+        idempotencyKey: command.idempotency.key,
+      };
+    }
+
+    const result = await executeUnifiedExecuteAuthoritativeCanary({
+      prisma,
+      tripId: command.audit.tripId,
+      decisionId,
+      idempotencyKey: command.idempotency.key,
+      planVersionId,
+      expectedEffectivePlanVersionId: expectedEffective || '__none__',
+    });
+
+    return {
+      ...result,
+      reasonCodes: [
+        ...result.reasonCodes,
+        'UWC_CUTOVER_01_D3_UNIFIED_AUTHORITATIVE',
+        'GLOBAL_OCC_UNLOCK_AUTHORIZED',
+        'WRITE_TARGET_PLAN_VERSION_ONLY',
+        'NO_MIXED_WRITE_TARGETS',
+      ],
+      corridorResult: {
+        ...(result.corridorResult ?? {}),
+        authoritative: true,
+        cutoverDecision: 'D3',
+        dualExecution: false,
+        mixedTargetsTouched: false,
+      },
+    };
   }
 }

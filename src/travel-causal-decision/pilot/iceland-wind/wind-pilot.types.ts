@@ -19,7 +19,11 @@ export type WindPilotCaseArchetype =
 
 export interface WindPilotFactSnapshot {
   windMps: number;
+  /** Peak gust when distinct from sustained 10m wind */
+  windGustMps?: number;
   windExposure?: 'low' | 'medium' | 'high';
+  /** High-body campervan / motorhome */
+  highRoof?: boolean;
   routeLabel: string;
   distanceKm: number;
   baseDurationMinutes: number;

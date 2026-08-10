@@ -55,9 +55,12 @@ describe('trip-constraint-aggregate.util', () => {
     expect(ids.has(TRIP_CONSTRAINT_OFFICIAL_IS_IDS.FROAD_2WD)).toBe(true);
   });
 
-  it('isLegacyConstraintId: excludes c_official_*', () => {
+  it('isLegacyConstraintId: excludes c_official_* and c_tpl_*', () => {
     expect(isLegacyConstraintId('c_official_is_froad_2wd')).toBe(false);
+    expect(isLegacyConstraintId('c_tpl_latest_end')).toBe(false);
+    expect(isLegacyConstraintId('c_tpl_earliest_departure')).toBe(false);
     expect(isLegacyConstraintId('c_budget_total')).toBe(true);
+    expect(isLegacyConstraintId('c_custom_abc')).toBe(false);
   });
 
   it('aggregateTripConstraints: Iceland trip includes official rules in meta.sections', () => {

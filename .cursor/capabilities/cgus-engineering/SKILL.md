@@ -13,6 +13,24 @@ description: >-
 
 **快捷唤起**：在 Agent 中输入 **`/cgus`**（短名 Skill，`.cursor/capabilities/cgus/`，仅显式调用时注入上下文）。
 
+## V1 运营验证期（必读）
+
+**图 13 是设计参考，不是研发 Todo。** CGUS 已是 **运营观察对象**，不是算法建设对象。
+
+冻结结论与模块状态见：
+
+`src/trips/decision/optimization/CGUS_V1_OPERATIONAL_POLICY.md`
+
+当前 Sprint（**不是** Phase 3）：
+
+`src/trips/decision/optimization/CGUS_V1_OPERATIONAL_VALIDATION_01.md`
+
+- 主链 RELEASED → 真 Trip 验证。
+- **只做** Decision Outcome Loop：Action / Outcome+Regret / Trip Review Diagnosis。
+- EU-200/300 FROZEN；Budget KNOWN_GAP；L5 NOT_AUTHORIZED。
+- **`override ≠ failure`**；解冻公式须重复证据 + 诊断根因。
+
+**OUT OF SCOPE**：EU 公式扩展、预算优化、学得权重注入、架构重构、scoring redesign。
 
 ## 团队构成（建议）
 
@@ -31,10 +49,11 @@ description: >-
 
 ## 代码地图（必读路径）
 
-1. **入口与配置**：`optimization.module.ts`、`decision-os.module` / `DecisionOSConfigService`（若涉及开关）。
-2. **CGUS 五步**：`src/trips/decision/optimization/cgus-search.service.ts` 文件头注释与 `CGUSSearchResult`。
-3. **MC 与确定性对齐**：`expected-utility.service.ts` 中 `evaluateOneSample`、`materializeDeterministicWorld`；调用方传 `deterministicWorld` 处：`optimization-user.controller`、`optimization-engine-adapter`、`cgus-search`、脚本 `test-risk-assessment-trip.ts`。
-4. **评测**：`cgus-replay.module.ts`、`cgus-replay-suite.util.ts`、`e2e-replay*.ts`。
+1. **V1 运营策略 / Outcome Loop**：`CGUS_V1_OPERATIONAL_POLICY.md`、`CGUS_V1_OPERATIONAL_VALIDATION_01.md`、`cgus-v1-authorization.ts`、`cgus-decision-trace.types.ts`、`cgus-decision-outcome-loop.util.ts`；OPTIMIZE 出站 `OptimizationHints.cgusDecisionTrace`。
+2. **入口与配置**：`optimization.module.ts`、`decision-os.module` / `DecisionOSConfigService`（若涉及开关）。
+3. **CGUS 五步**：`cgus-search.service.ts`（含 `utilityBreakdown`）— **冻结评分，验证期不改公式**。
+4. **MC 与确定性对齐**：`expected-utility.service.ts`；仅 Incident/证据触发时改动。
+5. **评测**：`cgus-replay.module.ts`、`cgus-replay-suite.util.ts`、`e2e-replay*.ts`。
 
 ## 实现原则
 

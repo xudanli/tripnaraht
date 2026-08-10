@@ -10,6 +10,16 @@ import {
 } from '../../../utils/itinerary-item-crud-decision-log.util';
 import { recordItineraryAdjustFunnel } from '../../../utils/itinerary-adjust-metrics.util';
 import type { PrometheusMetricsService } from '../../../../monitoring/prometheus-metrics.service';
+import {
+  readAgentTaskContract,
+} from '../../../harness/compile-agent-task-contract.util';
+import {
+  confirmAdjustmentDraft,
+  runAdjustmentDraftPipeline,
+  projectAdjustmentDraftForTrace,
+} from '../../../harness/adjustment-runtime.util';
+import { applyConfirmedAdjustmentViaBoundTrip } from '../../../harness/adapt-adjustment-bound-trip-apply.util';
+import { linkApplyReceiptToTravelEventLedger } from '../../../state-learning/attach-state-learning.util';
 
 export type ItineraryAdjustDraftApplyResult = {
   applied: boolean;
@@ -63,11 +73,82 @@ export async function applyItineraryAdjustDraftIfRequested(
     request_id: params.state.request_id,
   });
 
-  const result = await host.tryApplyBoundTripItineraryAdjustDraft(
-    tripId,
-    params.userId,
-    params.request,
-  );
+  /**
+   * Harness Adjustment：若本轮 TaskContract=ITINERARY_ADJUST，
+   * Confirm→Apply 经 BoundTrip 写链，并落 Receipt 到 metadata。
+   */
+  const taskContract = readAgentTaskContract(params.request as any);
+  let result: ItineraryAdjustDraftApplyResult;
+  let harnessTrace: Record<string, unknown> | undefined;
+
+  if (taskContract?.taskType === 'ITINERARY_ADJUST') {
+    try {
+      const pipe = runAdjustmentDraftPipeline({
+        contract: taskContract,
+        message: intakeMsg || '应用到行程',
+        beforeSummaryZh: '待确认改排草案（库内原日）',
+        afterSummaryZh: '用户确认后的改排草案',
+        pendingRef: params.request.options?.durable_trip_run_id?.trim(),
+      });
+      const confirmed = confirmAdjustmentDraft(pipe.draft);
+      const bridged = await applyConfirmedAdjustmentViaBoundTrip({
+        draft: confirmed,
+        host: {
+          tryApplyBoundTripItineraryAdjustDraft: (tid, uid, req) =>
+            host.tryApplyBoundTripItineraryAdjustDraft!(tid, uid, req),
+        },
+        tripId,
+        userId: params.userId,
+        request: params.request,
+      });
+      result = bridged.boundTripResult;
+      harnessTrace = projectAdjustmentDraftForTrace(bridged.draft);
+      if (result.applied) {
+        const receipt = bridged.draft.receipt;
+        const linked = linkApplyReceiptToTravelEventLedger({
+          tripId,
+          turnId: taskContract.turnId,
+          taskId: taskContract.taskId,
+          actionId: receipt?.actionId ?? `ITINERARY_ADJUST_DRAFT_APPLIED:${bridged.draft.draftId}`,
+          planVersion:
+            typeof (params.request.options as { plan_version?: number } | undefined)
+              ?.plan_version === 'number'
+              ? (params.request.options as { plan_version?: number }).plan_version
+              : undefined,
+          extras: {
+            draft_id: bridged.draft.draftId,
+            applied_days: result.appliedDays,
+            target_date_iso: result.targetDateIso,
+          },
+        });
+        harnessTrace = {
+          ...harnessTrace,
+          travel_event_ledger_event_ids: linked.eventIds,
+        };
+        (params.state.metadata as Record<string, unknown>).travel_event_ledger_link = {
+          event_ids: linked.eventIds,
+          action_id: receipt?.actionId,
+        };
+      }
+    } catch (e: any) {
+      result = await host.tryApplyBoundTripItineraryAdjustDraft(
+        tripId,
+        params.userId,
+        params.request,
+      );
+      harnessTrace = {
+        harness_apply_fallback: true,
+        error: String(e?.message ?? e).slice(0, 300),
+      };
+    }
+  } else {
+    result = await host.tryApplyBoundTripItineraryAdjustDraft(
+      tripId,
+      params.userId,
+      params.request,
+    );
+  }
+
   (params.state.metadata as Record<string, unknown>).itinerary_adjust_draft_apply_short_circuit =
     result;
   (params.state.metadata as Record<string, unknown>).itinerary_adjust_apply_result = {
@@ -79,6 +160,9 @@ export async function applyItineraryAdjustDraftIfRequested(
     target_date_iso: result.targetDateIso,
     answer_text: result.answerText,
   };
+  if (harnessTrace) {
+    (params.state.metadata as Record<string, unknown>).adjustment_runtime_receipt = harnessTrace;
+  }
 
   recordItineraryAdjustFunnel(params.promMetrics, {
     stage: 'user_apply',

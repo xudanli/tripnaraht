@@ -31,6 +31,7 @@ const COUNTRY_RAG_SEED_FILE: Record<string, string> = {
   NZ: 'nz-road-constraint-chunks.p0.json',
   AU: 'au-road-constraint-chunks.p0.json',
   JP: 'jp-road-constraint-chunks.p0.json',
+  CN: 'cn-g318-road-constraint-chunks.p0.json',
 };
 
 /** Load P0 country RAG seed chunks for offline capture (no DB). */

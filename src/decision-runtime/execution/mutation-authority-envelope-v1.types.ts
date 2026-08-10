@@ -41,7 +41,9 @@ export type MutationDenialReasonCode =
   | 'EVIDENCE_SNAPSHOT_EXPIRED'
   | 'EXECUTION_CONFLICT'
   | 'WRITE_GUARD_DENY'
-  | 'ENVELOPE_INCOMPLETE';
+  | 'ENVELOPE_INCOMPLETE'
+  /** Authority Consistency: Legacy path / LEGACY mode must not silent-write. */
+  | 'LEGACY_SILENT_WRITE_BLOCKED';
 
 export interface ProposedChangeSetV1 {
   schemaId: 'tripnara.proposed_change_set@v1';

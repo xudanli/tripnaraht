@@ -25,6 +25,7 @@ import { PlanProposalApplyService } from './plan-proposal-apply.service';
 import { ArrangeItineraryItemsService } from './arrange-itinerary-items.service';
 import { AttractionExploreAiConsultService } from '../../attraction-explore/services/attraction-explore-ai-consult.service';
 import { resolveProposalCandidateIds } from '../utils/resolve-proposal-candidate-ids.util';
+import { assertDirectEffectivePlanWriteBlocked } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 
 @Injectable()
 export class PlanningOrchestratorFacadeService {
@@ -186,6 +187,8 @@ export class PlanningOrchestratorFacadeService {
     const orchestrationState = await this.refreshOrchestrationState(input.tripId);
 
     if (mode === 'direct') {
+      // Agent Harness P0-1 W2：commitMode=direct 禁止直写；仅 proposal → Confirm/UWC
+      assertDirectEffectivePlanWriteBlocked('arrange.mutateWithMode.direct');
       this.setPhase(input.tripId, 'APPLYING');
       const direct = await input.applyDirect();
       this.setPhase(input.tripId, 'COMPLETED');

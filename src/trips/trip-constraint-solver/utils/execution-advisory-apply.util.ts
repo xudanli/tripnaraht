@@ -1,6 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import type { PrismaService } from '../../../prisma/prisma.service';
+import { assertDirectEffectivePlanWriteBlocked } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import type {
   ExecutionRecommendationDto,
   ExecutionScheduleMutationDto,
@@ -29,6 +30,7 @@ export async function applyShortenStay(
   itemId: string,
   deltaMinutes: number,
 ): Promise<ExecutionScheduleMutationDto> {
+  assertDirectEffectivePlanWriteBlocked('execution-advisory.applyShortenStay');
   const shortenBy = Math.abs(deltaMinutes);
   if (shortenBy <= 0) {
     throw new BadRequestException('缩短分钟数必须大于 0');
@@ -106,6 +108,7 @@ export async function applySkipItem(
   prisma: PrismaService,
   itemId: string,
 ): Promise<ExecutionScheduleMutationDto> {
+  assertDirectEffectivePlanWriteBlocked('execution-advisory.applySkipItem');
   const item = await prisma.itineraryItem.findUnique({
     where: { id: itemId },
     include: {

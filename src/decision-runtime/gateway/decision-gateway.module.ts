@@ -26,7 +26,9 @@ import { CausalProtocolModule } from '../../causal-protocol/causal-protocol.modu
 import { DecisionCasesModule } from '../decision-cases/decision-cases.module';
 import { UnifiedDecisionController } from './controllers/unified-decision.controller';
 import { CausalDecisionController } from './controllers/causal-decision.controller';
+import { IcelandSelfDriveSituationController } from './controllers/iceland-self-drive-situation.controller';
 import { CausalDecisionProductService } from './services/causal-decision-product.service';
+import { IcelandSelfDriveSituationProductService } from './services/iceland-self-drive-situation-product.service';
 
 @Module({
   imports: [
@@ -45,7 +47,11 @@ import { CausalDecisionProductService } from './services/causal-decision-product
     CausalProtocolModule,
     DecisionCasesModule,
   ],
-  controllers: [UnifiedDecisionController, CausalDecisionController],
+  controllers: [
+    UnifiedDecisionController,
+    CausalDecisionController,
+    IcelandSelfDriveSituationController,
+  ],
   providers: [
     DecisionEngineRegistryService,
     DecisionRouteResolverService,
@@ -59,6 +65,7 @@ import { CausalDecisionProductService } from './services/causal-decision-product
     DecisionCollaborativeSubTaskService,
     DecisionCollaborativeSubTaskStoreService,
     CausalDecisionProductService,
+    IcelandSelfDriveSituationProductService,
   ],
   exports: [
     DecisionEngineGatewayService,
@@ -69,6 +76,7 @@ import { CausalDecisionProductService } from './services/causal-decision-product
     DecisionCollaborativeSubTaskStoreService,
     DecisionEngineRegistryService,
     CausalDecisionProductService,
+    IcelandSelfDriveSituationProductService,
     forwardRef(() => ConstraintEvaluationModule),
     forwardRef(() => CanonicalPlanSelectionModule),
     forwardRef(() => DecisionTriggerModule),

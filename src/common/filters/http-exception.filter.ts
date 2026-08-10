@@ -72,16 +72,48 @@ export class AllExceptionsFilter implements ExceptionFilter {
       method: request.method,
     };
 
-    // Add message (can be string or array)
-    if (Array.isArray(message)) {
-      errorResponse.message = message;
-    } else {
-      errorResponse.message = [message as string];
+    // Preserve structured Look / domain error bodies (code, action, recoverable, …)
+    if (
+      exception instanceof HttpException &&
+      typeof exception.getResponse() === 'object' &&
+      exception.getResponse() !== null
+    ) {
+      const responseObj = exception.getResponse() as Record<string, unknown>;
+      for (const key of [
+        'code',
+        'status',
+        'recoverable',
+        'action',
+        'observationId',
+        'progress',
+        'retryAfterMs',
+      ]) {
+        if (responseObj[key] !== undefined) {
+          errorResponse[key] = responseObj[key];
+        }
+      }
+      if (typeof responseObj.message === 'string') {
+        errorResponse.message = [responseObj.message];
+      } else if (Array.isArray(responseObj.message)) {
+        errorResponse.message = responseObj.message;
+      }
+    }
+
+    // Add message (can be string or array) when not already set from structured body
+    if (errorResponse.message == null) {
+      if (Array.isArray(message)) {
+        errorResponse.message = message;
+      } else {
+        errorResponse.message = [message as string];
+      }
     }
 
     // Add error code if present
     if (errorCode) {
       errorResponse.errorCode = errorCode;
+      if (errorResponse.code == null) {
+        errorResponse.code = errorCode;
+      }
     }
 
     // In production, don't expose internal error details for 500 errors

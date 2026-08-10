@@ -53,7 +53,8 @@ function buildApplyActions(
     name: card.name,
     ...(card.name_en ? { name_en: card.name_en } : {}),
     ...(card.address ? { address: card.address } : {}),
-    ...(card.url ? { url: card.url } : {}),
+    ...(card.url || card.webUrl ? { url: card.webUrl || card.url } : {}),
+    ...(card.webUrl || card.url ? { webUrl: card.webUrl || card.url } : {}),
     ...(card.photoUrl ? { photoUrl: card.photoUrl } : {}),
     ...(card.priceLabel ? { priceLabel: card.priceLabel } : {}),
     ...(card.rating != null ? { rating: card.rating } : {}),
@@ -64,6 +65,8 @@ function buildApplyActions(
     ...(typeof card.listing_lng === 'number' ? { listing_lng: card.listing_lng } : {}),
     ...(card.distance_label_zh ? { distance_label_zh: card.distance_label_zh } : {}),
     ...(card.decision_support_zh ? { decision_support_zh: card.decision_support_zh } : {}),
+    ...(card.bookingProvider ? { bookingProvider: card.bookingProvider } : {}),
+    ...(card.otaRef ? { otaRef: card.otaRef } : {}),
   };
   const actions: AccommodationCardActionDto[] = [
     {
@@ -73,12 +76,23 @@ function buildApplyActions(
       params: { accommodationIndex, applySnapshot },
     },
   ];
-  if (card.url) {
-    actions.unshift({
+  if (card.url || card.appUrl || card.tbOpenUrl) {
+    const fliggy = card.source === 'fliggy' || card.bookingProvider === 'fliggy';
+    const webUrl = card.webUrl || card.url;
+    // 飞猪唤端不稳定：查看链统一走 H5 https（次要按钮，不抢主 CTA）
+    const viewUrl = webUrl || card.url || card.appUrl || card.tbOpenUrl;
+    actions.push({
       action: 'view_accommodation',
       label: 'View',
-      labelCN: '查看',
-      params: { accommodationIndex, url: card.url },
+      labelCN: fliggy
+        ? card.bookingCtaLabelZh || '去飞猪查看'
+        : '查看',
+      params: {
+        accommodationIndex,
+        ...(viewUrl ? { url: viewUrl } : {}),
+        ...(webUrl ? { webUrl, fallback_url: webUrl } : {}),
+        ...(fliggy ? { open_strategy: 'web' as const } : {}),
+      },
     });
   }
   return actions;
@@ -90,11 +104,19 @@ export function enrichRouteRunCardForClientApply(
   nightGroups?: AccommodationNightGroup[],
 ): RouteAndRunAccommodationCard {
   const dates = resolveNightDates(card, nightGroups);
+  const actions = buildApplyActions(accommodationIndex, card, dates);
+  const addAction = actions.find((a) => a.action === 'add_accommodation_to_itinerary');
+  // 主 CTA 固定「加入行程」；飞猪查看文案留在 view action / bookingCtaLabelZh
+  const cta_zh = addAction?.labelCN || '加入行程';
   return {
     ...card,
+    nameZh: card.nameZh || card.nameCN || card.name,
+    nameCN: card.nameCN || card.nameZh || card.name,
     ...(dates.checkIn ? { checkIn: dates.checkIn } : {}),
     ...(dates.checkOut ? { checkOut: dates.checkOut } : {}),
-    actions: buildApplyActions(accommodationIndex, card, dates),
+    cta_zh,
+    primary_action: addAction ?? actions[0],
+    actions,
   };
 }
 
@@ -146,6 +168,11 @@ export function mapRouteRunCardToAccommodationItemDto(
       : {}),
     ...(card.nightIndex != null ? { nightIndex: card.nightIndex } : {}),
     ...(card.actions?.length ? { actions: card.actions } : {}),
+    ...(card.otaRef ? { otaRef: card.otaRef } : {}),
+    ...(card.bookingProvider ? { bookingProvider: card.bookingProvider } : {}),
+    ...(card.source === 'fliggy' && !card.otaRef
+      ? { otaRef: { provider: 'fliggy' as const, externalId: card.id } }
+      : {}),
   };
 }
 

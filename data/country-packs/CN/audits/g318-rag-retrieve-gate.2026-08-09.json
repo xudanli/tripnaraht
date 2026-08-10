@@ -1,0 +1,16 @@
+{
+  "metadata": {
+    "sampledAt": "2026-08-09T16:14:14.563Z",
+    "mode": "gate-only",
+    "note": "In-process RAG_REALITY_POLICY_ENFORCE check; HTTP optional via --http"
+  },
+  "decisionContextGate": {
+    "ok": true,
+    "blockedWithout": [
+      "RAG_CONTEXT_REQUIRED"
+    ],
+    "scopeWith": "full",
+    "snapshotId": "rs_2026-08-09T16-14-14-562Z_102a8ab10201"
+  },
+  "ok": true
+}

@@ -1,0 +1,33 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "updatedAt": "2026-08-09",
+    "corridor": "cn.route.g317",
+    "disclaimer": "海拔与垭口为公开资料近似值，用于高原门禁提示与日里程编排；非测绘级、非实时通告。",
+    "source": "public travel/geo summaries + classic-route seed alignment"
+  },
+  "overnightHubs": [
+    { "nameCN": "成都", "altitudeMeters": 500, "role": "gateway" },
+    { "nameCN": "马尔康", "altitudeMeters": 2600, "role": "acclimatize" },
+    { "nameCN": "炉霍", "altitudeMeters": 3250, "role": "overnight" },
+    { "nameCN": "德格", "altitudeMeters": 3200, "role": "overnight" },
+    { "nameCN": "昌都", "altitudeMeters": 3240, "role": "deep_resupply" },
+    { "nameCN": "那曲", "altitudeMeters": 4500, "role": "high_plateau" },
+    { "nameCN": "拉萨", "altitudeMeters": 3650, "role": "terminus" }
+  ],
+  "passes": [
+    {
+      "nameCN": "雀儿山垭口",
+      "nameEN": "Que'er Shan Pass",
+      "altitudeMeters": 5050,
+      "nearHubCN": "德格",
+      "segmentHint": "炉霍/甘孜→德格",
+      "notesCN": "北线标志性高垭口；雨季塌方与冬季结冰窗口需叠加 ROAD 规则"
+    }
+  ],
+  "acclimatizationHintsCN": [
+    "勿成都当日直冲更高海拔过夜；优先马尔康适应",
+    "雀儿山段天气突变常见，垭口停留宜短",
+    "昌都深度补给后再西进；那曲段高反观察"
+  ]
+}

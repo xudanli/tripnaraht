@@ -26,12 +26,12 @@ export class PoiAccessCapacityController {
   })
   @ApiQuery({ name: 'poiId', example: 'is.gullfoss' })
   @ApiQuery({ name: 'dateISO', example: '2026-07-15' })
-  @ApiQuery({ name: 'arrivalTime', example: '11:00' })
+  @ApiQuery({ name: 'arrivalTime', required: false, example: '11:00' })
   @ApiQuery({ name: 'vehicleType', required: false, example: 'SUV' })
   async evaluate(
     @Query('poiId') poiId: string,
     @Query('dateISO') dateISO: string,
-    @Query('arrivalTime') arrivalTime: string,
+    @Query('arrivalTime') arrivalTime?: string,
     @Query('vehicleType') vehicleType?: string,
     @Query('poiName') poiName?: string,
   ) {

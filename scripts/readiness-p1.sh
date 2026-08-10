@@ -5,6 +5,7 @@
 #   READINESS_P1_REPORT — 报告输出路径
 #   READINESS_P1_SKIP_ROLL=1 — 跳过 ROLL Week1-3 文件校验
 #   READINESS_P1_SKIP_LINT=1 — 跳过 eslint（仅本地应急；CI 不应设置）
+#   READINESS_P1_SKIP_LEGACY_WRITE_GATE=1 — 跳过 npm run ci:forbid-legacy-itinerary-writes（仅本地应急；CI 不应设置）
 #   READINESS_P1_SKIP_TD_REPLAY=1 — 仅跑 test:td-p0-core，跳过 npm run test:td-replay（TD-05；仅本地应急）
 #   READINESS_P1_SKIP_EXECUTION_OS_STABILITY=1 — 跳过 npm run ci:execution-os-stability（SSC v1；仅本地应急；CI 不应设置）
 #   READINESS_P1_SKIP_CID_V1=1 — 跳过 npm run ci:cid-v1（仅本地应急；CI 不应设置）
@@ -38,6 +39,15 @@ if [ "${READINESS_P1_SKIP_LINT:-}" = "1" ]; then
   echo "readiness:p1 — SKIP lint (READINESS_P1_SKIP_LINT=1)"
 else
   npm run lint || lint=1
+fi
+
+legacy_write_gate=0
+legacy_write_gate_skipped="false"
+if [ "${READINESS_P1_SKIP_LEGACY_WRITE_GATE:-}" = "1" ]; then
+  legacy_write_gate_skipped="true"
+  echo "readiness:p1 — SKIP ci:forbid-legacy-itinerary-writes (READINESS_P1_SKIP_LEGACY_WRITE_GATE=1)"
+else
+  npm run ci:forbid-legacy-itinerary-writes || legacy_write_gate=1
 fi
 
 npm run skills:audit-usage || skills_audit=1
@@ -153,6 +163,9 @@ overall=0
 if [ "$lint_skipped" = "false" ] && [ "$lint" -ne 0 ]; then
   overall=1
 fi
+if [ "$legacy_write_gate_skipped" != "true" ] && [ "$legacy_write_gate" -ne 0 ]; then
+  overall=1
+fi
 if [ "$skills_audit" -ne 0 ]; then
   overall=1
 fi
@@ -197,6 +210,12 @@ if [ "$lint_skipped" = "true" ]; then
   lint_block='"lint": { "skipped": true, "exitCode": null }'
 else
   lint_block='"lint": { "skipped": false, "exitCode": '"$lint"' }'
+fi
+
+if [ "$legacy_write_gate_skipped" = "true" ]; then
+  legacy_write_block='"ci_forbid_legacy_itinerary_writes": { "skipped": true, "exitCode": null }'
+else
+  legacy_write_block='"ci_forbid_legacy_itinerary_writes": { "skipped": false, "exitCode": '"$legacy_write_gate"' }'
 fi
 
 if [ "$roll_skipped" = "true" ]; then
@@ -263,6 +282,7 @@ printf '%s\n' "{
   },
   \"suites\": {
     $lint_block,
+    $legacy_write_block,
     \"skills_audit_descriptions\": { \"exitCode\": $skills_audit },
     \"check_physical\": { \"exitCode\": $physical_island },
     \"typecheck_physics\": { \"exitCode\": $physics_kernel },

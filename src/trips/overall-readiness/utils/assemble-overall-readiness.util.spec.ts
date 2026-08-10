@@ -21,6 +21,34 @@ describe('overall trip readiness', () => {
     expect(w.member).toBe(0.15);
   });
 
+  it('resolves China self-drive weights (not Iceland / not DEFAULT)', () => {
+    expect(
+      resolveWeightTemplateId({
+        countryCode: 'CN',
+        isSelfDrive: true,
+        memberCount: 2,
+      }),
+    ).toBe('CHINA_SELF_DRIVE_GROUP');
+    expect(
+      resolveWeightTemplateId({
+        countryCode: 'CN',
+        isSelfDrive: true,
+        memberCount: 1,
+      }),
+    ).toBe('CHINA_SELF_DRIVE_SOLO');
+    expect(resolveWeights('CHINA_SELF_DRIVE_SOLO').activity).toBe(0.2);
+  });
+
+  it('uses generic self-drive weights for non-IS/CN self-drive', () => {
+    expect(
+      resolveWeightTemplateId({
+        countryCode: 'NZ',
+        isSelfDrive: true,
+        memberCount: 1,
+      }),
+    ).toBe('SELF_DRIVE_SOLO');
+  });
+
   it('weights dimension checks', () => {
     const score = computeDimensionScoreFromChecks([
       {

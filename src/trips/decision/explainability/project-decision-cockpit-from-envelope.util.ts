@@ -5,6 +5,10 @@
 import { buildUnifiedCounterfactualExplain } from './build-unified-counterfactual.util';
 import type { NarrativeDriftObservabilitySlice } from './narrative-drift-monitor.util';
 import type { UnifiedExplainabilityEnvelopeV1 } from './unified-explainability.types';
+import { buildCognitionClientEcho } from '../../../decision/kernel/decision-cognition.util';
+import type { DecisionCognitionSlice } from '../../../decision/kernel/decision-cognition.types';
+import { buildCognitionUiCards } from '../../../agent/utils/build-cognition-ui-cards.util';
+import type { CognitionUiCardsBundle } from '../../../agent/utils/build-cognition-ui-cards.util';
 
 export const DECISION_COCKPIT_CONTRACT_VERSION = 'decision-cockpit@v1' as const;
 
@@ -54,6 +58,10 @@ export type DecisionCockpitPayloadV1 = {
     total_samples?: number;
   };
   verdict_narration_zh?: string;
+  /** 认知主链回显（看清现实→聚焦问题→预演未来→授权） */
+  cognition?: NonNullable<ReturnType<typeof buildCognitionClientEcho>>;
+  /** 可直接渲染的认知卡片（与 ui_display.cognition_cards 同源） */
+  cognition_cards?: CognitionUiCardsBundle;
   apis: {
     counterfactual: 'POST /api/decision/explain/unified/counterfactual';
     unified_ssot_field: 'explain.unified';
@@ -102,14 +110,51 @@ function mapRiskFactors(envelope: UnifiedExplainabilityEnvelopeV1): DecisionCock
 }
 
 export function projectDecisionCockpitFromEnvelope(params: {
-  envelope: UnifiedExplainabilityEnvelopeV1;
+  envelope?: UnifiedExplainabilityEnvelopeV1;
   narrativeDrift?: NarrativeDriftObservabilitySlice;
+  /** DSO 认知切片；有 markers/focus 时即使 explain trace 稀疏也可出 cockpit */
+  cognition?: DecisionCognitionSlice;
+  requestId?: string;
+  traceId?: string;
 }): DecisionCockpitPayloadV1 | undefined {
-  const { envelope } = params;
+  const cognitionEcho = buildCognitionClientEcho(params.cognition);
+  const cognitionCards = buildCognitionUiCards(params.cognition);
+  const hasCognitionSignal = Boolean(
+    cognitionEcho?.focused_problem ||
+      (cognitionEcho?.markers?.length ?? 0) > 0 ||
+      cognitionEcho?.future,
+  );
+
+  const envelope = params.envelope;
+  if (!envelope) {
+    if (!hasCognitionSignal || !cognitionEcho) return undefined;
+    return {
+      contract_version: DECISION_COCKPIT_CONTRACT_VERSION,
+      request_id: params.requestId ?? 'unknown',
+      trace_id: params.traceId ?? params.requestId ?? 'unknown',
+      generated_at: new Date().toISOString(),
+      integrity_badges: {
+        traceability_valid: false,
+        physical_evidence_complete: false,
+        narrative_anchored: false,
+      },
+      decision_trace_rows: [],
+      risk_factors: [],
+      counterfactuals: [],
+      cognition: cognitionEcho,
+      ...(cognitionCards ? { cognition_cards: cognitionCards } : {}),
+      apis: {
+        counterfactual: 'POST /api/decision/explain/unified/counterfactual',
+        unified_ssot_field: 'explain.unified',
+      },
+    };
+  }
+
   const traceRows = mapTraceRows(envelope);
   if (
     !hasMeaningfulDecisionTraceRows(traceRows) &&
-    !envelope.optimization_projection?.decision_verdict
+    !envelope.optimization_projection?.decision_verdict &&
+    !hasCognitionSignal
   ) {
     return undefined;
   }
@@ -152,6 +197,8 @@ export function projectDecisionCockpitFromEnvelope(params: {
         }
       : {}),
     verdict_narration_zh: envelope.optimization_projection?.decision_verdict_narration_zh,
+    ...(cognitionEcho ? { cognition: cognitionEcho } : {}),
+    ...(cognitionCards ? { cognition_cards: cognitionCards } : {}),
     apis: {
       counterfactual: 'POST /api/decision/explain/unified/counterfactual',
       unified_ssot_field: 'explain.unified',

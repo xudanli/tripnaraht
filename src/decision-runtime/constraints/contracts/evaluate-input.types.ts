@@ -10,6 +10,10 @@ import type { WorldStateDataAvailability } from './world-state-completeness';
 import type { ConstraintEvaluationMode } from './constraint-assessment.types';
 import type { WorldFact } from '../../../travel-context/domain/travel-context.types';
 import type { TravelWorldFact } from '../../../travel-ontology/contracts/travel-world-fact.types';
+import type {
+  DecisionScope,
+  ScopeMutationCandidate,
+} from '../../contracts/decision-scope.types';
 
 export interface EvaluatePlanInput {
   tripId: string;
@@ -32,6 +36,15 @@ export interface EvaluatePlanInput {
   /** Travel Ontology 事实（显式）或 Snapshot world.facts 解析输入 */
   travelWorldFacts?: TravelWorldFact[];
   snapshotWorldFacts?: WorldFact[];
+  /**
+   * Authority Consistency — DecisionScope for this Decision Run.
+   * When set, Gateway verifies shared snapshotId + optional candidate ⊆ scope.
+   */
+  decisionScope?: DecisionScope;
+  /** Explicit snapshotId for Decision / Solver / Verification binding. */
+  worldStateSnapshotId?: string;
+  /** Candidate mutation under verification (Solver / Verification). */
+  scopeMutationCandidate?: ScopeMutationCandidate;
 }
 
 export interface EvaluateCandidateInput extends EvaluatePlanInput {

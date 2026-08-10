@@ -6,7 +6,7 @@
 /** 与 RouteAndRunAccommodationCard 对齐的最小形状，避免与 mapper 循环依赖 */
 export type HotelDecisionCardLike = {
   id: string;
-  source: 'airbnb' | 'hotel';
+  source: 'airbnb' | 'hotel' | 'fliggy';
   name: string;
   rating?: number;
   priceLabel?: string;

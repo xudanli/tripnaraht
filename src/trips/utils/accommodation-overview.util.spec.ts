@@ -113,6 +113,25 @@ describe('accommodation-overview.util', () => {
       expect(card.bookingDocuments.length).toBeGreaterThanOrEqual(2);
       expect(card.travelToAccommodation?.isLongSegment).toBe(false);
     });
+
+    it('fills booking.url via Booking.com search when item has no bookingUrl', () => {
+      const card = buildAccommodationNightCard(
+        baseRow({
+          bookingUrl: null,
+          placeNameCN: '维克旅馆',
+          placeNameEN: 'Vík Hostel',
+        }),
+        [],
+        [],
+      );
+      expect(card.booking.url).toContain('booking.com/searchresults.html');
+      expect(card.booking.url).toContain(encodeURIComponent('Vík Hostel, Iceland'));
+      expect(card.booking.links?.map((l) => l.provider)).toEqual([
+        'booking_com',
+        'airbnb',
+        'trip_com',
+      ]);
+    });
   });
 
   describe('computeAccommodationStats', () => {

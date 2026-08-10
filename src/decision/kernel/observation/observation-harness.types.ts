@@ -23,6 +23,12 @@ export interface ObservationExecutionResult {
   summary?: string;
   /** 多源结论互相矛盾（用于下调 evidenceWeight；后续可映射为 DilemmaElicitation） */
   evidenceContradiction?: boolean;
+  /** 小红书等社区体验结构化载荷（SNS observation） */
+  communityExperience?: Record<string, unknown>;
+  /** 社区证据免责声明（中文） */
+  disclaimerZh?: string;
+  /** 观测执行器来源标识，如 xiaohongshu */
+  provider?: string;
 }
 
 export interface ObservationHarnessAuditEntry {

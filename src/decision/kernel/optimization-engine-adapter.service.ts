@@ -59,6 +59,22 @@ import {
 import { REPAIR_SPATIAL_POI_V2_ID } from '../../trips/decision/constraint-graph/topology-mutation.util';
 import { resolvePhysicalRealityIncomplete } from '../../skills/world/utils/world-model-production-guards.util';
 import { enrichRoutePlanForOptimize } from './pre-optimize-dem-enrichment.util';
+import { projectCgusDecisionTraceFromSearchResult } from '../../trips/decision/optimization/cgus-decision-trace.util';
+import { projectCgusOptimizationPolicy } from '../../trips/decision/optimization/project-cgus-optimization-policy.util';
+import { applyCgusHardConstraintsToCandidates } from '../../trips/decision/optimization/apply-cgus-optimization-policy.util';
+import type { CGUSOptimizationPolicy } from '../../trips/decision/optimization/cgus-optimization-policy.types';
+import {
+  mergeTravelMemoryHintsIntoScoringHints,
+  proveMemoryContributionFromPreference,
+  readTravelMemoryDecisionHintsFromState,
+  resolveTravelMemoryCgusSoftMode,
+  cloneScoringHints,
+} from '../../travel-memory/context-assembly/apply-travel-memory-hints-to-cgus.util';
+import {
+  buildTripShadowPair,
+  resolveTripShadowEnabledFromEnv,
+  tripShadowPairToObservability,
+} from '../../travel-memory/validation/build-trip-shadow-pair.util';
 
 @Injectable()
 export class OptimizationEngineAdapterService {
@@ -581,9 +597,68 @@ export class OptimizationEngineAdapterService {
     const retrievalCategoryEvidence = await this.resolveRetrievalEvidenceForCgus(state);
     const mcPolicy = this.resolveMonteCarloPolicy(state, candidates.length > 0);
 
+    const tripMetadataForPolicy =
+      state.systemState?.tripMetadata ??
+      (state.contextPackage?.metadata as Record<string, unknown> | undefined) ??
+      undefined;
+    let optimizationPolicy: CGUSOptimizationPolicy = projectCgusOptimizationPolicy({
+      tripId,
+      metadata: tripMetadataForPolicy,
+      state,
+    });
+    const baselineScoringHints = cloneScoringHints(optimizationPolicy.scoringHints);
+    const travelMemoryHints = readTravelMemoryDecisionHintsFromState(state);
+    const softMode = resolveTravelMemoryCgusSoftMode();
+    let memorySoftApplied: ReturnType<
+      typeof mergeTravelMemoryHintsIntoScoringHints
+    >['applied'] = [];
+    let memoryScoringHints = baselineScoringHints;
+    if (travelMemoryHints.length > 0 && softMode !== 'off') {
+      const merged = mergeTravelMemoryHintsIntoScoringHints(
+        baselineScoringHints,
+        travelMemoryHints,
+      );
+      memoryScoringHints = merged.scoringHints;
+      memorySoftApplied = merged.applied;
+      if (softMode === 'active' && memorySoftApplied.length > 0) {
+        optimizationPolicy = {
+          ...optimizationPolicy,
+          scoringHints: memoryScoringHints,
+          softObjectives: [
+            ...optimizationPolicy.softObjectives,
+            {
+              id: 'travel_memory_advisory',
+              kind: 'PACE',
+              intensity: 'MEDIUM',
+              source: 'travel_memory_advisory',
+            },
+          ],
+        };
+      }
+      this.logger.log(
+        `[OptimizationAdapter] TMR soft: mode=${softMode} hints=${travelMemoryHints.length} applied=${memorySoftApplied.length}`,
+      );
+    }
+    this.logger.log(
+      `[OptimizationAdapter] CGUS policy snapshot: ${JSON.stringify({
+        policySource: optimizationPolicy.policySource,
+        contractVersion: optimizationPolicy.contractVersion,
+        policyVersion: optimizationPolicy.policyVersion,
+        hard: optimizationPolicy.hardConstraints.map((h) => h.id),
+        soft: optimizationPolicy.softObjectives.map((s) => `${s.kind}:${s.intensity}`),
+        scoringHints: optimizationPolicy.scoringHints,
+        authorityExcluded: optimizationPolicy.executionAuthority.scoringExcluded,
+      })}`,
+    );
+
+    const policyBoundCandidates = applyCgusHardConstraintsToCandidates(
+      candidates,
+      optimizationPolicy,
+    );
+
     const patchedCandidates =
       process.env.CGUS_INJECT_CONTRAST_CANDIDATES === '1'
-        ? candidates.map((c) => {
+        ? policyBoundCandidates.map((c) => {
             if (c.id === 'plan-high-density') {
               return {
                 ...c,
@@ -620,11 +695,11 @@ export class OptimizationEngineAdapterService {
 
             return { ...c, feasible: true, constraintViolations: [] };
           })
-        : candidates;
+        : policyBoundCandidates;
 
     const summaryToLog = (process.env.CGUS_INJECT_CONTRAST_CANDIDATES === '1'
       ? patchedCandidates
-      : candidates
+      : policyBoundCandidates
     ).map((c) => ({
       id: c.id,
       feasible: c.feasible,
@@ -640,7 +715,9 @@ export class OptimizationEngineAdapterService {
 
     let effectiveWorldContext = worldContext;
     let effectiveCandidates =
-      process.env.CGUS_INJECT_CONTRAST_CANDIDATES === '1' ? patchedCandidates : candidates;
+      process.env.CGUS_INJECT_CONTRAST_CANDIDATES === '1'
+        ? patchedCandidates
+        : policyBoundCandidates;
     let globalSubgraphStats:
       | { nodeCount: number; edgeCount: number; prunedNodeCount: number }
       | undefined;
@@ -721,6 +798,7 @@ export class OptimizationEngineAdapterService {
         emergencyConstraints: {
           forbidden_modes: (state.systemState as any)?.emergency_constraints?.forbidden_modes,
         },
+        optimizationPolicy,
       },
     );
 
@@ -840,13 +918,103 @@ export class OptimizationEngineAdapterService {
       recommendedAlternativeId: result.recommended?.id ?? top?.candidate.id,
     });
 
+    const decisionId = `${tripId}:OPTIMIZE:v${state.systemState?.version ?? 0}`;
+    const cgusDecisionTrace = projectCgusDecisionTraceFromSearchResult({
+      decision_id: decisionId,
+      trip_id: tripId,
+      decision_type: 'OPTIMIZE',
+      result,
+      hard_constraint_reasons: (state.constraints?.violations ?? [])
+        .filter((v) => v.severity === 'HARD')
+        .map((v) => v.type),
+      policyProvenance: {
+        contractVersion: optimizationPolicy.contractVersion,
+        policyVersion: optimizationPolicy.policyVersion,
+        policySource: optimizationPolicy.policySource,
+        effectiveConstraints: optimizationPolicy.hardConstraints.map((h) => h.id),
+        effectiveObjectives: optimizationPolicy.softObjectives.map(
+          (s) => `${s.kind}:${s.intensity}`,
+        ),
+        executionAuthorityExcludedFromScoring: true,
+      },
+    });
+    const memoryProof =
+      memorySoftApplied.length > 0
+        ? proveMemoryContributionFromPreference({
+            decisionId,
+            ranked: result.rankedCandidates,
+            baselineHints: baselineScoringHints,
+            memoryHints: memoryScoringHints,
+            applied: memorySoftApplied,
+            softMode,
+          })
+        : undefined;
+    const memoryDecisionTrace = memoryProof?.trace;
+    const tripShadowPair =
+      memoryProof && resolveTripShadowEnabledFromEnv()
+        ? buildTripShadowPair({
+            decisionId,
+            tripId,
+            withoutMemoryRecommendation:
+              memoryProof.withoutMemoryRecommendation,
+            withMemoryRecommendation: memoryProof.withMemoryRecommendation,
+            liveRecommendation: result.recommended?.id ?? top?.candidate.id,
+            memoryDecisionTrace,
+          })
+        : null;
+    if (memoryDecisionTrace) {
+      this.logger.log(
+        `[OptimizationAdapter] Memory decision trace: ` +
+          `${JSON.stringify({
+            decision_id: memoryDecisionTrace.decisionId,
+            used: memoryDecisionTrace.memoryContribution.used,
+            softMode,
+            influence: memoryDecisionTrace.memoryContribution.influence.map(
+              (i) => i.influence,
+            ),
+            tripShadow: tripShadowPair
+              ? tripShadowPairToObservability(tripShadowPair)
+              : null,
+          })}`,
+      );
+    }
+    this.logger.log(
+      `[OptimizationAdapter] CGUS decision trace: ` +
+        `${JSON.stringify({
+          decision_id: cgusDecisionTrace.decision_id,
+          recommended: cgusDecisionTrace.recommended_candidate,
+          top1_margin: cgusDecisionTrace.top1_margin,
+          hard_constraint_result: cgusDecisionTrace.hard_constraint_result,
+          policySource: cgusDecisionTrace.policySource,
+          contractVersion: cgusDecisionTrace.contractVersion,
+          effectiveConstraints: cgusDecisionTrace.effectiveConstraints,
+          effectiveObjectives: cgusDecisionTrace.effectiveObjectives,
+          ranking: cgusDecisionTrace.ranking.slice(0, 5),
+          candidate_scores: Object.fromEntries(
+            cgusDecisionTrace.ranking.slice(0, 5).map((id) => [id, cgusDecisionTrace.candidate_scores[id]]),
+          ),
+        })}`,
+    );
+
     return {
       ...baseHints,
       method: 'CGUS',
-      strategyDirection: `CGUS(${effectiveCandidates.length}): recommended=${result.recommended?.id ?? top?.candidate.id ?? 'N/A'} monteCarlo=${result.usedMonteCarlo}`,
+      strategyDirection: `CGUS(${effectiveCandidates.length}): recommended=${result.recommended?.id ?? top?.candidate.id ?? 'N/A'} monteCarlo=${result.usedMonteCarlo}${
+        memoryDecisionTrace?.memoryContribution.used
+          ? ' memoryContribution=used'
+          : ''
+      }${tripShadowPair?.decisionPair.diverged ? ' tripShadow=diverged' : ''}`,
       recommendedAlternativeId: result.recommended?.id ?? top?.candidate.id,
       metaDecisionAudit: metaAudit,
       selectedPlanId: result.recommended?.id ?? top?.candidate.id,
+      cgusDecisionTrace,
+      ...(memoryDecisionTrace ? { memoryDecisionTrace } : {}),
+      ...(tripShadowPair
+        ? {
+            tripShadowPair: tripShadowPairToObservability(tripShadowPair),
+            tripShadowPairRecord: tripShadowPair,
+          }
+        : {}),
       monteCarloDiagnostics: {
         ...mcPolicy,
         enabled: mcPolicy.enabled && result.usedMonteCarlo === true,
@@ -911,6 +1079,7 @@ export class OptimizationEngineAdapterService {
           })),
           riskProfile: { hard_violations: hardCount, soft_degree: softDegree },
           itinerary,
+          ...(r.utilityBreakdown ? { utilityBreakdown: r.utilityBreakdown } : {}),
         };
       }),
       ...(eu !== undefined && { expectedUtility: eu }),

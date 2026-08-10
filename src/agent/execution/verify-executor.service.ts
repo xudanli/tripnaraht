@@ -29,6 +29,7 @@ import { mapItineraryVerifyIssueToVerificationIssue } from '../utils/map-itinera
 import type { ConstraintViolation, FeasibilityFinding } from '../services/route-feasibility.types';
 import { CONSTRAINT_IDS } from '../services/constraint-registry';
 import type { IcelandVehicleIntentHints } from '../../skills/itinerary/iceland-vehicle-terrain-arbitrator.util';
+import { resolveTransportPreferenceText } from '../utils/resolve-transport-preference-text.util';
 import { WorldDecisionMemoryService } from '../memory/decision-memory/world-decision-memory.service';
 import {
   buildTerrainFroadUnfitAxiomDecisionMemory,
@@ -294,7 +295,9 @@ export class VerifyExecutorService implements IVerifyExecutor {
       const hints: IcelandVehicleIntentHints = {};
       const vt = ctx.tripPlanRequest?.constraints?.vehicle_type;
       if (vt === '2WD' || vt === '4WD') hints.constraints_vehicle_type = vt;
-      const profileTp = String(ctx.user_profile?.preferences?.transport_preferences ?? '').trim();
+      const profileTp = resolveTransportPreferenceText(
+        (ctx.user_profile?.preferences ?? ctx.user_profile) as Record<string, unknown> | undefined,
+      );
       if (profileTp) {
         hints.preference_text = profileTp;
         if (!hints.transport_preferences) hints.transport_preferences = profileTp;
@@ -699,7 +702,9 @@ export class VerifyExecutorService implements IVerifyExecutor {
       const vt = ctx.tripPlanRequest?.constraints?.vehicle_type;
       if (vt === '2WD' || vt === '4WD') hints.constraints_vehicle_type = vt;
 
-      const profileTp = String(ctx.user_profile?.preferences?.transport_preferences ?? '').trim();
+      const profileTp = resolveTransportPreferenceText(
+        (ctx.user_profile?.preferences ?? ctx.user_profile) as Record<string, unknown> | undefined,
+      );
       if (profileTp) {
         hints.preference_text = profileTp;
         if (!hints.transport_preferences) hints.transport_preferences = profileTp;

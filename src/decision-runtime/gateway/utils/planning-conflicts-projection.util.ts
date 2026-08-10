@@ -12,6 +12,7 @@ import type { UnifiedDecisionProblemListItem } from '../contracts/unified-decisi
 import type { InternalUnifiedProblemRow } from './unified-decision-problem-projection.util';
 import {
   inferEnforcementForQueue,
+  isTerminalDecisionWorkflowStatus,
   qualifiesForDecisionQueue,
 } from './decision-queue-admission.util';
 
@@ -44,7 +45,7 @@ export function projectListItemsToPlanningConflicts(
   items: UnifiedDecisionProblemListItem[],
 ): PlanningConflictItem[] {
   return items
-    .filter((item) => !['RESOLVED', 'DISMISSED'].includes(item.workflowStatus))
+    .filter((item) => !isTerminalDecisionWorkflowStatus(item.workflowStatus))
     .map(projectListItemToPlanningConflict);
 }
 
@@ -53,7 +54,15 @@ export function projectListItemToPlanningConflict(
 ): PlanningConflictItem {
   const affectedDayNumbers =
     item.legacySummary?.affectedDayNumbers ??
-    (item.scope.dayIds?.length ? [...item.scope.dayIds] : undefined);
+    (item.scope.dayIds?.length
+      ? item.scope.dayIds
+          .map((id) => {
+            if (typeof id === 'number') return id;
+            const m = String(id).match(/(?:day[-_]?|d)?(\d+)/i);
+            return m ? Number(m[1]) : NaN;
+          })
+          .filter((n) => Number.isFinite(n) && n > 0 && n <= 60)
+      : []);
 
   return {
     id: item.problemId,
@@ -105,7 +114,24 @@ export function projectDecisionProblemsToPlanningConflicts(
           ? `${row.title}${row.title.includes('×') ? '' : ` ×${row.occurrenceCount}`}`
           : row.title,
       message: row.summary,
-      affectedDays: row.scope.dayIds?.length ? [...row.scope.dayIds] : undefined,
+      affectedDays: row.scope.dayIds?.length
+        ? row.scope.dayIds
+            .map((id) => {
+              if (typeof id === 'number') return id;
+              const m = String(id).match(/(?:day[-_]?|d)?(\d+)/i);
+              return m ? Number(m[1]) : NaN;
+            })
+            .filter((n) => Number.isFinite(n) && n > 0 && n <= 60)
+        : [],
+      affectedDayNumbers: row.scope.dayIds?.length
+        ? row.scope.dayIds
+            .map((id) => {
+              if (typeof id === 'number') return id;
+              const m = String(id).match(/(?:day[-_]?|d)?(\d+)/i);
+              return m ? Number(m[1]) : NaN;
+            })
+            .filter((n) => Number.isFinite(n) && n > 0 && n <= 60)
+        : [],
       semanticKey: row.instanceKey,
     });
   }

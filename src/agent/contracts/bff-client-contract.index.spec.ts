@@ -16,8 +16,8 @@ import {
 const ROOT = path.resolve(__dirname, '../../..');
 
 describe('bff-client-contract.index (BFF-1)', () => {
-  it('is versioned 1.1.0 with dual pins', () => {
-    expect(BFF_CLIENT_CONTRACT_INDEX_VERSION).toBe('1.1.0');
+  it('is versioned 1.2.0 with dual pins', () => {
+    expect(BFF_CLIENT_CONTRACT_INDEX_VERSION).toBe('1.2.0');
     expect(BFF_CLIENT_CONTRACT_INDEX.length).toBeGreaterThanOrEqual(10);
     expect(FACT_PACK_OPENAPI_FREEZE_COMMIT).toBe(
       'a7e9bdca588431143e04e98d7c1c1204299c6e54',

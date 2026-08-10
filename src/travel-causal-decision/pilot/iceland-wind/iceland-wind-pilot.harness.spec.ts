@@ -11,6 +11,12 @@ import {
 } from './wind-pilot-case.registry';
 import { evaluateWindPilotSuite } from './evaluate-wind-pilot.util';
 import { projectCausalDecisionCard } from '../../projectors/causal-decision-card.projector';
+import { buildIcelandWindPilotShowcaseCase } from './build-wind-pilot-showcase';
+import {
+  buildWindPilotMetricsReport,
+  renderWindPilotReportMarkdown,
+} from './build-wind-pilot-report';
+import { toCausalDecisionProductView } from '../../api/to-causal-decision-product-view';
 
 describe('Iceland Wind Causal Decision Pilot Validation', () => {
   const cases = buildIcelandWindPilotCaseRegistry();
@@ -71,5 +77,67 @@ describe('Iceland Wind Causal Decision Pilot Validation', () => {
       expect(['UNOBSERVABLE', 'PENDING']).toContain(c.finalReconciliation);
       expect(c.decision.outcome?.reconciliation).not.toBe('CONFIRMED');
     }
+  });
+
+  it('projects every case to Causal Decision product BFF view', () => {
+    for (const c of cases) {
+      const view = toCausalDecisionProductView({
+        decision: c.decision,
+        problemId: c.caseId,
+      });
+      expect(view.schema).toBe('tripnara.causal_decision_product@v1');
+      expect(view.headline).toBeTruthy();
+      expect(view.card.whatHappened).toBeTruthy();
+      if (c.archetype !== 'WIND_NO_IMPACT') {
+        expect(view.actByLabel).toMatch(/最晚需要在/);
+      }
+      expect(view.statusMessage ?? '').not.toContain('预测已验证');
+    }
+  });
+
+  it('showcase: high-roof + gust≥18 makes 10min ETA buffer unstable', () => {
+    const showcase = buildIcelandWindPilotShowcaseCase();
+    expect(showcase.factSnapshot.highRoof).toBe(true);
+    expect(showcase.factSnapshot.windMps).toBeGreaterThanOrEqual(18);
+    expect(showcase.factSnapshot.appointmentSlackMinutes).toBe(10);
+
+    const miss =
+      showcase.decision.baselineOutcome.metrics?.iceland_miss_prob ??
+      (showcase.decision.baselineOutcome.completionProbability != null
+        ? 1 - showcase.decision.baselineOutcome.completionProbability
+        : 0);
+    expect(miss).toBeGreaterThan(0.2);
+    expect(showcase.decision.interventions.length).toBeGreaterThan(0);
+    expect(showcase.decision.temporalForecast.interventionDeadline).toBeTruthy();
+    expect(
+      showcase.decision.temporalForecast.interventionDeadline! <=
+        showcase.irreparableAfterAt,
+    ).toBe(true);
+
+    const card = projectCausalDecisionCard(showcase.decision);
+    expect(card.whyItMatters.length).toBeGreaterThanOrEqual(2);
+    const product = toCausalDecisionProductView({
+      decision: showcase.decision,
+      problemId: showcase.caseId,
+    });
+    expect(product.headline).toMatch(/风|wind/i);
+  });
+
+  it('builds pilot metrics report for review board', () => {
+    const withShowcase = [...cases, buildIcelandWindPilotShowcaseCase()];
+    const report = buildWindPilotMetricsReport(
+      withShowcase,
+      '2026-07-30T00:00:00.000Z',
+    );
+    expect(report.schema).toBe('tripnara.iceland_wind_pilot_metrics@v1');
+    expect(report.ok).toBe(true);
+    expect(report.suite.caseCount).toBe(20);
+    expect(report.cases.some((c) => c.caseId.includes('showcase'))).toBe(true);
+    expect(report.cases.every((c) => c.productHeadline.length > 0)).toBe(true);
+
+    const md = renderWindPilotReportMarkdown(report);
+    expect(md).toContain('Pilot Metrics');
+    expect(md).toContain('PASS');
+    expect(md).toContain('showcase_high_roof_gust18_checkin');
   });
 });

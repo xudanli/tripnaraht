@@ -19,9 +19,28 @@ type LiteTripRow = {
   startDate: Date;
   endDate: Date;
   status: string | null;
+  budgetConfig: unknown;
   createdAt: Date;
   updatedAt: Date;
 };
+
+function readBudgetFromConfig(budgetConfig: unknown): {
+  totalBudget: number;
+  currency?: string;
+} {
+  if (!budgetConfig || typeof budgetConfig !== 'object') {
+    return { totalBudget: 0 };
+  }
+  const cfg = budgetConfig as Record<string, unknown>;
+  const rawTotal = cfg.totalBudget ?? cfg.total;
+  const totalBudget =
+    typeof rawTotal === 'number' && Number.isFinite(rawTotal) ? rawTotal : 0;
+  const currency =
+    typeof cfg.currency === 'string' && cfg.currency.trim().length > 0
+      ? cfg.currency.trim().toUpperCase()
+      : undefined;
+  return { totalBudget, currency };
+}
 
 type CountryListProfile = {
   isoCode: string;
@@ -32,7 +51,8 @@ type CountryListProfile = {
 /**
  * Home trip list BFF — intentionally thin for <300ms.
  *
- * Dropped vs full detail: metadata, TripDay, collaborators, budget, progress/readiness.
+ * Dropped vs full detail: metadata, TripDay, collaborators, progress/readiness.
+ * budgetConfig is selected only to project totalBudget + currency onto the card.
  * Cover = country profile; duration/status derived from trip dates + status only.
  */
 @Injectable()
@@ -65,6 +85,7 @@ export class TripListService {
           startDate: true,
           endDate: true,
           status: true,
+          budgetConfig: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -153,6 +174,8 @@ export class TripListService {
       ) + 1,
     );
 
+    const { totalBudget, currency } = readBudgetFromConfig(trip.budgetConfig);
+
     return {
       id: trip.id,
       name: trip.name ?? undefined,
@@ -161,7 +184,8 @@ export class TripListService {
       startDate: trip.startDate.toISOString(),
       endDate: trip.endDate.toISOString(),
       status: toApiTripStatus(trip.status),
-      totalBudget: 0,
+      totalBudget,
+      ...(currency ? { currency } : {}),
       days: [],
       createdAt: trip.createdAt.toISOString(),
       updatedAt: trip.updatedAt.toISOString(),

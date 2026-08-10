@@ -13,6 +13,9 @@ import { isFroad2wdComplianceScenario } from './froad-intake-signals.util';
 import { stripSystemMessageBlocksForIntakeNl } from './trip-plan-intake-vehicle.util';
 import { extractGuardianDebateUserIntentAnchors } from './guardian-debate-user-intent-anchor.util';
 import { detectItineraryAdjustIntent, detectFullTripReplanIntent } from './itinerary-adjust-intent.util';
+import { stripUiInjectedDayScheduleContext } from './ui-day-schedule-context.util';
+import { parseTripDayNumber } from './itinerary-item-add.util';
+import { stripPlanningModeWrapper } from './strip-planning-mode-wrapper.util';
 
 export type RouteAndRunPrimaryIntent =
   | 'ITINERARY_SLOT_PLACEMENT'
@@ -42,10 +45,63 @@ export type TripDaySnapshotForPlacement = {
   textBlob: string;
 };
 
+/** 话术/UI 是否已锚定具体 DayN（含 day editor 文末 `[日程] DayN`） */
+export function hasConcreteTripDayAnchor(message: string): boolean {
+  const t = String(message ?? '');
+  if (!t.trim()) return false;
+  if (parseTripDayNumber(t) != null) return true;
+  if (/\bDay\s*\d+\b/i.test(t) || /\bday\d+\b/i.test(t)) return true;
+  if (/\[日程\]\s*Day\s*\d+/i.test(t)) return true;
+  return false;
+}
+
+/** 是否仍在追问「排哪一天」（相对已锚定 DayN 的选日卡） */
+function isAskingWhichTripDay(message: string): boolean {
+  const t = stripUiInjectedDayScheduleContext(
+    stripPlanningModeWrapper(stripSystemMessageBlocksForIntakeNl(String(message ?? ''))),
+  );
+  return /哪一天|哪几天|哪些天|哪天|那几天|哪个行程|哪一程|安排在哪|加在哪|插在哪|放在哪|放进哪/i.test(
+    t,
+  );
+}
+
+/**
+ * 「规划哪几天空的行程」= 识别/填充空日，不是「把某活动插到哪一天」的槽位编排。
+ * 例：可以帮我规划一下哪几天空的行程吗？
+ */
+export function isEmptyTripDaysPlanningIntent(message: string): boolean {
+  const t = stripUiInjectedDayScheduleContext(
+    stripPlanningModeWrapper(stripSystemMessageBlocksForIntakeNl(String(message ?? ''))),
+  );
+  if (!t.trim()) return false;
+  if (
+    /空的?(?:行程|天|日程|日子)|哪几天.{0,8}空|空着的?(?:天|行程|日程)|还?没(?:有)?安排|没有安排|未安排/i.test(
+      t,
+    )
+  ) {
+    return /(?:规划|安排|填充|充实|填满|补齐|帮我|请)/i.test(t) || /哪几天.{0,8}空/i.test(t);
+  }
+  return false;
+}
+
 /** 用户是否在问「已有行程里哪一天/哪一程」或要把某类体验落到具体日期 */
 export function detectItinerarySlotPlacementIntent(message: string): boolean {
-  const t = stripSystemMessageBlocksForIntakeNl(String(message ?? ''));
+  const raw = stripSystemMessageBlocksForIntakeNl(String(message ?? ''));
+  const t = stripPlanningModeWrapper(raw);
   if (!t.trim()) return false;
+
+  /** 空日填充 ≠ 槽位选日澄清 */
+  if (isEmptyTripDaysPlanningIntent(raw)) {
+    return false;
+  }
+
+  /**
+   * day editor / 已写明 DayN：目标日已知，勿再短路「选哪一天」澄清卡。
+   * 「那几天定为极光」等仍显式问哪一天时除外。
+   */
+  if (hasConcreteTripDayAnchor(raw) && !isAskingWhichTripDay(raw)) {
+    return false;
+  }
 
   const daySelectionRe =
     /哪一天|哪几天|哪些天|哪天|那几天|哪个行程|哪一程|安排在哪|加在哪|插在|放进|能否在.{0,24}安排|顺路/i;
@@ -62,8 +118,10 @@ export function detectItinerarySlotPlacementIntent(message: string): boolean {
     return true;
   }
 
+  const semantic = stripUiInjectedDayScheduleContext(t);
   return (
-    daySelectionRe.test(t) && (tripDayAnchorRe.test(t) || activityPlacementRe.test(t))
+    daySelectionRe.test(semantic) &&
+    (tripDayAnchorRe.test(semantic) || activityPlacementRe.test(semantic))
   );
 }
 

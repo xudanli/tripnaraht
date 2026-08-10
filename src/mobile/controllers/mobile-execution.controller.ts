@@ -40,6 +40,10 @@ import { ConstraintSolverAccessService } from '../../trips/trip-constraint-solve
 import { TravelStatusService } from '../../trips/travel-status/services/travel-status.service';
 import { InTripCommsPeersService } from '../../trips/in-trip-execution/services/in-trip-comms-peers.service';
 import { MobileExecutionWriteService } from '../services/mobile-execution-write.service';
+import { MobileDailyDriveService } from '../services/mobile-daily-drive.service';
+import { MobileInTripHomeService } from '../services/mobile-in-trip-home.service';
+import { MobileOverviewDashboardService } from '../services/mobile-overview-dashboard.service';
+import { MobileExecutionQuickActionsService } from '../services/mobile-execution-quick-actions.service';
 import { MobileEmergencyPackService } from '../services/mobile-emergency-pack.service';
 import { MobilePushNotificationService } from '../services/mobile-push-notification.service';
 import { ConsumerDecisionQueueService } from '../../trips/travel-status/services/consumer-decision-queue.service';
@@ -58,6 +62,10 @@ export class MobileExecutionController {
   constructor(
     private readonly mobile: MobileExecutionService,
     private readonly mobileWrite: MobileExecutionWriteService,
+    private readonly dailyDrive: MobileDailyDriveService,
+    private readonly inTripHome: MobileInTripHomeService,
+    private readonly overviewDashboard: MobileOverviewDashboardService,
+    private readonly quickActions: MobileExecutionQuickActionsService,
     private readonly emergencyPack: MobileEmergencyPackService,
     private readonly access: ConstraintSolverAccessService,
     private readonly travelStatus: TravelStatusService,
@@ -318,6 +326,304 @@ export class MobileExecutionController {
   ) {
     return this.run(tripId, user, () =>
       this.mobile.getRoadConditions(tripId, this.access.resolveUserId(user)),
+    );
+  }
+
+  @Get('execution/daily-drive-status')
+  @ApiOperation({ summary: 'iOS 今日自驾状态（总览 gate + 五维 + 内嵌风险提醒）' })
+  @ApiQuery({ name: 'localDate', required: false, type: String, description: 'yyyy-MM-dd；默认行程当地今日' })
+  @ApiQuery({
+    name: 'includeReminders',
+    required: false,
+    type: Boolean,
+    description: '默认 true；false 时不返回 reminders.items',
+  })
+  async getDailyDriveStatus(
+    @Param('tripId') tripId: string,
+    @Query('localDate') localDate?: string,
+    @Query('includeReminders') includeReminders?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    const include =
+      includeReminders == null || includeReminders === ''
+        ? true
+        : includeReminders !== '0' && includeReminders !== 'false';
+    return this.run(tripId, user, () =>
+      this.dailyDrive.getStatus(tripId, this.access.resolveUserId(user), {
+        localDate,
+        includeReminders: include,
+      }),
+    );
+  }
+
+  @Get('execution/daily-drive-status/dimensions/:code')
+  @ApiOperation({
+    summary: 'iOS 今日自驾五维详情下钻（ROAD/WEATHER/DAYLIGHT/FUEL/SCHEDULE）',
+  })
+  @ApiParam({
+    name: 'code',
+    description: 'ROAD | WEATHER | DAYLIGHT | FUEL | SCHEDULE',
+  })
+  @ApiQuery({ name: 'localDate', required: false, type: String })
+  async getDailyDriveDimensionDetail(
+    @Param('tripId') tripId: string,
+    @Param('code') code: string,
+    @Query('localDate') localDate?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.run(tripId, user, () =>
+      this.dailyDrive.getDimensionDetail(tripId, this.access.resolveUserId(user), code, {
+        localDate,
+      }),
+    );
+  }
+
+  @Get('execution/daily-drive-confirm')
+  @ApiOperation({ summary: 'iOS 今日自驾信息确认草稿' })
+  @ApiQuery({ name: 'localDate', required: false, type: String })
+  async getDailyDriveConfirmDraft(
+    @Param('tripId') tripId: string,
+    @Query('localDate') localDate?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.run(tripId, user, () =>
+      this.dailyDrive.getConfirmDraft(tripId, this.access.resolveUserId(user), {
+        localDate,
+      }),
+    );
+  }
+
+  @Post('execution/daily-drive-confirm')
+  @ApiOperation({ summary: 'iOS 提交今日自驾信息确认（幂等；同日可覆盖）' })
+  async submitDailyDriveConfirm(
+    @Param('tripId') tripId: string,
+    @Body()
+    body: {
+      localDate?: string;
+      fuelLevel?: string;
+      departOnPlan?: boolean;
+      driverMemberId?: string;
+      fatigue?: string;
+      vehicleAbnormal?: boolean;
+      prepCompleted?: boolean;
+      vehicleNoteZh?: string;
+      prepNoteZh?: string;
+      clientObservedAt?: string;
+    },
+    @Headers('idempotency-key') idempotencyKey?: string,
+    @Headers('if-match') ifMatch?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.runWrite(tripId, user, (userId) =>
+      this.dailyDrive.submitConfirm(
+        tripId,
+        userId,
+        body as Parameters<MobileDailyDriveService['submitConfirm']>[2],
+        {
+          idempotencyKey,
+          ifMatch: parseIfMatch(ifMatch),
+        },
+      ),
+    );
+  }
+
+  @Get('execution/quick-actions/context')
+  @ApiOperation({ summary: 'iOS 执行快速操作上下文（场景 + 角色 + 可见操作）' })
+  async getQuickActionsContext(
+    @Param('tripId') tripId: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.run(tripId, user, () =>
+      this.quickActions.getContext(tripId, this.access.resolveUserId(user)),
+    );
+  }
+
+  @Get('execution/overview-dashboard')
+  @ApiOperation({
+    summary: 'iOS 执行总览首屏投影（综合状态 / 自驾 / 下一站 / 出发建议 / 车辆 / 团队）',
+  })
+  @ApiQuery({
+    name: 'lite',
+    required: false,
+    type: Boolean,
+    description: '默认 true；省略大图、坐标等重字段',
+  })
+  @ApiQuery({ name: 'dayIndex', required: false, type: Number })
+  async getOverviewDashboard(
+    @Param('tripId') tripId: string,
+    @Query('lite') lite?: string,
+    @Query('dayIndex') dayIndex?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    const parsedDay = dayIndex != null ? Number(dayIndex) : undefined;
+    const useLite = !(lite === '0' || lite === 'false');
+    return this.run(tripId, user, () =>
+      this.overviewDashboard.getOverviewDashboard(
+        tripId,
+        this.access.resolveUserId(user),
+        {
+          lite: useLite,
+          dayIndex: Number.isFinite(parsedDay) ? parsedDay : undefined,
+        },
+      ),
+    );
+  }
+
+  @Get('execution/in-trip-home')
+  @ApiOperation({
+    summary: 'iOS 行中执行首页（heading + importantInfo + 提醒 + Runbook 摘要）',
+  })
+  @ApiQuery({ name: 'includeReminder', required: false, type: Boolean })
+  @ApiQuery({ name: 'includeActiveRunbook', required: false, type: Boolean })
+  async getInTripHome(
+    @Param('tripId') tripId: string,
+    @Query('includeReminder') includeReminder?: string,
+    @Query('includeActiveRunbook') includeActiveRunbook?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    const parseBool = (v?: string, defaultValue = true) => {
+      if (v == null || v === '') return defaultValue;
+      return v !== '0' && v !== 'false';
+    };
+    return this.run(tripId, user, () =>
+      this.inTripHome.getInTripHome(tripId, this.access.resolveUserId(user), {
+        includeReminder: parseBool(includeReminder),
+        includeActiveRunbook: parseBool(includeActiveRunbook),
+      }),
+    );
+  }
+
+  @Get('execution/member-status-reports')
+  @ApiOperation({ summary: 'iOS 成员状态报告列表（默认 open）' })
+  @ApiQuery({ name: 'scope', required: false, description: 'open | all | mine' })
+  @ApiQuery({ name: 'memberId', required: false })
+  @ApiQuery({ name: 'limit', required: false, type: Number })
+  async listMemberStatusReports(
+    @Param('tripId') tripId: string,
+    @Query('scope') scope?: string,
+    @Query('memberId') memberId?: string,
+    @Query('limit') limit?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    const parsedLimit = limit != null ? Number(limit) : undefined;
+    return this.run(tripId, user, () =>
+      this.quickActions.listMemberStatusReports(tripId, this.access.resolveUserId(user), {
+        scope,
+        memberId,
+        limit: Number.isFinite(parsedLimit) ? parsedLimit : undefined,
+      }),
+    );
+  }
+
+  @Post('execution/member-status-reports')
+  @ApiOperation({ summary: 'iOS 创建成员状态报告（自报/代报；幂等）' })
+  async createMemberStatusReport(
+    @Param('tripId') tripId: string,
+    @Body()
+    body: {
+      needCode?: string;
+      source?: string;
+      subjectMemberId?: string | null;
+      note?: string | null;
+      clientContext?: {
+        lat?: number;
+        lng?: number;
+        accuracyM?: number;
+        reportedAt?: string;
+      };
+    },
+    @Headers('idempotency-key') idempotencyKey?: string,
+    @Headers('if-match') ifMatch?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.runWrite(tripId, user, (userId) =>
+      this.quickActions.createMemberStatusReport(
+        tripId,
+        userId,
+        body as Parameters<MobileExecutionQuickActionsService['createMemberStatusReport']>[2],
+        {
+          idempotencyKey,
+          ifMatch: parseIfMatch(ifMatch),
+        },
+      ),
+    );
+  }
+
+  @Get('execution/member-status-reports/:reportId')
+  @ApiOperation({ summary: 'iOS 成员状态报告详情' })
+  async getMemberStatusReport(
+    @Param('tripId') tripId: string,
+    @Param('reportId') reportId: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.run(tripId, user, () =>
+      this.quickActions.getMemberStatusReport(
+        tripId,
+        this.access.resolveUserId(user),
+        reportId,
+      ),
+    );
+  }
+
+  @Post('execution/member-status-reports/:reportId/transition')
+  @ApiOperation({ summary: 'iOS 成员状态报告生命周期流转（幂等）' })
+  async transitionMemberStatusReport(
+    @Param('tripId') tripId: string,
+    @Param('reportId') reportId: string,
+    @Body()
+    body: {
+      toStatus?: string;
+      arrangement?: {
+        summaryZh?: string;
+        placeId?: string;
+        placeNameZh?: string;
+        etaMinutes?: number;
+      };
+      note?: string | null;
+      stillNeedsHelp?: boolean;
+    },
+    @Headers('idempotency-key') idempotencyKey?: string,
+    @Headers('if-match') ifMatch?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.runWrite(tripId, user, (userId) =>
+      this.quickActions.transitionMemberStatusReport(
+        tripId,
+        userId,
+        reportId,
+        body as Parameters<MobileExecutionQuickActionsService['transitionMemberStatusReport']>[3],
+        {
+          idempotencyKey,
+          ifMatch: parseIfMatch(ifMatch),
+        },
+      ),
+    );
+  }
+
+  @Post('execution/trip-field-reports')
+  @ApiOperation({ summary: 'iOS 行程现场操作上报（领队/驾驶员/授权；幂等）' })
+  async createTripFieldReport(
+    @Param('tripId') tripId: string,
+    @Body()
+    body: {
+      actionCode?: string;
+      payload?: Record<string, unknown>;
+      clientContext?: { lat?: number; lng?: number; accuracyM?: number; reportedAt?: string };
+    },
+    @Headers('idempotency-key') idempotencyKey?: string,
+    @Headers('if-match') ifMatch?: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.runWrite(tripId, user, (userId) =>
+      this.quickActions.createTripFieldReport(
+        tripId,
+        userId,
+        body as Parameters<MobileExecutionQuickActionsService['createTripFieldReport']>[2],
+        {
+          idempotencyKey,
+          ifMatch: parseIfMatch(ifMatch),
+        },
+      ),
     );
   }
 

@@ -166,8 +166,17 @@ describe('CanonicalMutationCommitGuard', () => {
       const guardPayload = (guarded.result.payload as any)?.canonical_mutation_guard;
       expect(guardPayload?.canCommit).toBe(false);
       expect(guardPayload?.reasonCodes).toContain('MUTATION_DENIED_DECISION_AUTHORITY_MISSING');
+      expect(guardPayload?.reasonCodes).toContain('LEGACY_SILENT_WRITE_BLOCKED');
       expect(guardPayload?.statusV2?.action?.status).toBe('BLOCKED');
       expect((guarded.observability as any)?.authority_audit_v1?.mutationCommitted).toBe(false);
+    });
+
+    it('stamps LEGACY_SILENT_WRITE_BLOCKED even when DECISION_RUNTIME_MODE is not LEGACY', () => {
+      process.env.DECISION_RUNTIME_MODE = 'SHADOW';
+      const guarded = applyLegacyMutationCommitGuard(baseRequest(), legacyResponseWithTimeline());
+      const guardPayload = (guarded.result.payload as any)?.canonical_mutation_guard;
+      expect(guardPayload?.canCommit).toBe(false);
+      expect(guardPayload?.reasonCodes).toContain('LEGACY_SILENT_WRITE_BLOCKED');
     });
 
     it('blocks commit on road closure constraint BLOCK', () => {

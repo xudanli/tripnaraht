@@ -31,7 +31,7 @@ describe('ItineraryGenerateSkill', () => {
   it('应该被定义', () => {
     expect(skill).toBeDefined();
     expect(skill.metadata.name).toBe('itinerary.generate');
-    expect(skill.metadata.description).toBe('生成结构化行程草案');
+    expect(skill.metadata.description).toContain('生成结构化 itinerary 草案');
   });
 
   describe('execute', () => {
@@ -315,10 +315,12 @@ describe('ItineraryGenerateSkill', () => {
       });
 
       const items = result.days[0].items;
+      // 默认停留 90 分钟 + 15 分钟换乘缓冲（不再固定 2h 步进）
       expect(items[0].start_window).toBe('09:00');
-      expect(items[0].end_window).toBe('11:00');
-      expect(items[1].start_window).toBe('11:00');
-      expect(items[1].end_window).toBe('13:00');
+      expect(items[0].end_window).toBe('10:30');
+      expect(items[0].metadata?.duration_minutes).toBe(90);
+      expect(items[1].start_window).toBe('10:45');
+      expect(items[1].end_window).toBe('12:15');
     });
 
     it('应该为每个行程项生成唯一的 ID', async () => {

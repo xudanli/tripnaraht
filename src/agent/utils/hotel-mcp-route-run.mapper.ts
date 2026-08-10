@@ -7,8 +7,11 @@ import { parseTripDayNumber } from './itinerary-item-add.util';
 
 export type RouteAndRunAccommodationCard = {
   id: string;
-  source: 'airbnb' | 'hotel';
+  source: 'airbnb' | 'hotel' | 'fliggy';
   name: string;
+  /** 与 Chat / iOS 对齐的中文名 */
+  nameZh?: string;
+  nameCN?: string;
   /** 行程第几晚（1-based），用于 night_groups 分组 */
   nightIndex?: number;
   /** 副标题/英文名：仅在与 `name` 不同时下发，避免 UI 主副标题重复一行 */
@@ -18,12 +21,41 @@ export type RouteAndRunAccommodationCard = {
   /** 入住窗口：通常为「住1晚（MM/DD—MM/DD）」 */
   stayLabelZh?: string;
   url?: string;
+  webUrl?: string;
+  appUrl?: string;
+  /** 手淘 tbopen 唤端 */
+  tbOpenUrl?: string;
+  openStrategy?: 'web' | 'app_then_web';
   photoUrl?: string;
+  imageUrl?: string;
   photos?: string[];
   address?: string;
   priceLabel?: string;
   rating?: number;
   placeId?: string;
+  /** OTA 外键；apply 幂等入库用，勿与 DB Place.id 混淆 */
+  otaRef?: { provider: 'fliggy' | 'airbnb' | 'google' | 'unknown'; externalId: string };
+  /** 库内 Place.id（若已软链/入库） */
+  canonicalPlaceId?: number;
+  bookingProvider?: 'fliggy' | string;
+  bookingCtaLabelZh?: string;
+  cta_zh?: string;
+  primary_action?: {
+    action: string;
+    label?: string;
+    labelCN?: string;
+    params?: Record<string, unknown>;
+  };
+  bookingLinks?: Array<{
+    provider?: string;
+    url?: string;
+    appUrl?: string;
+    webUrl?: string;
+    labelZh?: string;
+  }>;
+  inventoryVerified?: boolean;
+  inventoryMode?: string;
+  availabilityDisclaimerZh?: string;
   /** MCP 房源坐标（若有）：用于计算与当日行程锚点的直线距离 */
   listing_lat?: number;
   listing_lng?: number;
@@ -713,6 +745,7 @@ function mapHotelDirectRow(o: unknown, idx: number): RouteAndRunAccommodationCar
   const photos = Array.isArray(r.photos)
     ? r.photos
         .map((p) => {
+          if (typeof p === 'string' && p.trim()) return p.trim();
           const pr = asRecord(p);
           return typeof pr?.photoReference === 'string' ? pr.photoReference : undefined;
         })
@@ -728,6 +761,84 @@ function mapHotelDirectRow(o: unknown, idx: number): RouteAndRunAccommodationCar
     ...(rating !== undefined ? { rating } : {}),
     ...(photos.length ? { photos: photos as string[] } : {}),
     ...(ll ? { listing_lat: ll.lat, listing_lng: ll.lng } : {}),
+  };
+}
+
+/** 飞猪 hotel.search results[] → route_and_run 住宿卡（保留图/价/跳转） */
+function mapFliggyHotelRow(o: unknown, idx: number): RouteAndRunAccommodationCard {
+  const r = asRecord(o) ?? {};
+  const id = String(r.id ?? r.placeId ?? `fliggy-hotel-${idx}`);
+  const name =
+    typeof r.name === 'string' && r.name.trim()
+      ? r.name.trim()
+      : extractHotelListingDisplayName(o);
+  const url =
+    (typeof r.url === 'string' && r.url.trim()) ||
+    (typeof r.webUrl === 'string' && r.webUrl.trim()) ||
+    undefined;
+  const webUrl =
+    (typeof r.webUrl === 'string' && r.webUrl.trim()) || url || undefined;
+  const photoUrl =
+    (typeof r.photoUrl === 'string' && r.photoUrl.trim()) ||
+    (typeof r.imageUrl === 'string' && r.imageUrl.trim()) ||
+    (Array.isArray(r.photos) && typeof r.photos[0] === 'string' ? r.photos[0] : undefined) ||
+    undefined;
+  const photos = Array.isArray(r.photos)
+    ? r.photos.map((p) => String(p)).filter(Boolean)
+    : photoUrl
+      ? [photoUrl]
+      : undefined;
+  const priceLabel =
+    typeof r.priceLabel === 'string' && r.priceLabel.trim()
+      ? r.priceLabel.trim()
+      : undefined;
+  const rating = typeof r.rating === 'number' ? r.rating : undefined;
+  const address = typeof r.address === 'string' ? r.address : undefined;
+  const cta =
+    (typeof r.bookingCtaLabelZh === 'string' && r.bookingCtaLabelZh.trim()) ||
+    (typeof r.cta_zh === 'string' && r.cta_zh.trim()) ||
+    '去飞猪打开';
+  const lat =
+    typeof r.listing_lat === 'number'
+      ? r.listing_lat
+      : typeof r.lat === 'number'
+        ? r.lat
+        : undefined;
+  const lng =
+    typeof r.listing_lng === 'number'
+      ? r.listing_lng
+      : typeof r.lng === 'number'
+        ? r.lng
+        : undefined;
+  return {
+    id,
+    source: 'fliggy',
+    name,
+    nameZh: name,
+    nameCN: name,
+    placeId: typeof r.placeId === 'string' ? r.placeId : id,
+    otaRef: { provider: 'fliggy', externalId: id },
+    bookingProvider: 'fliggy',
+    ...(url || webUrl ? { url: url || webUrl } : {}),
+    ...(webUrl || url ? { webUrl: webUrl || url } : {}),
+    // 飞猪唤端不稳定：主链 H5；不透传 appUrl/tbOpenUrl，避免客户端误唤端
+    openStrategy: 'web',
+    ...(photoUrl ? { photoUrl, imageUrl: photoUrl } : {}),
+    ...(photos?.length ? { photos } : {}),
+    ...(priceLabel ? { priceLabel } : {}),
+    ...(rating !== undefined ? { rating } : {}),
+    ...(address ? { address } : {}),
+    ...(lat != null && lng != null ? { listing_lat: lat, listing_lng: lng } : {}),
+    // 查看按钮文案；主 CTA「加入行程」由 enrichRouteRunCardForClientApply 写入
+    bookingCtaLabelZh: cta,
+    ...(Array.isArray(r.bookingLinks) ? { bookingLinks: r.bookingLinks as RouteAndRunAccommodationCard['bookingLinks'] } : {}),
+    ...(typeof r.inventoryVerified === 'boolean'
+      ? { inventoryVerified: r.inventoryVerified }
+      : {}),
+    ...(typeof r.inventoryMode === 'string' ? { inventoryMode: r.inventoryMode } : {}),
+    ...(typeof r.availabilityDisclaimerZh === 'string'
+      ? { availabilityDisclaimerZh: r.availabilityDisclaimerZh }
+      : {}),
   };
 }
 
@@ -958,6 +1069,8 @@ export function wrapSingleHotelPayload(
     wideWindowWithoutTrip?: boolean;
     /** 整段 Trip 间夜数（绑定行程时与卡片「第 M/N 晚」分母一致） */
     itineraryTotalNights?: number;
+    /** 绑定行程时的「第几晚」展示（1-based）；缺省为 1 */
+    nightIndex?: number;
   },
 ): HotelRouteRunUiPayload | null {
   const mapped = mapHotelMcpDataForRouteAndRun(data);
@@ -966,7 +1079,7 @@ export function wrapSingleHotelPayload(
     opts?.checkIn && opts?.checkOut ? formatStayLabelZh(opts.checkIn, opts.checkOut) : undefined;
   const accommodations = mapped.accommodations.map((c) => ({
     ...c,
-    nightIndex: 1,
+    nightIndex: opts?.nightIndex ?? 1,
     ...(opts?.checkIn ? { checkIn: opts.checkIn.slice(0, 10) } : {}),
     ...(opts?.checkOut ? { checkOut: opts.checkOut.slice(0, 10) } : {}),
     ...(opts?.hintZh ? { itineraryHintZh: opts.hintZh } : {}),
@@ -1005,23 +1118,28 @@ export function mapHotelMcpDataForRouteAndRun(data: unknown): {
   const raw = getRawListingRowsFromMcpPayload(data);
   if (!raw?.length) return null;
 
-  const src =
-    d.source === 'airbnb' || d.source === 'hotel'
-      ? (d.source as 'airbnb' | 'hotel')
-      : Array.isArray(raw) && raw[0] && asRecord(raw[0])?.demandStayListing
-        ? 'airbnb'
-        : 'hotel';
+  const first = asRecord(raw[0]);
+  const src: 'airbnb' | 'hotel' | 'fliggy' =
+    d.source === 'fliggy' || first?.source === 'fliggy' || first?.provider === 'fliggy'
+      ? 'fliggy'
+      : d.source === 'airbnb' || d.source === 'hotel'
+        ? (d.source as 'airbnb' | 'hotel')
+        : first?.demandStayListing
+          ? 'airbnb'
+          : 'hotel';
 
   const cap = 12;
   const slice = raw.slice(0, cap);
   const accommodations =
     src === 'airbnb'
       ? slice.map((row, i) => mapAirbnbRow(row, i))
-      : slice.map((row, i) => mapHotelDirectRow(row, i));
+      : src === 'fliggy'
+        ? slice.map((row, i) => mapFliggyHotelRow(row, i))
+        : slice.map((row, i) => mapHotelDirectRow(row, i));
 
   return {
     accommodations,
-    airbnbListings: slice,
+    airbnbListings: src === 'airbnb' ? slice : [],
     routing: { target: 'hotel' },
   };
 }

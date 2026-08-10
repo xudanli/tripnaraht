@@ -1,8 +1,23 @@
 // src/trips/dto/create-trip.dto.ts
-import { IsString, IsNumber, IsDateString, IsArray, ValidateNested, IsEnum, IsOptional, IsInt, Length, IsObject } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsString, IsNumber, IsDateString, IsArray, ValidateNested, IsEnum, IsOptional, IsInt, Length, IsObject, IsIn } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TripStatus } from './trip-status.dto';
+
+/** 行程顶层 currency / budgetConfig.currency 允许的常用 ISO 4217 代码 */
+export const TRIP_SUPPORTED_CURRENCIES = [
+  'CNY',
+  'USD',
+  'EUR',
+  'JPY',
+  'ISK',
+  'NOK',
+  'SEK',
+  'DKK',
+  'GBP',
+] as const;
+
+export type TripSupportedCurrency = (typeof TRIP_SUPPORTED_CURRENCIES)[number];
 
 /**
  * 旅行节奏枚举
@@ -99,13 +114,19 @@ export class CreateTripDto {
   totalBudget!: number;
 
   @ApiPropertyOptional({
-    description: '交易货币（ISO 4217，如 CNY/USD/EUR/ISK）。未提供时默认 CNY',
+    description: '交易货币（ISO 4217，如 CNY/USD/EUR/ISK）。未提供时默认 CNY；写入 budgetConfig.currency',
     example: 'CNY',
-    enum: ['CNY', 'USD', 'EUR', 'JPY', 'ISK', 'NOK', 'SEK', 'DKK', 'GBP'],
+    enum: TRIP_SUPPORTED_CURRENCIES,
   })
   @IsOptional()
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
   @IsString({ message: 'currency 必须是字符串' })
-  currency?: string;
+  @IsIn([...TRIP_SUPPORTED_CURRENCIES], {
+    message: `currency 必须是有效的 ISO 4217 货币代码（支持: ${TRIP_SUPPORTED_CURRENCIES.join(', ')}）`,
+  })
+  currency?: TripSupportedCurrency;
 
   @ApiProperty({
     description: '旅行者列表',

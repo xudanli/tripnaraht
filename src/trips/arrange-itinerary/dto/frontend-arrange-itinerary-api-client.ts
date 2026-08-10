@@ -132,6 +132,123 @@ export type PlanProposal = {
   createdAt: string;
   expiresAt: string;
   decisionPack?: PlanningDecisionPack;
+  /**
+   * UWC-1e: when open=true with timeUpdates, itemCreates, or plan-version triplet,
+   * client may open UWC Preview. Absent/open=false → legacy arrange apply unchanged.
+   */
+  uwcPreview?:
+    | {
+        open: true;
+        slice: 'itinerary_same_day_time_adjust';
+        expectedTripRevision: number;
+        timeUpdates: Array<{
+          itemId: string;
+          startTimeIso: string;
+          endTimeIso: string;
+        }>;
+      }
+    | {
+        open: true;
+        slice: 'itinerary_same_day_add_item';
+        expectedTripRevision: number;
+        itemCreates: Array<{
+          tripDayId: string;
+          placeId?: number | null;
+          type?: string;
+          startTimeIso: string;
+          endTimeIso: string;
+          note?: string | null;
+          clientItemKey?: string;
+        }>;
+      }
+    | {
+        open: true;
+        slice: 'itinerary_same_day_add_from_candidates';
+        expectedTripRevision: number;
+        itemCreates: Array<{
+          tripDayId: string;
+          placeId?: number | null;
+          type?: string;
+          startTimeIso: string;
+          endTimeIso: string;
+          note?: string | null;
+          clientItemKey?: string;
+        }>;
+        candidateRemovals: string[];
+      }
+    | {
+        open: true;
+        slice: 'itinerary_multi_day_add_from_candidates';
+        expectedTripRevision: number;
+        itemCreates: Array<{
+          tripDayId: string;
+          placeId?: number | null;
+          type?: string;
+          startTimeIso: string;
+          endTimeIso: string;
+          note?: string | null;
+          clientItemKey?: string;
+        }>;
+        candidateRemovals: string[];
+      }
+    | {
+        open: true;
+        slice: 'itinerary_same_day_remove_item';
+        expectedTripRevision: number;
+        itemRemovals: string[];
+      }
+    | {
+        open: true;
+        slice: 'itinerary_same_day_reorder_items';
+        expectedTripRevision: number;
+        itemReorders: Array<{ itemId: string; order: number }>;
+      }
+    | {
+        open: true;
+        slice: 'itinerary_same_day_move_and_add';
+        expectedTripRevision: number;
+        timeUpdates: Array<{
+          itemId: string;
+          startTimeIso: string;
+          endTimeIso: string;
+        }>;
+        itemCreates: Array<{
+          tripDayId: string;
+          placeId?: number | null;
+          type?: string;
+          startTimeIso: string;
+          endTimeIso: string;
+          note?: string | null;
+          clientItemKey?: string;
+        }>;
+      }
+    | {
+        open: true;
+        slice: 'itinerary_same_day_reduce_intensity';
+        expectedTripRevision: number;
+        timeUpdates: Array<{
+          itemId: string;
+          startTimeIso: string;
+          endTimeIso: string;
+        }>;
+        itemCreates: Array<{
+          tripDayId: string;
+          placeId?: number | null;
+          type?: string;
+          startTimeIso: string;
+          endTimeIso: string;
+          note?: string | null;
+          clientItemKey?: string;
+        }>;
+      }
+    | {
+        open: true;
+        slice: 'unified_plan_version_only';
+        decisionId: string;
+        planVersionId: string;
+        expectedPlanVersionId: string;
+      }
+    | { open: false; reasonCodes: string[] };
 };
 
 export type PlanProposalMutationResponse = {

@@ -1,0 +1,287 @@
+{
+  "at": "2026-08-09T17:03:16.274Z",
+  "dryRun": false,
+  "source": "osm-overpass",
+  "routeArg": "g318",
+  "routes": [
+    "cn.route.g318"
+  ],
+  "radiusM": 25000,
+  "limitPerAnchor": 20,
+  "queries": [
+    "fuel",
+    "charging",
+    "parking",
+    "highway_services",
+    "supermarket",
+    "convenience",
+    "toilets",
+    "car_repair",
+    "camping",
+    "hospital",
+    "toll",
+    "sanitary_dump"
+  ],
+  "candidateCount": 31,
+  "byCanonicalType": {
+    "FUEL_STATION": 7,
+    "PARKING": 16,
+    "SUPERMARKET": 2,
+    "CONVENIENCE_STORE": 2,
+    "TOILETS": 4
+  },
+  "created": 29,
+  "updated": 2,
+  "skipped": 0,
+  "errors": [],
+  "sample": [
+    {
+      "osmKey": "way/1035103267",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/5755945821",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/1097921143",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/1083748790",
+      "nameCN": "卓帆加油站",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/8575498549",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/1099474181",
+      "nameCN": "停车场",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/1104640465",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/1208480805",
+      "nameCN": "勒通古镇·千户藏寨旅游景区停车场",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/13573937490",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/603980180",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/13573937424",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/13573937463",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/13573937458",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/1208291870",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/9931582743",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/1099815670",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/1208291865",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/1208291866",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/1109940171",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/1109940205",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "way/1246419775",
+      "nameCN": "PARKING",
+      "canonicalType": "PARKING",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/8182282431",
+      "nameCN": "金辉超市",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/1783576529",
+      "nameCN": "SUPERMARKET",
+      "canonicalType": "SUPERMARKET",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/9931582744",
+      "nameCN": "优客隆超市",
+      "canonicalType": "CONVENIENCE_STORE",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/13864935701",
+      "nameCN": "CONVENIENCE_STORE",
+      "canonicalType": "CONVENIENCE_STORE",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/11407472815",
+      "nameCN": "TOILETS",
+      "canonicalType": "TOILETS",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/13573937447",
+      "nameCN": "TOILETS",
+      "canonicalType": "TOILETS",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/13939446672",
+      "nameCN": "TOILETS",
+      "canonicalType": "TOILETS",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/13939492967",
+      "nameCN": "TOILETS",
+      "canonicalType": "TOILETS",
+      "category": "SUPPLY",
+      "anchorCN": "理塘",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/4795284323",
+      "nameCN": "FUEL_STATION",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "芒康",
+      "routeId": "cn.route.g318"
+    },
+    {
+      "osmKey": "node/6023901685",
+      "nameCN": "SD Fuel Station",
+      "canonicalType": "FUEL_STATION",
+      "category": "SUPPLY",
+      "anchorCN": "芒康",
+      "routeId": "cn.route.g318"
+    }
+  ]
+}

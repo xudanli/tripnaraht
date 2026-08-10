@@ -8,6 +8,10 @@ import type { Itinerary } from '../../agent/interfaces/trip-plan.interface';
 import { SkillsRegistryService } from '../services/skills-registry.service';
 import { ItineraryItemsService } from '../../itinerary-items/itinerary-items.service';
 import { applyTripUserEdits, type TripUserEdit } from './utils/trip-user-edit.util';
+import {
+  buildEffectivePlanWriteChainBlockedPayload,
+  isDirectPlanMutationBlocked,
+} from '../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 
 export interface TripApplyEditInput extends SkillInput {
   tripId?: string;
@@ -30,6 +34,10 @@ export interface TripApplyEditOutput extends SkillOutput {
   dbEdit?: unknown;
   degraded?: boolean;
   degradedReason?: string;
+  /** P0-1 W1：写链开启时 DB 模式拒绝直写 */
+  writeChainRequired?: boolean;
+  authorizedPaths?: readonly string[];
+  message?: string;
 }
 
 @Injectable()
@@ -61,6 +69,22 @@ export class TripApplyEditSkill implements Skill<TripApplyEditInput, TripApplyEd
     this.logger.debug(`执行 trip.applyEdit: mode=${mode}, tripId=${input.tripId ?? 'n/a'}`);
 
     if (mode === 'db') {
+      // Agent Harness P0-1 W1：route_and_run / INTAKE 短路不得直写 ItineraryItem
+      if (isDirectPlanMutationBlocked()) {
+        const blocked = buildEffectivePlanWriteChainBlockedPayload('trip.applyEdit.skill');
+        this.logger.warn(
+          `[trip.applyEdit] DB write blocked by EFFECTIVE_PLAN_WRITE_CHAIN tripId=${input.tripId ?? 'n/a'}`,
+        );
+        return {
+          mode: 'db',
+          success: false,
+          degraded: true,
+          degradedReason: blocked.code,
+          writeChainRequired: true,
+          authorizedPaths: blocked.authorizedPaths,
+          message: blocked.message,
+        };
+      }
       if (!this.itineraryItemsService) {
         return {
           mode: 'db',

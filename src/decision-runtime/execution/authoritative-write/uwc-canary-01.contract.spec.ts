@@ -28,11 +28,11 @@ describe('UWC-CANARY-01 ACTIONS_COMMIT', () => {
     UWC_ACTIONS_CANARY_ACTION_ALLOWLIST: 'execution.remind',
   } as NodeJS.ProcessEnv;
 
-  it('gate is independent of global AUTHORITATIVE and compensation exec', () => {
+  it('canary gate coexists with OCC + compensation unlock', () => {
     expect(UWC_ACTIONS_CANARY_CONTRACT_COMPLETE).toBe(true);
-    expect(UWC_1C_OCC_UNLOCKED).toBe(false);
-    expect(UWC_AUTHORITATIVE_DUAL_GATE_STATUS.unlocked).toBe(false);
-    expect(UWC_1D_COMPENSATION_EXEC_AUTHORIZED).toBe(false);
+    expect(UWC_1C_OCC_UNLOCKED).toBe(true);
+    expect(UWC_AUTHORITATIVE_DUAL_GATE_STATUS.unlocked).toBe(true);
+    expect(UWC_1D_COMPENSATION_EXEC_AUTHORIZED).toBe(true);
   });
 
   it('kill switch disables canary even when authorized', () => {

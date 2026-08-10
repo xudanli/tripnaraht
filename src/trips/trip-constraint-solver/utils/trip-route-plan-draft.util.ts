@@ -34,7 +34,9 @@ function resolveSegmentPhysics(item: ItemRow): {
   distanceSource: 'trail' | 'travelFromPrevious' | 'travel-eta-terrain' | 'none';
   terrain?: ReturnType<typeof extractTerrainFromItemMetadata>;
 } {
-  const terrain = extractTerrainFromItemMetadata(item.metadata);
+  const terrain = extractTerrainFromItemMetadata(
+    item.metadata ?? item.Place?.metadata,
+  );
   if (item.Trail?.distanceKm != null && item.Trail.distanceKm > 0) {
     return {
       distanceKm: item.Trail.distanceKm,
@@ -93,7 +95,6 @@ export async function synthesizeRoutePlanDraftFromTrip(
                 travelFromPreviousDistance: true,
                 travelFromPreviousDuration: true,
                 trailId: true,
-                metadata: true,
                 Place: {
                   select: { id: true, metadata: true },
                 },

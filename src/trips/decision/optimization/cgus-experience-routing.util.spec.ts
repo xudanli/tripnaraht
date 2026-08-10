@@ -1,7 +1,9 @@
 import type { CGUSCandidate } from './cgus-search.service';
 import {
+  EXPERIENCE_ROUTING_REFERENCE_COST_PER_DAY,
   derivePlanEdgeMetrics,
   evaluateCandidateExperienceRouting,
+  experienceCostToUtilityPenalty,
   softmaxWeightsFromEdgeCosts,
 } from './cgus-experience-routing.util';
 import { resolveExperienceRoutingWeights } from '../policies/experience-routing-policy';
@@ -95,5 +97,52 @@ describe('cgus-experience-routing.util', () => {
     const stormMetrics = derivePlanEdgeMetrics(candidate, stormWorld);
     const calmMetrics = derivePlanEdgeMetrics(candidate, calmWorld);
     expect(stormMetrics.frictionScore).toBeGreaterThan(calmMetrics.frictionScore);
+  });
+
+  it('multi-day south-coast mileage does not saturate utilityPenalty via total minutes', () => {
+    // ~246 km over 8 active days (Iceland south coast style) — previously always hit 0.42
+    const multiDay = makeCandidate('is-south', [
+      { dayIndex: 1, distanceKm: 40, ascentM: 80, slopePct: 4, metadata: { type: 'DRIVE' } },
+      { dayIndex: 2, distanceKm: 35, ascentM: 60, slopePct: 3, metadata: { type: 'DRIVE' } },
+      { dayIndex: 3, distanceKm: 30, ascentM: 120, slopePct: 5, metadata: { type: 'DRIVE' } },
+      { dayIndex: 4, distanceKm: 28, ascentM: 200, slopePct: 6, metadata: { type: 'DRIVE' } },
+      { dayIndex: 5, distanceKm: 25, ascentM: 150, slopePct: 5, metadata: { type: 'DRIVE' } },
+      { dayIndex: 6, distanceKm: 32, ascentM: 90, slopePct: 4, metadata: { type: 'DRIVE' } },
+      { dayIndex: 7, distanceKm: 30, ascentM: 70, slopePct: 3, metadata: { type: 'DRIVE' } },
+      { dayIndex: 8, distanceKm: 26, ascentM: 50, slopePct: 2, metadata: { type: 'DRIVE' } },
+    ]);
+    const balancedWorld: any = {
+      physical: {
+        roadStates: [{ status: 'OPEN', roadId: 'IS-R1' }],
+        climateSeasonality: { typicalWeather: { windSpeedMps: 8, precipitationMmPerHour: 1 } },
+      },
+      human: { fitnessScore: 70, riskTolerance: 'MEDIUM' },
+      routeDirection: { id: 'rd' },
+      experienceFlow: {
+        schemaVersion: EXPERIENCE_FLOW_SCHEMA_V1,
+        tempo: 'BALANCED',
+        heterogeneityIndex: 0.55,
+        surpriseBuffer: 0.2,
+        currentFrictionCapacity: 0.58,
+        narrativeTone: 'balanced_warm',
+      },
+    };
+    const weights = resolveExperienceRoutingWeights({
+      experienceFlow: balancedWorld.experienceFlow,
+      mode: 'DEFAULT',
+    });
+    const audit = evaluateCandidateExperienceRouting(multiDay, balancedWorld, weights);
+    const metrics = derivePlanEdgeMetrics(multiDay, balancedWorld);
+
+    // Day-mean intensity (~30 min/day), not ~270 total minutes
+    expect(metrics.physicalTimeMin).toBeLessThan(60);
+    expect(audit.utilityPenalty).toBeLessThan(0.42);
+    expect(audit.utilityPenalty).toBeLessThan(
+      experienceCostToUtilityPenalty(270, 0.42, EXPERIENCE_ROUTING_REFERENCE_COST_PER_DAY),
+    );
+    expect(audit.utilityPenalty).toBeCloseTo(
+      experienceCostToUtilityPenalty(audit.generalizedCost),
+      5,
+    );
   });
 });

@@ -25,6 +25,7 @@ import {
   resolveInspectorOption,
 } from '../utils/planning-decision-inspector.projection.util';
 import { pickPrimaryConflict } from '../utils/planning-decision-basis.projection.util';
+import { expandConflictLookupIds } from '../utils/resolve-conflict-lookup-ids.util';
 import { buildPlanningDecisionCausalChain } from '../utils/planning-causal-chain.projection.util';
 import { isMcpoiBenchmarkTrip } from '../../benchmarks/multi-constraint-poi/mcpoi-benchmark.constants';
 import {
@@ -116,7 +117,11 @@ export class PlanningDecisionInspectorService {
         this.loadVoteDiscussionHints(tripId, opts.userId ?? proposal.userId),
       ]);
 
-    const primaryConflict = pickPrimaryConflict(conflicts, focusConflictId);
+    const primaryConflict = pickPrimaryConflict(
+      conflicts,
+      focusConflictId,
+      focusConflictId ? expandConflictLookupIds(focusConflictId) : undefined,
+    );
     const planDiff = buildInspectorPlanDiff(proposal, option);
     const memberConsensus = buildInspectorMemberConsensus({
       proposal,
@@ -181,9 +186,11 @@ export class PlanningDecisionInspectorService {
     },
   ): Promise<PlanningDecisionInspector> {
     const conflicts = await this.loadConflicts(tripId);
-    const matchedConflict =
-      pickPrimaryConflict(conflicts, opts.conflictId) ??
-      pickPrimaryConflict(conflicts, opts.problemId);
+    const lookupIds = [
+      ...(opts.conflictId ? expandConflictLookupIds(opts.conflictId) : []),
+      ...expandConflictLookupIds(opts.problemId),
+    ];
+    const matchedConflict = pickPrimaryConflict(conflicts, undefined, lookupIds);
     const focusConflictId = matchedConflict?.id;
 
     const [basis, collaborators] = await Promise.all([

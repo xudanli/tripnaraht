@@ -44,6 +44,7 @@ import {
   RegenerateTripDto,
 } from './dto/trip-draft.dto';
 import { UnifiedBootstrapTripDto } from './dto/unified-bootstrap-trip.dto';
+import { UnifiedBootstrapService } from './services/unified-bootstrap.service';
 import { AdvisorCreateTripDto } from './dto/advisor-create-trip.dto';
 import { EnrichTripDto } from './dto/enrich-trip.dto';
 import { buildTripDraftContract } from './draft-synthesis/contract';
@@ -61,7 +62,7 @@ import {
 import { GetAttentionQueueQueryDto } from './dto/attention-queue.dto';
 import { GetPersonaAlertsQueryDto } from './dto/persona-alerts.dto';
 import { successResponse, errorResponse, ErrorCode } from '../common/dto/standard-response.dto';
-import { mapWriteChainBlockedToErrorResponse } from '../decision-runtime/execution/effective-plan-write-chain-blocked.util';
+import { mapWriteChainBlockedToErrorResponse, assertDirectEffectivePlanWriteBlocked } from '../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { Public } from '../auth/decorators/public.decorator';
 import { AssessTripRequestDto } from './dto/trip-metrics.dto';
@@ -266,6 +267,7 @@ export class TripsController {
     private readonly tripBudgetService: TripBudgetService,
     private readonly tripAdjustmentService: TripAdjustmentService,
     private readonly tripDraftService: TripDraftService,
+    private readonly unifiedBootstrapService: UnifiedBootstrapService,
     private readonly nlTripCreationOrchestrator: NlTripCreationOrchestrator,
     private readonly tripPlanningInitializationService: TripPlanningInitializationService,
     private readonly userIntentStateService: UserIntentStateService,
@@ -421,14 +423,15 @@ export class TripsController {
   }
 
   /**
-   * 统一 Bootstrap：Trip + 同步 Draft Runtime（落 itinerary）。
-   * 与 POST /trips（纯创建）及 NL 创建互补。
+   * 统一 Bootstrap：Trip + 同步生成日程。
+   * - 传 routeTemplateId / templateUuid / classicRouteId → 路线模板物化（CN/IS 经典线）
+   * - 否则 → Draft Runtime（HYBRID/LLM/ALGO）
    */
   @Post('bootstrap')
   @ApiOperation({
-    summary: 'Bootstrap：创建 Trip 并同步生成草案',
+    summary: 'Bootstrap：创建 Trip 并同步生成草案/模板行程',
     description:
-      '参数化创建行程并立即跑统一 Draft Runtime（runDraftPipeline），写入行程项。非 NL；需登录。',
+      '需登录。无模板字段时跑 Draft Runtime；带 routeTemplateId/templateUuid/classicRouteId 时物化 RouteTemplate（中国/冰岛经典自驾等）。',
   })
   @ApiBody({ type: UnifiedBootstrapTripDto })
   @ApiResponse({ status: 200, description: '创建成功', type: ApiSuccessResponseDto })
@@ -454,6 +457,27 @@ export class TripsController {
         return errorResponse(ErrorCode.UNAUTHORIZED, '需要登录才能创建行程');
       }
 
+      // 模板物化分支（中国经典自驾等）
+      if (this.unifiedBootstrapService.hasTemplateIntent(body)) {
+        const result = await this.unifiedBootstrapService.bootstrapFromTemplate(
+          body,
+          userId,
+        );
+        this.emitTripCreatedWorldBus(
+          { id: result.tripId, destination: body.destination },
+          userId,
+        );
+        try {
+          await this.tripBudgetService.setBudgetConstraint(result.tripId, {
+            total: body.totalBudget,
+            currency: body.currency ?? 'CNY',
+          });
+        } catch (e: any) {
+          this.logger.warn(`bootstrap(template) setBudgetConstraint: ${e?.message}`);
+        }
+        return successResponse(result);
+      }
+
       const travelers =
         body.travelers?.length && body.travelers.length > 0
           ? body.travelers
@@ -465,7 +489,7 @@ export class TripsController {
         endDate: body.endDate,
         totalBudget: body.totalBudget,
         travelers: travelers as any,
-        currency: body.currency || 'CNY',
+        currency: body.currency ?? 'CNY',
         pace: TripPace.STANDARD,
       };
 
@@ -475,7 +499,7 @@ export class TripsController {
       try {
         await this.tripBudgetService.setBudgetConstraint(trip.id, {
           total: body.totalBudget,
-          currency: body.currency || 'CNY',
+          currency: body.currency ?? 'CNY',
         });
       } catch (e: any) {
         this.logger.warn(`bootstrap setBudgetConstraint: ${e?.message}`);
@@ -519,6 +543,7 @@ export class TripsController {
       return successResponse({
         tripId: trip.id,
         status: 'CREATED' as const,
+        source: 'DRAFT_RUNTIME' as const,
         draft: pipeline.tripDraftState,
         simulation: pipeline.simulation,
         decisionTrace: pipeline.decisionTrace,
@@ -528,6 +553,9 @@ export class TripsController {
     } catch (error: any) {
       if (error instanceof BadRequestException) {
         return errorResponse(ErrorCode.VALIDATION_ERROR, error.message);
+      }
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message, { statusCode: 404 });
       }
       this.logger.error(`bootstrapUnified failed: ${error?.message}`, error?.stack);
       return errorResponse(ErrorCode.BUSINESS_ERROR, error?.message || 'bootstrap 失败');
@@ -7583,6 +7611,9 @@ export class TripsController {
     @CurrentUser() user?: CurrentUserPayload,
   ) {
     try {
+      // Agent Harness P0-1 W2 / D1：批量结构更新须走写链
+      assertDirectEffectivePlanWriteBlocked('trips.batchUpdateItems');
+
       const errors: Array<{ itemId: string; error: string }> = [];
       let updatedCount = 0;
 

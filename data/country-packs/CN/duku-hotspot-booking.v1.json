@@ -1,0 +1,119 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "updatedAt": "2026-08-09",
+    "corridor": "cn.route.duku",
+    "disclaimer": "独库公路季节性开园；票价与通行为示意，须以交警/景区当日通告与飞猪实时商品为准。",
+    "sources": ["public travel guides / OTA samples for Bayanbulak & Kuqa"]
+  },
+  "hotspots": [
+    {
+      "id": "cn.poi.jiuqu",
+      "nameCN": "九曲十八弯",
+      "nameEN": "Jiuqu Shibawan",
+      "aliases": ["九曲十八弯观景台", "巴音布鲁克九曲十八弯"],
+      "hubCityCN": "巴音布鲁克",
+      "category": "scenic",
+      "altitudeMetersHint": 2500,
+      "openSeason": {
+        "peak": {
+          "start": "--06-01",
+          "end": "--09-30",
+          "hoursHint": "夏季独库开园窗口内；日出日落档最挤（示意）"
+        },
+        "bestVisitMonthsHint": [6, 7, 8, 9]
+      },
+      "booking": {
+        "realNameRequired": true,
+        "advanceBookingDaysHint": { "min": 0, "recommended": 1, "peakHoliday": 2 },
+        "channelsHintCN": ["飞猪/主流 OTA", "景区窗口"],
+        "sameDayValid": true,
+        "mustHintsCN": [
+          "须先确认独库公路当季开园与管制",
+          "观景台日出日落人流大，临崖停车勿占应急通道",
+          "天气突变常见，预留弹性日"
+        ]
+      },
+      "priceBandsCNY": {
+        "gateListAdult": { "peak": 95, "offPeak": 70, "note": "门市常见挂牌示意（含草原景区组合时另计）" },
+        "otaAdult": { "low": 60, "high": 120, "note": "以实时商品为准" }
+      },
+      "consultBlurbCN": "九曲十八弯在独库夏季窗口内最稳；先核开园通告再订票。日出日落档拥挤，价以 OTA/窗口为准。"
+    },
+    {
+      "id": "cn.poi.bayanbulak",
+      "nameCN": "巴音布鲁克",
+      "nameEN": "Bayanbulak",
+      "aliases": ["巴音布鲁克草原", "巴音布鲁克景区"],
+      "hubCityCN": "巴音布鲁克",
+      "category": "scenic",
+      "altitudeMetersHint": 2500,
+      "openSeason": {
+        "peak": {
+          "start": "--06-01",
+          "end": "--09-30",
+          "hoursHint": "草原旺季与独库开园高度重叠"
+        },
+        "bestVisitMonthsHint": [6, 7, 8]
+      },
+      "booking": {
+        "realNameRequired": true,
+        "advanceBookingDaysHint": { "min": 0, "recommended": 1, "peakHoliday": 2 },
+        "channelsHintCN": ["飞猪/主流 OTA", "景区"],
+        "sameDayValid": true,
+        "mustHintsCN": [
+          "过夜优先镇区，油料与防寒提前准备",
+          "可与九曲十八弯同廊道串联，勿夜赶临崖段"
+        ]
+      },
+      "priceBandsCNY": {
+        "gateListAdult": { "peak": 95, "offPeak": 70, "note": "草原景区常见挂牌示意" },
+        "otaAdult": { "low": 55, "high": 110, "note": "以实时商品为准" }
+      },
+      "consultBlurbCN": "巴音布鲁克宜独库开园季前往；过夜优先镇区，串联九曲时控制驾驶节奏。"
+    },
+    {
+      "id": "cn.poi.kuqa_palace",
+      "nameCN": "库车王府",
+      "nameEN": "Kuqa Royal Palace",
+      "aliases": ["库车王府景区", "龟兹王府"],
+      "hubCityCN": "库车",
+      "category": "scenic",
+      "openSeason": {
+        "peak": {
+          "start": "--04-01",
+          "end": "--10-31",
+          "hoursHint": "约 09:00–19:00（示意）"
+        },
+        "bestVisitMonthsHint": [5, 6, 7, 8, 9]
+      },
+      "booking": {
+        "realNameRequired": true,
+        "advanceBookingDaysHint": { "min": 0, "recommended": 0, "peakHoliday": 1 },
+        "channelsHintCN": ["飞猪/主流 OTA", "现场"],
+        "sameDayValid": true,
+        "mustHintsCN": ["适合独库终点缓冲半日", "盛夏注意防晒与补水"]
+      },
+      "priceBandsCNY": {
+        "gateListAdult": { "peak": 45, "offPeak": 35, "note": "门市常见挂牌示意" },
+        "otaAdult": { "low": 25, "high": 50, "note": "以实时商品为准" }
+      },
+      "consultBlurbCN": "库车王府适合独库终点轻游，多数可当日订；价以 OTA/窗口为准。"
+    }
+  ],
+  "lodgingNotes": [
+    {
+      "hubCityCN": "巴音布鲁克",
+      "role": "mid_corridor_overnight",
+      "altitudeMetersHint": 2500,
+      "mustHintsCN": ["旺季房源紧张，建议提前订", "夜间气温低，备防寒"],
+      "priceBandCNYHint": { "mid": [180, 450], "note": "OTA 示意，非承诺" }
+    },
+    {
+      "hubCityCN": "库车",
+      "role": "terminus",
+      "mustHintsCN": ["独库南口整备/还车枢纽", "下山后优先休息再进城游"],
+      "priceBandCNYHint": { "mid": [160, 380], "note": "OTA 示意，非承诺" }
+    }
+  ]
+}

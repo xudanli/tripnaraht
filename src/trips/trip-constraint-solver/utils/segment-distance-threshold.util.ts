@@ -217,18 +217,23 @@ export function applyMaxSegmentDistanceConstraintPatch(
   return true;
 }
 
-/** 新建冰岛行程时写入 metadata.constraints 的默认值（用户未显式设置时） */
+/**
+ * 新建行程时写入 metadata.constraints 的国家默认值（用户未显式设置时）。
+ * 支持 IS / CN / CN_XIZANG / CN_SICHUAN 等配置了 drivingSegmentThresholds 的 pack。
+ */
 export function seedDefaultTripConstraintsMetadata(
   destination: string,
   existingConstraints?: Record<string, unknown>,
 ): Record<string, unknown> | undefined {
-  const code = normalizeDestinationCode(destination);
-  if (code !== 'IS') return undefined;
-  if (readPositiveNumber(existingConstraints?.maxSegmentDistanceKm) != null) return undefined;
+  if (readPositiveNumber(existingConstraints?.maxSegmentDistanceKm) != null) {
+    return undefined;
+  }
+  const thresholds = countrySegmentDistanceThresholds(destination);
+  if (!thresholds) return undefined;
 
   return {
-    maxSegmentDistanceKm: ICELAND_SEGMENT_DISTANCE_THRESHOLDS.maxSegmentDistanceKm,
-    warnSegmentDistanceKm: ICELAND_SEGMENT_DISTANCE_THRESHOLDS.warnSegmentDistanceKm,
+    maxSegmentDistanceKm: thresholds.maxSegmentDistanceKm,
+    warnSegmentDistanceKm: thresholds.warnSegmentDistanceKm,
   };
 }
 

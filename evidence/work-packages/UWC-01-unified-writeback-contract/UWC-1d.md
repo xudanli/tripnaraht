@@ -1,8 +1,8 @@
 # UWC-1d — Recovery / Compensation Contract
 
-**Status:** DONE (contract + Shadow decision path)  
-**Compensation exec:** **FORBIDDEN** (`UWC_1D_COMPENSATION_EXEC_AUTHORIZED=false`)  
-**Write AUTHORITATIVE:** still locked (1c dual gates)
+**Status:** DONE (contract) + **UWC-COMP-UNLOCK-01** (exec authorized)  
+**Compensation exec:** **ALLOWED** (`UWC_1D_COMPENSATION_EXEC_AUTHORIZED=true`)  
+**Write AUTHORITATIVE:** unlocked (see UWC-OCC-UNLOCK-01)
 
 ## Two layers
 
@@ -29,12 +29,13 @@ Authority → Verification → Idempotency (ALREADY_APPLIED first) → OCC → A
 
 Version drift → **COMPENSATION_CONFLICT** (never overwrite later edits)
 
-## Cutover Gate (post-1d)
+Shadow default: `shadowOnly=true` still yields decision-only (`SHADOW_ONLY_NO_WRITE`).  
+Exec path: `shadowOnly=false` + authorized → `COMPENSATION_APPLIED`.
 
-Order: **ACTIONS_COMMIT** (PENDING_CANARY_REVIEW) → ITINERARY_ADJUST (blocked) → UNIFIED_EXECUTE (blocked)  
+## Still excluded from clients
 
-Do **not** auto-unlock all three. Next review: ACTIONS_COMMIT Canary only.
+UWC-1e `autoUndo=false` · `auto_compensation` excluded capability · no page Apply.
 
 ## Next
 
-ACTIONS_COMMIT Canary review → then UWC-1e protocol / further cutover. Compensation exec gate stays closed until explicit auth.
+Confirm multi-instance live proof; do not expand external compensation surfaces without a new decision.

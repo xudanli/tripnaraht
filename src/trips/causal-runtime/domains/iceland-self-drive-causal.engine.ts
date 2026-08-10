@@ -34,13 +34,17 @@ export function windToSpeedFactor(
   windMps: number,
   exposure: IcelandWindExposure = 'medium',
   calibration?: { windFactorAdjust?: number },
+  opts?: { highRoof?: boolean; windGustMps?: number },
 ): number {
-  const gustBoost = 0;
-  const effectiveWind = windMps + gustBoost;
-  const base = 1 - (effectiveWind / 35) * 0.42;
+  const gustExtra =
+    opts?.windGustMps != null ? Math.max(0, opts.windGustMps - windMps) * 0.55 : 0;
+  const effectiveWind = windMps + gustExtra;
+  /** High-roof vehicles feel crosswind sooner — explicit rule, not learned. */
+  const roofMult = opts?.highRoof ? 1.22 : 1;
+  const base = 1 - (effectiveWind / 35) * 0.42 * roofMult;
   const adjust = calibration?.windFactorAdjust ?? 0;
   const factored = base / exposureWindMultiplier(exposure) + adjust;
-  return Math.max(0.52, Math.min(1, factored));
+  return Math.max(0.48, Math.min(1, factored));
 }
 
 export function computeTravelTimeDistribution(input: {
@@ -48,10 +52,15 @@ export function computeTravelTimeDistribution(input: {
   distanceKm: number;
   windMps: number;
   windExposure?: IcelandWindExposure;
+  windGustMps?: number;
+  highRoof?: boolean;
   calibration?: { windFactorAdjust?: number };
 }): IcelandTravelTimeDistribution {
   const exposure = input.windExposure ?? 'medium';
-  const windSpeedFactor = windToSpeedFactor(input.windMps, exposure, input.calibration);
+  const windSpeedFactor = windToSpeedFactor(input.windMps, exposure, input.calibration, {
+    highRoof: input.highRoof,
+    windGustMps: input.windGustMps,
+  });
   const pointMinutes = Math.max(5, Math.round(input.baseDurationMinutes / windSpeedFactor));
   const uncertaintySpread = Math.min(0.38, 0.12 + input.windMps / 45);
   const p10Minutes = Math.max(1, Math.round(pointMinutes * (1 - uncertaintySpread * 0.35)));
@@ -114,6 +123,8 @@ export function runIcelandSelfDriveCausalAnalysis(
     distanceKm: input.distanceKm,
     windMps: input.windMps,
     windExposure: input.windExposure,
+    windGustMps: input.windGustMps,
+    highRoof: input.highRoof,
     calibration,
   });
 

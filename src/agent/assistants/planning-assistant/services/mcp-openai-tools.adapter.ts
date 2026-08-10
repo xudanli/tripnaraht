@@ -14,6 +14,11 @@ export const AGENTIC_MCP_LLM_EXPOSE_WHITELIST = new Set<string>([
   'exa.webSearch',
   'exa.webSearchAdvanced',
   'exa.deepSearch',
+  // 小红书（只读社区体验；禁止 publish/comment）
+  'xiaohongshu.search_feeds',
+  'xiaohongshu.get_feed_detail',
+  'xiaohongshu.user_profile',
+  'xiaohongshu.list_feeds',
   // accommodation / transport 查询
   'airbnb.search',
   'airbnb.listingDetails',
@@ -21,6 +26,11 @@ export const AGENTIC_MCP_LLM_EXPOSE_WHITELIST = new Set<string>([
   'hotel.getDetails',
   'rail.searchRoutes',
   'rail.getSchedule',
+  // 飞猪 FlyAI（国内酒店/门票/机票/租车/美食；只读检索）
+  'fliggy.search_hotel',
+  'fliggy.search_poi',
+  'fliggy.search_flight',
+  'fliggy.keyword_search',
 ]);
 
 /** LLM 函数名（OpenAI 仅允许 [a-zA-Z0-9_-]+）↔ MCP 路由 */

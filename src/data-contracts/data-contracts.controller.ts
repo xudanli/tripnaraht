@@ -20,11 +20,30 @@ export class DataContractsController {
   @Get('road-status')
   @ApiOperation({
     summary: '获取路况状态',
-    description: '根据经纬度获取路况状态。系统会自动选择合适的数据源适配器（冰岛使用 road.is，其他国家使用默认适配器）。',
+    description:
+      '根据经纬度获取路况状态。IS→road.is；CN→季节窗/走廊顾问（非准实时交警）；其他→默认兜底（不再宣称 risk=0）。',
   })
   @ApiQuery({ name: 'lat', description: '纬度', example: 64.1466, type: Number, required: true })
   @ApiQuery({ name: 'lng', description: '经度', example: -21.9426, type: Number, required: true })
   @ApiQuery({ name: 'radius', description: '查询半径（米）', example: 50000, type: Number, required: false })
+  @ApiQuery({
+    name: 'countryCode',
+    description: '可选：显式国家代码（如 CN）',
+    example: 'CN',
+    required: false,
+  })
+  @ApiQuery({
+    name: 'classicRouteId',
+    description: '中国：经典线 ID，用于季节窗评估',
+    example: 'cn.route.g318',
+    required: false,
+  })
+  @ApiQuery({
+    name: 'asOfDate',
+    description: '评估日期 YYYY-MM-DD（默认今天）',
+    example: '2026-07-15',
+    required: false,
+  })
   @ApiQuery({ name: 'includeFRoadInfo', description: '是否包含 F-Road 信息（冰岛特定）', example: false, type: Boolean, required: false })
   @ApiQuery({ name: 'includeRiverCrossing', description: '是否包含河流渡口信息（冰岛特定）', example: false, type: Boolean, required: false })
   @ApiResponse({
@@ -66,6 +85,9 @@ export class DataContractsController {
     @Query('lat') lat: string,
     @Query('lng') lng: string,
     @Query('radius') radius?: string,
+    @Query('countryCode') countryCode?: string,
+    @Query('classicRouteId') classicRouteId?: string,
+    @Query('asOfDate') asOfDate?: string,
     @Query('includeFRoadInfo') includeFRoadInfo?: string,
     @Query('includeRiverCrossing') includeRiverCrossing?: string,
   ) {
@@ -89,6 +111,9 @@ export class DataContractsController {
         lat: latNum,
         lng: lngNum,
         radius: radius ? parseInt(radius, 10) : undefined,
+        countryCode: countryCode?.trim() || undefined,
+        classicRouteId: classicRouteId?.trim() || undefined,
+        asOfDate: asOfDate?.trim() || undefined,
         includeFRoadInfo: includeFRoadInfo === 'true',
         includeRiverCrossing: includeRiverCrossing === 'true',
       };
@@ -119,6 +144,9 @@ export class DataContractsController {
     @Query('lat') lat: string,
     @Query('lng') lng: string,
     @Query('radius') radius?: string,
+    @Query('countryCode') countryCode?: string,
+    @Query('classicRouteId') classicRouteId?: string,
+    @Query('asOfDate') asOfDate?: string,
     @Query('includeFRoadInfo') includeFRoadInfo?: string,
     @Query('includeRiverCrossing') includeRiverCrossing?: string,
   ) {
@@ -134,6 +162,9 @@ export class DataContractsController {
         lat: latNum,
         lng: lngNum,
         radius: radius ? parseInt(radius, 10) : undefined,
+        countryCode: countryCode?.trim() || undefined,
+        classicRouteId: classicRouteId?.trim() || undefined,
+        asOfDate: asOfDate?.trim() || undefined,
         includeFRoadInfo: includeFRoadInfo === 'true',
         includeRiverCrossing: includeRiverCrossing === 'true',
       };

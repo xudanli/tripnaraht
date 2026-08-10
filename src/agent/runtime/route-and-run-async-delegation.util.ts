@@ -55,6 +55,8 @@ export function shouldDelegateRouteAndRunToAsync(input: AsyncDelegationClassifyI
   const mode = parseRouteAndRunAsyncMode(input.request.options?.async_mode);
   if (mode === 'OFF') return false;
   if (input.request.options?.dry_run === true) return false;
+  /** Durable worker 内执行：禁止再次委托，否则会无限创建 task */
+  if (input.request.options?.skip_async_delegation === true) return false;
   if (input.request.options?.orchestration_replay_anchor_snapshot_id) return false;
   if (input.wouldRedirectToPlanningWorkbench) return false;
 

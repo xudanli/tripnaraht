@@ -3,6 +3,11 @@ import { DateTime } from 'luxon';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AttractionExploreRouteDetourService } from '../../attraction-explore/services/attraction-explore-route-detour.service';
 import { resolvePlaceCoordsOrNull } from '../../attraction-explore/utils/attraction-explore-place.util';
+import {
+  buildDayDateTime,
+  formatDayClockTime,
+} from '../../utils/arrange-itinerary-day.util';
+import { resolveTripTimezone } from '../../../common/utils/destination-timezone.util';
 import { PlanningModeService, type PlanningWorkbenchMode } from './planning-mode.service';
 import { PlanProposalStoreService } from './plan-proposal-store.service';
 import type { PlanningDecisionOption } from '../types/planning-decision-pack.types';
@@ -47,7 +52,7 @@ export class ArrangeItineraryCopilotService {
     const mode = await this.planningMode.getMode(tripId);
     const suggestions: CopilotSuggestion[] = [];
 
-    const [candidates, tripDays, placedPlaceIds, routeItems] = await Promise.all([
+    const [candidates, tripDays, placedPlaceIds, routeItems, trip] = await Promise.all([
       this.prisma.tripAttractionExploreCandidate.findMany({
         where: { tripId },
         include: { Place: true },
@@ -63,7 +68,15 @@ export class ArrangeItineraryCopilotService {
         where: { TripDay: { tripId }, placeId: { not: null } },
         select: { placeId: true },
       }),
+      this.prisma.trip.findUnique({
+        where: { id: tripId },
+        select: { destination: true, metadata: true },
+      }),
     ]);
+    const timezone = resolveTripTimezone({
+      destination: trip?.destination,
+      metadata: trip?.metadata,
+    });
 
     const activeProposal = this.proposalStore
       .listByTrip(tripId, ['AWAITING_CONFIRMATION', 'PREVIEW'])
@@ -159,14 +172,14 @@ export class ArrangeItineraryCopilotService {
 
     for (let dayIndex = 0; dayIndex < tripDays.length; dayIndex += 1) {
       const tripDay = tripDays[dayIndex]!;
-      const gap = await this.findLargestGap(tripDay.id, tripDay.date);
+      const gap = await this.findLargestGap(tripDay.id, tripDay.date, timezone);
       if (gap && gap.durationMinutes >= 120) {
         const dayNum = dayIndex + 1;
         suggestions.push({
           id: `gap-day-${dayNum}`,
           kind: 'time_gap',
           title: `第 ${dayNum} 天有 ${Math.round(gap.durationMinutes / 60)} 小时空档`,
-          detail: `约 ${this.formatTime(gap.start)} 起可安排活动`,
+          detail: `约 ${formatDayClockTime(gap.start, timezone)} 起可安排活动`,
           priority: mode.mode === 'copilot' ? 'medium' : 'low',
           actionHint:
             mode.mode === 'copilot'
@@ -196,7 +209,7 @@ export class ArrangeItineraryCopilotService {
                   id: `cf_gap_${dayNum}`,
                   label: `第 ${dayNum} 天空档`,
                   dayIndex: dayNum,
-                  before: `${this.formatTime(gap.start)} 起空闲`,
+                  before: `${formatDayClockTime(gap.start, timezone)} 起空闲`,
                   after: '（安排候选活动）',
                 },
               ],
@@ -264,6 +277,7 @@ export class ArrangeItineraryCopilotService {
   private async findLargestGap(
     tripDayId: string,
     dayDate: Date,
+    timezone: string = 'utc',
   ): Promise<{ start: Date; durationMinutes: number } | null> {
     const items = await this.prisma.itineraryItem.findMany({
       where: { tripDayId, startTime: { not: null }, endTime: { not: null } },
@@ -272,19 +286,21 @@ export class ArrangeItineraryCopilotService {
     });
 
     if (items.length === 0) {
-      const start = DateTime.fromJSDate(dayDate, { zone: 'utc' })
-        .set({ hour: 9, minute: 0 })
-        .toJSDate();
-      const end = DateTime.fromJSDate(dayDate, { zone: 'utc' })
-        .set({ hour: 18, minute: 0 })
-        .toJSDate();
-      return { start, durationMinutes: 540 };
+      const start = buildDayDateTime(dayDate, '09:00', timezone);
+      const end = buildDayDateTime(dayDate, '18:00', timezone);
+      return {
+        start,
+        durationMinutes: Math.round(
+          DateTime.fromJSDate(end, { zone: 'utc' }).diff(
+            DateTime.fromJSDate(start, { zone: 'utc' }),
+            'minutes',
+          ).minutes,
+        ),
+      };
     }
 
     let best: { start: Date; durationMinutes: number } | null = null;
-    let cursor = DateTime.fromJSDate(dayDate, { zone: 'utc' })
-      .set({ hour: 9, minute: 0 })
-      .toJSDate();
+    let cursor = buildDayDateTime(dayDate, '09:00', timezone);
 
     for (const item of items) {
       if (!item.startTime || !item.endTime) continue;
@@ -299,9 +315,5 @@ export class ArrangeItineraryCopilotService {
     }
 
     return best;
-  }
-
-  private formatTime(value: Date): string {
-    return DateTime.fromJSDate(value, { zone: 'utc' }).toFormat('HH:mm');
   }
 }

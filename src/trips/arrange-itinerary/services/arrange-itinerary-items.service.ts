@@ -20,6 +20,7 @@ import {
   scheduleTimelineUserId,
   toZeroBasedDayIndex,
 } from '../../utils/arrange-itinerary-day.util';
+import { resolveTripTimezone } from '../../../common/utils/destination-timezone.util';
 import { extractPlaceMeta } from '../../attraction-explore/utils/attraction-explore-place.util';
 import { AttractionExploreCandidateService } from '../../attraction-explore/services/attraction-explore-candidate.service';
 
@@ -48,11 +49,13 @@ export class ArrangeItineraryItemsService {
 
     const tripDays = await this.loadTripDays(input.tripId);
     const tripDay = resolveTripDayByIndex(tripDays, input.body.dayIndex);
+    const timezone = await this.loadTripTimezone(input.tripId);
     const dwell = extractPlaceMeta(candidate.Place).suggestedDwellMinutes ?? 90;
 
     const { startTime, endTime } = await this.resolveTimeWindow({
       tripDayId: tripDay.id,
       dayDate: tripDay.date,
+      timezone,
       startTime: input.body.startTime,
       endTime: input.body.endTime,
       defaultDurationMinutes: dwell,
@@ -105,9 +108,10 @@ export class ArrangeItineraryItemsService {
   }): Promise<ArrangeItineraryMutationResult> {
     const tripDays = await this.loadTripDays(input.tripId);
     const tripDay = resolveTripDayByIndex(tripDays, input.body.dayIndex);
+    const timezone = await this.loadTripTimezone(input.tripId);
 
-    const startTime = buildDayDateTime(tripDay.date, input.body.startTime);
-    const endTime = buildDayDateTime(tripDay.date, input.body.endTime);
+    const startTime = buildDayDateTime(tripDay.date, input.body.startTime, timezone);
+    const endTime = buildDayDateTime(tripDay.date, input.body.endTime, timezone);
     if (startTime >= endTime) {
       throw new BadRequestException('结束时间必须晚于开始时间');
     }
@@ -149,8 +153,9 @@ export class ArrangeItineraryItemsService {
   }): Promise<ArrangeItineraryMutationResult> {
     const tripDays = await this.loadTripDays(input.tripId);
     const tripDay = resolveTripDayByIndex(tripDays, input.body.dayIndex);
-    const startTime = buildDayDateTime(tripDay.date, input.body.startTime);
-    const endTime = buildDayDateTime(tripDay.date, input.body.endTime);
+    const timezone = await this.loadTripTimezone(input.tripId);
+    const startTime = buildDayDateTime(tripDay.date, input.body.startTime, timezone);
+    const endTime = buildDayDateTime(tripDay.date, input.body.endTime, timezone);
     if (startTime >= endTime) {
       throw new BadRequestException('结束时间必须晚于开始时间');
     }
@@ -185,24 +190,37 @@ export class ArrangeItineraryItemsService {
     return tripDays;
   }
 
+  private async loadTripTimezone(tripId: string): Promise<string> {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { destination: true, metadata: true },
+    });
+    return resolveTripTimezone({
+      destination: trip?.destination,
+      metadata: trip?.metadata,
+    });
+  }
+
   private async resolveTimeWindow(input: {
     tripDayId: string;
     dayDate: Date;
+    timezone: string;
     startTime?: string;
     endTime?: string;
     defaultDurationMinutes: number;
     insertMode: 'append' | 'before' | 'after';
     anchorItemId?: string;
   }): Promise<{ startTime: Date; endTime: Date }> {
+    const tz = input.timezone || 'utc';
     if (input.startTime && input.endTime) {
       return {
-        startTime: buildDayDateTime(input.dayDate, input.startTime),
-        endTime: buildDayDateTime(input.dayDate, input.endTime),
+        startTime: buildDayDateTime(input.dayDate, input.startTime, tz),
+        endTime: buildDayDateTime(input.dayDate, input.endTime, tz),
       };
     }
 
     if (input.startTime) {
-      const start = buildDayDateTime(input.dayDate, input.startTime);
+      const start = buildDayDateTime(input.dayDate, input.startTime, tz);
       return {
         startTime: start,
         endTime: DateTime.fromJSDate(start, { zone: 'utc' })
@@ -222,7 +240,7 @@ export class ArrangeItineraryItemsService {
       if (!anchor) throw new NotFoundException('锚点行程项不存在');
       const anchorStart = anchor.startTime
         ? DateTime.fromJSDate(anchor.startTime, { zone: 'utc' })
-        : DateTime.fromJSDate(buildDayDateTime(input.dayDate, '09:00'), { zone: 'utc' });
+        : DateTime.fromJSDate(buildDayDateTime(input.dayDate, '09:00', tz), { zone: 'utc' });
       const anchorEnd = anchor.endTime
         ? DateTime.fromJSDate(anchor.endTime, { zone: 'utc' })
         : anchorStart.plus({ minutes: input.defaultDurationMinutes });
@@ -241,7 +259,7 @@ export class ArrangeItineraryItemsService {
     const last = dayItems[dayItems.length - 1];
     const start = last?.endTime
       ? DateTime.fromJSDate(last.endTime, { zone: 'utc' }).plus({ minutes: 15 }).toJSDate()
-      : buildDayDateTime(input.dayDate, '09:00');
+      : buildDayDateTime(input.dayDate, '09:00', tz);
 
     return {
       startTime: start,

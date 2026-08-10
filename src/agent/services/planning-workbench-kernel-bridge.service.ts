@@ -720,6 +720,21 @@ export class PlanningWorkbenchKernelBridgeService {
         currentPhase: 'GATE_EVAL',
         startedAt: new Date().toISOString(),
         lastUpdatedAt: new Date().toISOString(),
+        ...(() => {
+          const ext = request as PlanningWorkbenchRequest & {
+            tripMetadata?: Record<string, unknown>;
+            metadata?: Record<string, unknown>;
+          };
+          const meta = ext.tripMetadata ?? ext.metadata;
+          if (
+            meta &&
+            typeof meta === 'object' &&
+            (meta.travelDecisionContract != null || meta.icelandSelfDrive != null || meta.constraints != null)
+          ) {
+            return { tripMetadata: meta };
+          }
+          return {};
+        })(),
       },
       travelOntologyState: request.tripId ? { tripId: request.tripId } : undefined,
       requestId,

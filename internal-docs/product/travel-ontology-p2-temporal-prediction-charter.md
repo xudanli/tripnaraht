@@ -3,6 +3,7 @@
 **正式项目名：** Travel Ontology P2 — Temporal Prediction & Outcome Reconciliation  
 **中文：** 时序预测与决策结果对账  
 **状态：** `ACTIVE` — Gate 0 PASS · P2-01 Shadow APPROVED · P2-02A Quality PASS · P2-02B APPROVED_INTERNAL_ADVISORY_ONLY · P2-02C Observation Gate PASS · **P2-03A APPROVED / READY_FOR_SELECTED_USER_LIVE_ACTIVATION**（Kill Switch 默认开启；非 Pilot Pass）  
+**能力边界：** [TRIPNARA-CAPABILITY-BOUNDARIES.md](./TRIPNARA-CAPABILITY-BOUNDARIES.md) — P2 为 **SHADOW** 时序预测与对账；P1 仅 **weather deterioration** 在 build；road/activity DEPRECATED。  
 **上位：** [P1 Closure](./travel-ontology-p1-closure-report.md) · [P0 Closure](./travel-ontology-p0-closure-report.md) · [P2-01](./travel-ontology-p2-01-weather-shadow-pilot.md) · [P2-02A](./travel-ontology-p2-02a-weather-quality-gate.md) · [P2-02B](./travel-ontology-p2-02b-internal-temporal-advisory.md) · [P2-02C](./travel-ontology-p2-02c-observation-gate.md) · [P2-03A](./travel-ontology-p2-03a-selected-user-advisory.md) · [Weather Slice](./travel-ontology-p1-weather-deterioration-slice.md)
 
 ---

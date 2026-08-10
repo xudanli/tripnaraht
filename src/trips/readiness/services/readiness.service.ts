@@ -10,7 +10,12 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ReadinessPack } from '../types/readiness-pack.types';
 import { TripContext } from '../types/trip-context.types';
-import { ReadinessCheckResult, ReadinessDisclaimer, ReadinessFinding } from '../types/readiness-findings.types';
+import {
+  ReadinessCheckResult,
+  ReadinessDisclaimer,
+  ReadinessFinding,
+  ReadinessFindingItem,
+} from '../types/readiness-findings.types';
 import { TrustMetricsService } from './trust-metrics.service';
 import { ReadinessChecker } from '../engine/readiness-checker';
 import { FactsToReadinessCompiler } from '../compilers/facts-to-readiness.compiler';
@@ -19,6 +24,16 @@ import { findCountryProfileCompat } from '../../../countries/country-profile-com
 import { ReadinessToConstraintsCompiler } from '../compilers/readiness-to-constraints.compiler';
 import { PackStorageService } from '../storage/pack-storage.service';
 import { mergeReadinessFindings } from '../utils/readiness-pack-overlay.util';
+import {
+  buildCnDrivingLimitFindingItem,
+  collectCnContextHints,
+  resolveCnDrivingLimitCity,
+  selectCnReadinessPacks,
+} from '../utils/cn-regional-pack-select.util';
+import {
+  buildCnClassicRouteFindingItems,
+  matchCnClassicRoutes,
+} from '../utils/cn-classic-routes.util';
 import { TripWorldState } from '../../decision/world-model';
 import { GeoFactsService } from './geo-facts.service';
 import { logThrottledDebug } from '../../../common/utils/throttled-debug-log.util';
@@ -232,6 +247,9 @@ export class ReadinessService {
       geoLat?: number; // 地理坐标（用于查询地理特征）
       geoLng?: number;
       lang?: 'en' | 'zh'; // 目标语言（默认 'en'）
+      /** 城市/POI 名等，用于 CN 子 pack 与限行提示 */
+      placeNames?: string[];
+      userMessage?: string;
     }
   ): Promise<ReadinessCheckResult> {
     // 如果启用了地理特征增强且有坐标，则获取地理特征
@@ -466,19 +484,34 @@ export class ReadinessService {
 
     // 6. 国家代码匹配（降级策略）
     if (countryCode) {
-      const packs = await this.packStorage.findPacksByCountry(countryCode);
+      let packs = await this.packStorage.findPacksByCountry(countryCode);
       if (packs.length > 0) {
+        const cnHints = collectCnContextHints({
+          destinationId,
+          activities: enhancedContext.itinerary?.activities,
+          placeNames: options?.placeNames,
+          userMessage: options?.userMessage,
+        });
+        if (countryCode.toUpperCase() === 'CN') {
+          packs = selectCnReadinessPacks(packs, {
+            destinationId,
+            hints: cnHints,
+          });
+        }
         logThrottledDebug(
           this.logger,
           `readiness:pack:country:${countryCode}`,
           `Found ${packs.length} pack(s) by country: ${countryCode} (strict derivation)`,
         );
-        const result = await this.checkPacksWithCountryDerivation(
+        let result = await this.checkPacksWithCountryDerivation(
           packs,
           countryCode,
           enhancedContext,
           lang,
         );
+        if (countryCode.toUpperCase() === 'CN') {
+          result = this.appendCnContextFindings(result, cnHints, lang);
+        }
         return this.finalizeCheckResult(result, lang);
       }
     }
@@ -584,6 +617,60 @@ export class ReadinessService {
       return this.checkCountryStrictDerivation(countryCode, packs, context, lang);
     }
     return this.checkFromPacks(packs, context, lang);
+  }
+
+  /**
+   * CN 上下文增强：城市限行 + 经典/小众自驾线（静态提示，非实时路况）。
+   */
+  private appendCnContextFindings(
+    result: ReadinessCheckResult,
+    hints: string[],
+    lang: 'en' | 'zh',
+  ): ReadinessCheckResult {
+    const extras: ReadinessFindingItem[] = [];
+    const city = resolveCnDrivingLimitCity(hints);
+    const limitItem = city ? buildCnDrivingLimitFindingItem(city, lang) : null;
+    if (limitItem) extras.push(limitItem);
+    extras.push(...buildCnClassicRouteFindingItems(matchCnClassicRoutes(hints), lang));
+    if (!extras.length) return result;
+
+    let findings = result.findings.map((f, idx) => {
+      if (idx !== 0) return f;
+      let must = f.must;
+      let should = f.should;
+      for (const item of extras) {
+        const bucket = item.level === 'must' ? 'must' : 'should';
+        const list = bucket === 'must' ? must : should;
+        if (list.some((s) => s.id === item.id)) continue;
+        if (bucket === 'must') must = [...must, item];
+        else should = [...should, item];
+      }
+      return { ...f, must, should };
+    });
+    if (!findings.length) {
+      findings = [
+        {
+          destinationId: 'CN',
+          packId: 'pack.cn.china',
+          packVersion: '1.0.0',
+          blockers: [],
+          must: extras.filter((e) => e.level === 'must'),
+          should: extras.filter((e) => e.level !== 'must'),
+          optional: [],
+          risks: [],
+        },
+      ];
+    }
+
+    const summary = {
+      totalBlockers: findings.reduce((sum, f) => sum + f.blockers.length, 0),
+      totalMust: findings.reduce((sum, f) => sum + f.must.length, 0),
+      totalShould: findings.reduce((sum, f) => sum + f.should.length, 0),
+      totalOptional: findings.reduce((sum, f) => sum + f.optional.length, 0),
+      totalRisks: findings.reduce((sum, f) => sum + f.risks.length, 0),
+    };
+
+    return { ...result, findings, summary };
   }
 
   private finalizeCheckResult(

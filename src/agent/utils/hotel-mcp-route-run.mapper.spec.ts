@@ -62,6 +62,41 @@ describe('hotel-mcp-route-run.mapper', () => {
     expect(m!.accommodations[0].source).toBe('airbnb');
   });
 
+  it('preserves fliggy photo/price/url on route_and_run hotel cards', () => {
+    const data = {
+      success: true,
+      source: 'fliggy' as const,
+      results: [
+        {
+          id: 'h1',
+          placeId: 'h1',
+          name: '康定测试酒店',
+          url: 'https://router.feizhu.com/h/1',
+          webUrl: 'https://router.feizhu.com/h/1',
+          appUrl: 'taobaotravel://h/1',
+          photoUrl: 'https://img.alicdn.com/hotel.jpg',
+          imageUrl: 'https://img.alicdn.com/hotel.jpg',
+          photos: ['https://img.alicdn.com/hotel.jpg'],
+          priceLabel: '¥550',
+          bookingProvider: 'fliggy',
+          bookingCtaLabelZh: '在飞猪打开',
+          source: 'fliggy',
+          provider: 'fliggy',
+        },
+      ],
+      totalResults: 1,
+    };
+    const m = mapHotelMcpDataForRouteAndRun(data);
+    expect(m).not.toBeNull();
+    const card = m!.accommodations[0];
+    expect(card.source).toBe('fliggy');
+    expect(card.photoUrl).toContain('alicdn.com');
+    expect(card.priceLabel).toBe('¥550');
+    expect(card.url).toContain('feizhu.com');
+    expect(card.bookingCtaLabelZh).toMatch(/飞猪/);
+    expect(card.bookingProvider).toBe('fliggy');
+  });
+
   it('counts inclusive stay nights between check-in and check-out', () => {
     expect(countStayNightsBetweenInclusive('2026-06-01', '2026-06-07')).toBe(6);
     expect(countStayNightsBetweenInclusive('2026-06-01', '2026-06-02')).toBe(1);

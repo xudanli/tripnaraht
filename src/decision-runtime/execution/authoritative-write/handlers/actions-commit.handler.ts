@@ -7,10 +7,11 @@ import type { CorridorShadowHandler } from '../corridor-handler.types';
 import type { ExpectedWriteVersion, ObservedWriteVersion } from '../expected-write-version';
 import { CORRIDOR_OCC_STRATEGIES } from '../expected-write-version';
 import {
-  hardBlockAuthoritativeApply,
+  assertAuthoritativeApplyAllowed,
   runShadowGatePipeline,
 } from '../shadow-validate.util';
 import { getCorridorWriteTargetProfile } from '../write-target.registry';
+import { executeActionsCommitAuthoritativeCanary } from '../actions-commit-canary.executor';
 
 function buildActionsExpected(input: Record<string, unknown>): ExpectedWriteVersion {
   const strategy = CORRIDOR_OCC_STRATEGIES.ACTIONS_COMMIT;
@@ -111,6 +112,39 @@ export class ActionsCommitCorridorHandler implements CorridorShadowHandler {
   async authoritativeApply(
     command: AuthoritativeWriteCommand,
   ): Promise<AuthoritativeWriteResult> {
-    hardBlockAuthoritativeApply(command);
+    assertAuthoritativeApplyAllowed(command);
+    const legacy = (command.payload?.legacy ?? {}) as Record<string, unknown>;
+    const result = executeActionsCommitAuthoritativeCanary({
+      tripId: command.audit.tripId,
+      requestId: String(command.audit.requestId ?? command.audit.tripId),
+      idempotencyKey: command.idempotency.key,
+      contextSignature:
+        command.verification.kind === 'context_signature'
+          ? command.verification.token
+          : undefined,
+      expectedResourceVersion: legacy.expectedResourceVersion as
+        | string
+        | number
+        | undefined,
+      observedResourceVersion: legacy.observedResourceVersion as
+        | string
+        | number
+        | undefined,
+      actorId: command.audit.actorId,
+    });
+    return {
+      ...result,
+      reasonCodes: [
+        ...result.reasonCodes,
+        'UWC_CUTOVER_01_D1_ACTIONS_AUTHORITATIVE',
+        'GLOBAL_OCC_UNLOCK_AUTHORIZED',
+      ],
+      corridorResult: {
+        ...(result.corridorResult ?? {}),
+        authoritative: true,
+        cutoverDecision: 'D1',
+        dualExecution: false,
+      },
+    };
   }
 }

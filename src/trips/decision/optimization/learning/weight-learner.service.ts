@@ -1,19 +1,15 @@
 // src/trips/decision/optimization/learning/weight-learner.service.ts
 /**
  * 权重学习服务
- * 
- * Phase 3 核心：从用户反馈学习目标函数权重
- * 
- * 学习信号：
- * - 行程满意度评分
- * - 实际疲劳数据
- * - 计划修改频率
- * - 用户偏好变化
- * 
- * 算法：
- * - 梯度下降
- * - 贝叶斯优化
- * - 在线学习（bandit）
+ *
+ * Phase 3 实验能力：从用户反馈学习目标函数权重。
+ *
+ * **CGUS V1 硬边界**：WeightLearner exists ≠ should be activated。
+ * 默认 **NOT_AUTHORIZED** 注入 `cgus-search` 主排序（见 ../cgus-v1-authorization.ts、
+ * ../CGUS_V1_OPERATIONAL_POLICY.md）。可学习、可离线分析；不得在未授权时改变排名。
+ *
+ * 学习信号：满意度、疲劳、计划修改、偏好变化、行程完成等。
+ * 算法：梯度下降 / 贝叶斯优化 / 在线 bandit（实验）。
  */
 
 import { Injectable, Logger, Optional } from '@nestjs/common';

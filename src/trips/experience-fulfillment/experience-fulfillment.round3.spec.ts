@@ -119,5 +119,91 @@ describe('experience-fulfillment Round 3 integration', () => {
     );
     expect(result.valid).toBe(true);
     expect(result.candidates.length).toBe(1);
+    expect(result.repairs).toEqual([]);
+  });
+
+  it('repairs out-of-pool placeId via alternatives then validates', () => {
+    const candidates = [
+      {
+        id: 101,
+        nameCN: 'Reynisfjara',
+        nameEN: 'Reynisfjara',
+        type: 'ATTRACTION',
+        category: 'ATTRACTION',
+        lat: 63.4,
+        lng: -19.0,
+        avgVisitDuration: 45,
+      },
+      {
+        id: 202,
+        nameCN: 'Skógafoss',
+        nameEN: 'Skógafoss',
+        type: 'ATTRACTION',
+        category: 'ATTRACTION',
+        lat: 63.5,
+        lng: -19.5,
+        avgVisitDuration: 60,
+      },
+    ] as any[];
+    const parsed = {
+      days: [
+        {
+          day: 2,
+          slots: {
+            afternoon: {
+              placeId: 388263,
+              reason: '池外咖啡馆',
+              alternatives: [999, 202],
+            },
+          },
+        },
+      ],
+    };
+    const result = validateDraftLlmSlotsAsCandidates(
+      parsed,
+      candidates,
+      { destination: 'IS', travelStyle: 'nature', intensity: 'relaxed' } as any,
+      [{ day: 2, date: '2026-07-11' }],
+    );
+    expect(result.valid).toBe(true);
+    expect(result.repairs.length).toBe(1);
+    expect(result.repairs[0]).toContain('388263');
+    expect(result.repairs[0]).toContain('202');
+    expect((parsed.days[0] as any).slots.afternoon.placeId).toBe(202);
+    expect(result.candidates[0]?.poiId).toBe('202');
+  });
+
+  it('defers out-of-pool placeId when no in-pool alternative', () => {
+    const candidates = [
+      {
+        id: 101,
+        nameCN: 'Reynisfjara',
+        type: 'ATTRACTION',
+        category: 'ATTRACTION',
+        lat: 63.4,
+        lng: -19.0,
+      },
+    ] as any[];
+    const parsed = {
+      days: [
+        {
+          day: 2,
+          slots: {
+            afternoon: { placeId: 388263, reason: '池外点', alternatives: [999] },
+          },
+        },
+      ],
+    };
+    const result = validateDraftLlmSlotsAsCandidates(
+      parsed,
+      candidates,
+      { destination: 'IS' } as any,
+      [{ day: 2, date: '2026-07-11' }],
+    );
+    expect(result.valid).toBe(true);
+    expect(result.candidates.length).toBe(0);
+    expect(result.repairs[0]).toContain('deferred');
+    expect((parsed.days[0] as any).slots.afternoon.deferred).toBe(true);
+    expect((parsed.days[0] as any).slots.afternoon.placeId).toBeUndefined();
   });
 });

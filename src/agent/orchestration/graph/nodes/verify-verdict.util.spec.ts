@@ -68,4 +68,15 @@ describe('buildVerifyPhaseVerdict', () => {
       } as any).kind,
     ).toBe('complete');
   });
+
+  it('returns complete when only advisory issues (no VERIFY errors)', () => {
+    expect(
+      buildVerifyPhaseVerdict(baseState({ errors: [] }), {
+        verification: {
+          hasFatal: false,
+          issues: [{ class: 'ADVISORY', message: 'missing opening hours' }],
+        },
+      } as any).kind,
+    ).toBe('complete');
+  });
 });

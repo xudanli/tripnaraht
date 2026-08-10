@@ -7,6 +7,7 @@ import { matchesAnyDataLookupProfile, matchesCrudProfile } from '../intent/inten
 import { analyzeRouteAndRunIntent } from '../utils/route-and-run-intent-analyzer.util';
 import { detectItineraryDayViewIntent } from '../utils/itinerary-day-view.util';
 import { signalsFromRequest, type RoutingSignals } from '../utils/orchestration-signals.util';
+import { resolveFastQueryContextEntry } from '../harness/task-context.registry';
 import type {
   DeepResearchV71Trigger,
   OrchestrationDepth,
@@ -47,12 +48,35 @@ function isConsultationQuickAnswer(message: string, signals: RoutingSignals): bo
   if (matchesAnyDataLookupProfile(msg)) return true;
   if (detectItineraryDayViewIntent(msg)) return true;
   if (CONSULTATION_FACT_RE.test(msg)) return true;
+  /**
+   * Harness Fast Query / Live / Decision：绑定行程上的只读或决策卡，不得落入 FULL_DEEP_PLAN。
+   */
   if (
-    signals.taskType === 'DATA_LOOKUP' ||
-    signals.taskType === 'GENERIC_QA' ||
-    signals.taskType === 'RAG_QA'
+    /还能去|来得及|晚了|晚点|延误|现在还能|今天继续还是|返回酒店|还能不能去/.test(msg) ||
+    /两驱还是四驱|四驱还是两驱|环岛还是|只跑南岸|租什么车|买不买保险/.test(msg)
   ) {
     return true;
+  }
+  try {
+    const entry = resolveFastQueryContextEntry(msg);
+    if (entry.key !== 'TRIP_QUERY_GENERIC') return true;
+  } catch {
+    /* ignore */
+  }
+  /**
+   * P5：不再用 taskType=DATA_LOOKUP 单独判定快答。
+   * P4 起绑定 trip 默认 DATA_LOOKUP，会把 GENERAL_PLAN 误压成 QUICK_ANSWER。
+   * 改为：高置信 CONSULT，或显式 GENERIC/RAG 档。
+   */
+  if (signals.taskType === 'GENERIC_QA' || signals.taskType === 'RAG_QA') {
+    return true;
+  }
+  try {
+    const { resolveUnifiedIntent } = require('../intent/unified-intent.resolver') as typeof import('../intent/unified-intent.resolver');
+    const ui = resolveUnifiedIntent({ message: msg, tripId: null });
+    if (ui.semanticIntent === 'CONSULT' && ui.confidence >= 0.75) return true;
+  } catch {
+    /* ignore */
   }
   return false;
 }

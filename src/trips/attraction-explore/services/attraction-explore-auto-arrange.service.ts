@@ -5,6 +5,7 @@ import { DateTime } from 'luxon';
 import { PrismaService } from '../../../prisma/prisma.service';
 import type { AttractionExploreAutoArrangeResult } from '../types/attraction-explore.types';
 import { extractPlaceMeta } from '../utils/attraction-explore-place.util';
+import { assertDirectEffectivePlanWriteBlocked } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 
 @Injectable()
 export class AttractionExploreAutoArrangeService {
@@ -16,6 +17,9 @@ export class AttractionExploreAutoArrangeService {
     tripId: string;
     candidateIds?: string[];
   }): Promise<AttractionExploreAutoArrangeResult> {
+    // Agent Harness P0-1 W2 / C2 sibling：auto-arrange 直写禁止
+    assertDirectEffectivePlanWriteBlocked('attraction-explore.autoArrange');
+
     const taskId = `ae_arrange_${randomUUID()}`;
 
     const rows = await this.prisma.tripAttractionExploreCandidate.findMany({

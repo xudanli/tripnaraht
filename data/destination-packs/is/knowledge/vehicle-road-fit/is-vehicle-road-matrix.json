@@ -1,0 +1,186 @@
+{
+  "schemaId": "tripnara.iceland.vehicle_road_matrix@v1",
+  "version": "1.0.0",
+  "cells": [
+    {
+      "roadBaseType": "PAVED",
+      "vehicleClass": "SEDAN",
+      "baseStatus": "COMPATIBLE",
+      "baseGate": "ALLOW"
+    },
+    {
+      "roadBaseType": "PAVED",
+      "vehicleClass": "SUV_2WD",
+      "baseStatus": "COMPATIBLE",
+      "baseGate": "ALLOW"
+    },
+    {
+      "roadBaseType": "PAVED",
+      "vehicleClass": "SUV_4WD",
+      "baseStatus": "COMPATIBLE",
+      "baseGate": "ALLOW"
+    },
+    {
+      "roadBaseType": "PAVED",
+      "vehicleClass": "CAMPERVAN",
+      "baseStatus": "COMPATIBLE",
+      "baseGate": "ALLOW"
+    },
+    {
+      "roadBaseType": "PAVED",
+      "vehicleClass": "EV_CAMPERVAN",
+      "baseStatus": "COMPATIBLE",
+      "baseGate": "ALLOW"
+    },
+    {
+      "roadBaseType": "PAVED",
+      "vehicleClass": "HIGH_PROFILE",
+      "baseStatus": "COMPATIBLE",
+      "baseGate": "ALLOW"
+    },
+    {
+      "roadBaseType": "GRAVEL",
+      "vehicleClass": "SEDAN",
+      "baseStatus": "CONDITIONAL",
+      "baseGate": "NEED_CONFIRM"
+    },
+    {
+      "roadBaseType": "GRAVEL",
+      "vehicleClass": "SUV_2WD",
+      "baseStatus": "CONDITIONAL",
+      "baseGate": "NEED_CONFIRM"
+    },
+    {
+      "roadBaseType": "GRAVEL",
+      "vehicleClass": "SUV_4WD",
+      "baseStatus": "COMPATIBLE",
+      "baseGate": "ALLOW"
+    },
+    {
+      "roadBaseType": "GRAVEL",
+      "vehicleClass": "CAMPERVAN",
+      "baseStatus": "CONDITIONAL",
+      "baseGate": "NEED_CONFIRM"
+    },
+    {
+      "roadBaseType": "GRAVEL",
+      "vehicleClass": "EV_CAMPERVAN",
+      "baseStatus": "CONDITIONAL",
+      "baseGate": "NEED_CONFIRM"
+    },
+    {
+      "roadBaseType": "GRAVEL",
+      "vehicleClass": "HIGH_PROFILE",
+      "baseStatus": "COMPATIBLE",
+      "baseGate": "ALLOW"
+    },
+    {
+      "roadBaseType": "F_ROAD",
+      "vehicleClass": "SEDAN",
+      "baseStatus": "INCOMPATIBLE",
+      "baseGate": "REJECT"
+    },
+    {
+      "roadBaseType": "F_ROAD",
+      "vehicleClass": "SUV_2WD",
+      "baseStatus": "INCOMPATIBLE",
+      "baseGate": "SUGGEST_REPLACE"
+    },
+    {
+      "roadBaseType": "F_ROAD",
+      "vehicleClass": "SUV_4WD",
+      "baseStatus": "CONDITIONAL",
+      "baseGate": "NEED_CONFIRM"
+    },
+    {
+      "roadBaseType": "F_ROAD",
+      "vehicleClass": "CAMPERVAN",
+      "baseStatus": "INCOMPATIBLE",
+      "baseGate": "REJECT"
+    },
+    {
+      "roadBaseType": "F_ROAD",
+      "vehicleClass": "EV_CAMPERVAN",
+      "baseStatus": "INCOMPATIBLE",
+      "baseGate": "REJECT"
+    },
+    {
+      "roadBaseType": "F_ROAD",
+      "vehicleClass": "HIGH_PROFILE",
+      "baseStatus": "CONDITIONAL",
+      "baseGate": "NEED_CONFIRM"
+    },
+    {
+      "roadBaseType": "FORD",
+      "vehicleClass": "SEDAN",
+      "baseStatus": "INCOMPATIBLE",
+      "baseGate": "REJECT"
+    },
+    {
+      "roadBaseType": "FORD",
+      "vehicleClass": "SUV_2WD",
+      "baseStatus": "INCOMPATIBLE",
+      "baseGate": "REJECT"
+    },
+    {
+      "roadBaseType": "FORD",
+      "vehicleClass": "SUV_4WD",
+      "baseStatus": "CONDITIONAL",
+      "baseGate": "NEED_CONFIRM"
+    },
+    {
+      "roadBaseType": "FORD",
+      "vehicleClass": "CAMPERVAN",
+      "baseStatus": "INCOMPATIBLE",
+      "baseGate": "REJECT"
+    },
+    {
+      "roadBaseType": "FORD",
+      "vehicleClass": "EV_CAMPERVAN",
+      "baseStatus": "INCOMPATIBLE",
+      "baseGate": "REJECT"
+    },
+    {
+      "roadBaseType": "FORD",
+      "vehicleClass": "HIGH_PROFILE",
+      "baseStatus": "CONDITIONAL",
+      "baseGate": "NEED_CONFIRM"
+    },
+    {
+      "roadBaseType": "WIND_EXPOSED",
+      "vehicleClass": "SEDAN",
+      "baseStatus": "CONDITIONAL",
+      "baseGate": "NEED_CONFIRM"
+    },
+    {
+      "roadBaseType": "WIND_EXPOSED",
+      "vehicleClass": "SUV_2WD",
+      "baseStatus": "CONDITIONAL",
+      "baseGate": "NEED_CONFIRM"
+    },
+    {
+      "roadBaseType": "WIND_EXPOSED",
+      "vehicleClass": "SUV_4WD",
+      "baseStatus": "COMPATIBLE",
+      "baseGate": "ALLOW"
+    },
+    {
+      "roadBaseType": "WIND_EXPOSED",
+      "vehicleClass": "CAMPERVAN",
+      "baseStatus": "CONDITIONAL",
+      "baseGate": "NEED_CONFIRM"
+    },
+    {
+      "roadBaseType": "WIND_EXPOSED",
+      "vehicleClass": "EV_CAMPERVAN",
+      "baseStatus": "CONDITIONAL",
+      "baseGate": "NEED_CONFIRM"
+    },
+    {
+      "roadBaseType": "WIND_EXPOSED",
+      "vehicleClass": "HIGH_PROFILE",
+      "baseStatus": "CONDITIONAL",
+      "baseGate": "NEED_CONFIRM"
+    }
+  ]
+}

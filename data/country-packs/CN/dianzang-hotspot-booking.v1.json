@@ -1,0 +1,132 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "updatedAt": "2026-08-09",
+    "corridor": "cn.route.dianzang",
+    "disclaimer": "规则与票价为示意；梅里观景受云海天气影响大，须以景区通告与飞猪实时商品为准。",
+    "sources": ["public OTA/travel guides for Pudacuo & Feilai Temple viewpoint"]
+  },
+  "hotspots": [
+    {
+      "id": "cn.poi.pudacuo",
+      "nameCN": "普达措",
+      "nameEN": "Pudacuo",
+      "aliases": ["普达措国家公园", "普达措景区", "香格里拉普达措"],
+      "hubCityCN": "香格里拉",
+      "category": "scenic",
+      "altitudeMetersHint": 3500,
+      "openSeason": {
+        "peak": {
+          "start": "--04-01",
+          "end": "--10-31",
+          "hoursHint": "约 08:00–17:00 止入（示意）；观光车编组"
+        },
+        "offPeak": {
+          "start": "--11-01",
+          "end": "--03-31",
+          "hoursHint": "冬季缩短，部分步道关闭"
+        },
+        "bestVisitMonthsHint": [5, 6, 9, 10]
+      },
+      "booking": {
+        "realNameRequired": true,
+        "advanceBookingDaysHint": { "min": 0, "recommended": 1, "peakHoliday": 3 },
+        "channelsHintCN": ["飞猪/主流 OTA", "景区官方"],
+        "sameDayValid": true,
+        "mustHintsCN": [
+          "门票常与观光车捆绑",
+          "海拔约 3500m，刚从大理/丽江上来需控制强度",
+          "雨季注意香格里拉—德钦路况"
+        ]
+      },
+      "priceBandsCNY": {
+        "gateListAdultPlusShuttle": {
+          "peak": 258,
+          "offPeak": 168,
+          "note": "门市常见票+车示意（以官方为准）"
+        },
+        "otaAdult": { "low": 150, "high": 280, "note": "以实时商品为准" }
+      },
+      "consultBlurbCN": "普达措多为票+观光车；旺季建议提前 1–3 天。初上高原勿排高强度徒步，价以官方/飞猪为准。"
+    },
+    {
+      "id": "cn.poi.feilai",
+      "nameCN": "飞来寺观景台",
+      "nameEN": "Feilai Temple Viewpoint",
+      "aliases": ["飞来寺", "梅里雪山观景台", "梅里飞来寺"],
+      "hubCityCN": "德钦",
+      "category": "scenic",
+      "altitudeMetersHint": 3400,
+      "openSeason": {
+        "peak": {
+          "start": "--10-01",
+          "end": "--05-31",
+          "hoursHint": "秋冬晴天日出出梅更稳；夏季云多（示意）"
+        },
+        "bestVisitMonthsHint": [10, 11, 12, 1, 2, 3]
+      },
+      "booking": {
+        "realNameRequired": false,
+        "advanceBookingDaysHint": { "min": 0, "recommended": 0, "peakHoliday": 1 },
+        "channelsHintCN": ["多为观景/寺庙周边，部分停车与小收费点"],
+        "sameDayValid": true,
+        "mustHintsCN": [
+          "核心是天气窗口而非门票：连续多日预留日出",
+          "高反与低温常见，过夜优先德钦/飞来寺一带",
+          "进入西藏段前核验证件与检查站"
+        ]
+      },
+      "priceBandsCNY": {
+        "notes": "观景为主；寺庙香火/停车另计"
+      },
+      "consultBlurbCN": "飞来寺看梅里看天气，秋冬日出更稳；预留弹性日，勿只盯门票。"
+    },
+    {
+      "id": "cn.poi.lijiang_oldtown",
+      "nameCN": "丽江古城",
+      "nameEN": "Lijiang Old Town",
+      "aliases": ["大研古城", "丽江古城维护费"],
+      "hubCityCN": "丽江",
+      "category": "scenic",
+      "altitudeMetersHint": 2416,
+      "openSeason": {
+        "peak": {
+          "start": "--01-01",
+          "end": "--12-31",
+          "hoursHint": "全天；节假日人流极大"
+        },
+        "bestVisitMonthsHint": [3, 4, 5, 9, 10]
+      },
+      "booking": {
+        "realNameRequired": true,
+        "advanceBookingDaysHint": { "min": 0, "recommended": 0, "peakHoliday": 1 },
+        "channelsHintCN": ["古城维护费官方/窗口", "飞猪偶有联票"],
+        "sameDayValid": true,
+        "mustHintsCN": [
+          "古城维护费与景区联票勿混淆",
+          "滇藏起步日勿排满强度，留体力上香格里拉"
+        ]
+      },
+      "priceBandsCNY": {
+        "maintenanceFeeAdult": { "peak": 50, "offPeak": 50, "note": "古城维护费常见挂牌示意" }
+      },
+      "consultBlurbCN": "丽江古城以维护费为主，可当日办理；滇藏线建议轻游起步，勿恋战耽误升海拔节奏。"
+    }
+  ],
+  "lodgingNotes": [
+    {
+      "hubCityCN": "香格里拉",
+      "role": "acclimatize",
+      "altitudeMetersHint": 3280,
+      "mustHintsCN": ["相对德钦略低，适合缓冲后去普达措", "旺季房源提前订"],
+      "priceBandCNYHint": { "mid": [200, 500], "note": "OTA 示意，非承诺" }
+    },
+    {
+      "hubCityCN": "德钦",
+      "role": "meili_viewpoint",
+      "altitudeMetersHint": 3400,
+      "mustHintsCN": ["飞来寺日出需早起，优先近观景台住宿", "入藏前检查证件与车辆"],
+      "priceBandCNYHint": { "mid": [180, 480], "note": "OTA 示意，非承诺" }
+    }
+  ]
+}

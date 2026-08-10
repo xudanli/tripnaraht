@@ -105,11 +105,27 @@ export type ConsultationTripDaySkeletonInput = {
   ItineraryItem: Array<{ type: string | null }>;
 };
 
+function dayNumberFromStart(startDate: Date | undefined, dayDate: Date): number | undefined {
+  if (!startDate || Number.isNaN(startDate.getTime()) || Number.isNaN(dayDate.getTime())) {
+    return undefined;
+  }
+  const startYmd = startDate.toISOString().slice(0, 10);
+  const dayYmd = dayDate.toISOString().slice(0, 10);
+  const startMs = new Date(`${startYmd}T00:00:00.000Z`).getTime();
+  const dayMs = new Date(`${dayYmd}T00:00:00.000Z`).getTime();
+  return Math.floor((dayMs - startMs) / 86_400_000) + 1;
+}
+
 /**
  * 按日「类型×数量」骨架，不含 Place / note，避免咨询路径被错误景点名锚死。
+ * 附带 DayN + 可选 dayTheme，避免模型只能靠日历日猜测「第几天」。
  */
 export function formatConsultationTripDaySkeletonLines(
   days: ConsultationTripDaySkeletonInput[] | null | undefined,
+  opts?: {
+    startDate?: Date;
+    dayThemes?: Record<string, string> | null;
+  },
 ): string {
   const rows: string[] = [];
   const list = [...(days ?? [])].sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -119,10 +135,19 @@ export function formatConsultationTripDaySkeletonLines(
   let totalItems = 0;
   for (const day of list) {
     const d = day.date.toISOString().slice(0, 10);
+    const dayNum = dayNumberFromStart(opts?.startDate, day.date);
+    const themeRaw =
+      dayNum != null
+        ? opts?.dayThemes?.[String(dayNum)] ?? opts?.dayThemes?.[dayNum as unknown as string]
+        : undefined;
+    const theme =
+      typeof themeRaw === 'string' && themeRaw.trim() ? themeRaw.trim() : undefined;
+    const dayLabel = dayNum != null ? `Day${dayNum} ` : '';
+    const themeLabel = theme ? ` · 主题「${theme}」` : '';
     const items = day.ItineraryItem ?? [];
     totalItems += items.length;
     if (items.length === 0) {
-      rows.push(`- ${d}: (无已入库日程项)`);
+      rows.push(`- ${dayLabel}${d}${themeLabel}: (无已入库日程项)`);
       continue;
     }
     const counts = new Map<string, number>();
@@ -133,7 +158,7 @@ export function formatConsultationTripDaySkeletonLines(
     const parts = [...counts.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([k, n]) => `${k}×${n}`);
-    rows.push(`- ${d}: ${parts.join('，')}（共 ${items.length} 项）`);
+    rows.push(`- ${dayLabel}${d}${themeLabel}: ${parts.join('，')}（共 ${items.length} 项）`);
   }
   rows.push(`日程项总数: ${totalItems}`);
   return rows.join('\n');
@@ -193,15 +218,28 @@ export type ConsultationItineraryDayInput = {
  */
 export function buildBriefItineraryLinesFromTripDays(
   days: ConsultationItineraryDayInput[] | null | undefined,
+  opts?: {
+    startDate?: Date;
+    dayThemes?: Record<string, string> | null;
+  },
 ): string[] {
   const lines: string[] = [];
   let itemCount = 0;
   for (const day of days ?? []) {
     const d = day.date ? day.date.toISOString().slice(0, 10) : '?';
+    const dayNum = day.date ? dayNumberFromStart(opts?.startDate, day.date) : undefined;
+    const themeRaw =
+      dayNum != null
+        ? opts?.dayThemes?.[String(dayNum)] ?? opts?.dayThemes?.[dayNum as unknown as string]
+        : undefined;
+    const theme =
+      typeof themeRaw === 'string' && themeRaw.trim() ? themeRaw.trim() : undefined;
+    const dayLabel = dayNum != null ? `Day${dayNum} ` : '';
+    const themeLabel = theme ? ` · 主题「${theme}」` : '';
     const items = day.ItineraryItem ?? [];
     itemCount += items.length;
     if (items.length === 0) {
-      lines.push(`- ${d}: (无日程项)`);
+      lines.push(`- ${dayLabel}${d}${themeLabel}: (无日程项)`);
       continue;
     }
     const short = items
@@ -213,7 +251,7 @@ export function buildBriefItineraryLinesFromTripDays(
       })
       .join(' → ');
     const more = items.length > 8 ? ` …(+${items.length - 8})` : '';
-    lines.push(`- ${d}: ${short}${more}`);
+    lines.push(`- ${dayLabel}${d}${themeLabel}: ${short}${more}`);
   }
   lines.push(`日程项总数: ${itemCount}`);
   return lines;

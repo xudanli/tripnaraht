@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "bash scripts/sync-e2e-fixtures-to-dist.sh && NODE_OPTIONS='--max-old-space-size=4096' nest start --watch",
+    "dev": "bash scripts/sync-e2e-fixtures-to-dist.sh && NODE_OPTIONS='--max-old-space-size=8192' nest start --watch",
     "credential:mock-gateway": "npx tsx scripts/compliance-gateway-mock-server.ts",
     "build": "nest build && bash scripts/post-build.sh",
     "start": "node dist/main",
@@ -73,6 +73,7 @@
     "test:ortools-adr008": "jest --testPathPatterns=\"decision-runtime/solver|road-segment-unavailable-evaluate-ortools\" --no-cache",
     "ci:ortools-adr008": "bash scripts/ci/run-ortools-adr008-gate.sh",
     "ci:dangling-imports": "npx tsx scripts/ci/check-dangling-imports.ts",
+    "ci:forbid-legacy-itinerary-writes": "npx tsx scripts/ci/forbid-legacy-itinerary-writes.ts",
     "ci:freeze-smoke-gate": "npx tsx scripts/ci/freeze-smoke-gate.ts",
     "smoke:ortools-live": "bash scripts/ci/ortools-live-smoke.sh",
     "lab:planning-gold": "npx tsx src/decision-runtime/solver/lab/gold/replay-gold-dataset.ts",
@@ -181,7 +182,7 @@
     "guardrails:check": "npx tsx scripts/guardrails/check-dso-mutation-smoke.ts",
     "guardrails:executor": "npx tsx scripts/guardrails/check-executor-purity-smoke.ts",
     "guardrails:all": "npm run guardrails:check && npm run guardrails:executor",
-    "backend:dev": "NODE_OPTIONS='--max-old-space-size=4096' nest start --watch",
+    "backend:dev": "NODE_OPTIONS='--max-old-space-size=8192' nest start --watch",
     "backend:build": "nest build && bash scripts/post-build.sh",
     "backend:start": "node dist/main",
     "prisma:generate": "prisma generate",
@@ -348,6 +349,12 @@
     "mcp:check": "tsc --noEmit --project tsconfig.backend.json",
     "test": "jest",
     "test:tep-writeback-pg": "TEP_WRITEBACK_PG_E2E=1 jest src/trips/tep/certification/is-cert-writeback-pg.e2e.spec.ts --no-cache",
+    "test:confirm-multi-instance-live": "CONFIRM_MULTI_INSTANCE_LIVE=1 jest src/decision-runtime/execution/authoritative-write/confirm-multi-instance-live.e2e.spec.ts --runInBand --forceExit --no-cache",
+    "test:confirm-multi-instance-live:embedded": "npx tsx scripts/run-confirm-multi-instance-live-embedded.ts",
+    "test:confirm-multi-instance-fidelity": "jest src/decision-runtime/execution/authoritative-write/confirm-multi-instance.fidelity.spec.ts --runInBand --no-cache",
+    "m1:preflight": "npx tsx scripts/m1-staging-preflight.ts",
+    "m1:rehearsal-embedded": "npx tsx scripts/run-m1-rehearsal-embedded.ts",
+    "m1:local-staging": "npx tsx scripts/run-m1-local-staging.ts",
     "test:tep-pilot-http": "TEP_PILOT_HTTP_E2E=1 jest src/trips/tep/certification/tep-pilot-http.e2e.spec.ts --no-cache",
     "test:ontology-gate1-http": "bash -c 'set -a; source .env.staging; set +a; export ONTOLOGY_GATE1_HTTP_E2E=1 ONTOLOGY_AUTHORITY_INTERNAL_GATE1=1 ONTOLOGY_AUTHORITY_ROLLOUT_MODE=ON; unset ONTOLOGY_AUTHORITY_PRODUCTION_ON_UNLOCKED; jest src/harness/evals/ontology-world-model/ontology-gate1-http.e2e.spec.ts --runInBand --forceExit --no-cache'",
     "ontology:shadow-baseline": "npx tsx scripts/ontology-shadow-baseline.ts",
@@ -443,6 +450,8 @@
     "validate:iceland-road-constraint-seed": "npx ts-node --transpile-only scripts/validate-iceland-road-constraint-seed.ts",
     "validate:country-road-constraint-seeds": "npx ts-node --transpile-only scripts/validate-country-road-constraint-seeds.ts",
     "seed:iceland-road-constraint-chunks": "npx ts-node --transpile-only scripts/seed-iceland-road-constraint-chunks.ts",
+    "seed:cn-g318-road-constraint-chunks": "npx ts-node --transpile-only scripts/seed-cn-g318-road-constraint-chunks.ts",
+    "e2e:g318-golden": "npx tsx scripts/e2e-g318-golden-chat.ts",
     "seed:iceland-poi-access-capacity": "npx tsx scripts/seed-iceland-poi-access-capacity.ts",
     "seed:iceland-travel-product-catalog": "npx tsx scripts/seed-iceland-travel-product-catalog.ts",
     "seed:iceland-travel-product-catalog:demo": "npx tsx scripts/seed-iceland-travel-product-catalog.ts --with-demo-offering",
@@ -518,6 +527,14 @@
     "script:import-iceland-parking-osm:live": "npx tsx scripts/import-iceland-parking-from-osm.ts --live",
     "script:import-iceland-parking-osm:dry-run": "npx tsx scripts/import-iceland-parking-from-osm.ts --dry-run",
     "script:import-iceland-parking-osm:prefer-named": "npx tsx scripts/import-iceland-parking-from-osm.ts --prefer-named",
+    "script:import-china-self-drive-supply-osm": "npx tsx scripts/import-china-self-drive-supply-from-osm.ts",
+    "script:import-china-self-drive-supply-osm:dry-run": "npx tsx scripts/import-china-self-drive-supply-from-osm.ts --dry-run",
+    "script:import-china-self-drive-supply-osm:g318": "npx tsx scripts/import-china-self-drive-supply-from-osm.ts --route=g318",
+    "script:import-china-self-drive-supply-osm:g318:dry-run": "npx tsx scripts/import-china-self-drive-supply-from-osm.ts --route=g318 --dry-run",
+    "script:import-china-self-drive-supply-amap": "npx tsx scripts/import-china-self-drive-supply-from-amap.ts",
+    "script:import-china-self-drive-supply-amap:dry-run": "npx tsx scripts/import-china-self-drive-supply-from-amap.ts --dry-run",
+    "script:import-china-self-drive-supply-amap:g318": "npx tsx scripts/import-china-self-drive-supply-from-amap.ts --route=g318",
+    "script:import-china-self-drive-supply-amap:g318:dry-run": "npx tsx scripts/import-china-self-drive-supply-from-amap.ts --route=g318 --dry-run",
     "script:import-iceland-opening-hours": "npx tsx scripts/import-iceland-poi-opening-hours.ts",
     "script:import-iceland-opening-hours:amap": "npx tsx scripts/import-iceland-poi-opening-hours-alternative.ts",
     "script:import-iceland-opening-hours:deepseek": "npx tsx scripts/import-iceland-opening-hours-with-deepseek.ts",
@@ -626,7 +643,8 @@
     "stripe": "^20.3.1",
     "suncalc": "^1.9.0",
     "typeorm": "^0.3.28",
-    "zod": "^4.3.6"
+    "zod": "^4.3.6",
+    "@fly-ai/flyai-cli": "^1.0.16"
   },
   "devDependencies": {
     "@dqbd/tiktoken": "^1.0.22",
@@ -693,5 +711,8 @@
     "@humanwhocodes/config-array": {
       "minimatch": "3.1.5"
     }
+  },
+  "optionalDependencies": {
+    "embedded-postgres": "18.4.0-beta.17"
   }
 }

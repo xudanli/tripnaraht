@@ -55,6 +55,9 @@ import {
 } from '../projections/decision-case.projection';
 import type { InternalUnifiedProblemRow } from '../../gateway/utils/unified-decision-problem-projection.util';
 import type { DecisionOption } from '../../../trips/decision-semantics/types/decision-semantics.types';
+import { buildIcelandSelfDriveSituationClientFromCaseFlags } from '../../packs/knowledge/demo/build-iceland-self-drive-situation.client';
+import type { IcelandSelfDriveSituationClientV1 } from '../../packs/knowledge/demo/iceland-self-drive-situation.client';
+import type { InsuranceCoverageTier } from '../../packs/knowledge/rental-insurance';
 
 const DEFAULT_DAY_LIMIT_HOURS = 8;
 const MIN_RING_DAYS = 10;
@@ -106,6 +109,38 @@ export class DecisionCaseService {
 
   productProjection(decisionCase: StoredDecisionCase): DecisionCaseProductProjection {
     return projectCaseToProductFields(decisionCase);
+  }
+
+  async isIcelandSelfDriveTrip(tripId: string): Promise<boolean> {
+    const ctx = await this.loadTripContext(tripId);
+    return ctx.isIcelandSelfDrive;
+  }
+
+  /**
+   * 规划期 Situation 专用投影；会 ensureP0Shells，保证 deepLink.problemIdHint 可命中。
+   * 非冰岛自驾返回 undefined（由 product BFF 映射为 NOT_ICELAND_SELF_DRIVE）。
+   */
+  async getIcelandSelfDriveSituationClient(
+    tripId: string,
+  ): Promise<IcelandSelfDriveSituationClientV1 | undefined> {
+    const ctx = await this.loadTripContext(tripId);
+    if (!ctx.isIcelandSelfDrive) return undefined;
+
+    await this.ensureP0ShellsAndEnrich(tripId, ctx);
+
+    return buildIcelandSelfDriveSituationClientFromCaseFlags({
+      tripId,
+      hasFRoad: ctx.hasFRoad,
+      hasGravel: ctx.hasGravel,
+      highWind: ctx.highWind,
+      vehicleType: ctx.vehicleType,
+      vehicleClassLabel: ctx.vehicleClassLabel,
+      rentalRestrictions: ctx.rentalRestrictions,
+      fRoadIdHint: ctx.fRoadIdHint,
+      fRoadAllowed: ctx.fRoadAllowed,
+      coverageTier: ctx.coverageTier,
+      fordCrossing: ctx.fordCrossing,
+    });
   }
 
   async listOpportunities(tripId: string): Promise<DecisionOpportunityListView> {
@@ -642,6 +677,51 @@ export class DecisionCaseService {
       constraints.vehicle_type ?? constraints.vehicleType ?? meta.vehicleType ?? '',
     ).toUpperCase();
 
+    const isd =
+      meta.icelandSelfDrive && typeof meta.icelandSelfDrive === 'object'
+        ? (meta.icelandSelfDrive as Record<string, unknown>)
+        : undefined;
+    const drivingSettings =
+      isd?.drivingSettings && typeof isd.drivingSettings === 'object'
+        ? (isd.drivingSettings as Record<string, unknown>)
+        : meta.drivingSettings && typeof meta.drivingSettings === 'object'
+          ? (meta.drivingSettings as Record<string, unknown>)
+          : undefined;
+    const vehicleSettings =
+      drivingSettings?.vehicle && typeof drivingSettings.vehicle === 'object'
+        ? (drivingSettings.vehicle as Record<string, unknown>)
+        : undefined;
+    const insuranceSettings =
+      drivingSettings?.insurance && typeof drivingSettings.insurance === 'object'
+        ? (drivingSettings.insurance as Record<string, unknown>)
+        : undefined;
+
+    const vehicleClassLabel =
+      typeof vehicleSettings?.vehicleClassLabel === 'string'
+        ? vehicleSettings.vehicleClassLabel
+        : null;
+    const rentalRestrictions = Array.isArray(vehicleSettings?.rentalRestrictions)
+      ? (vehicleSettings!.rentalRestrictions as unknown[]).map(String)
+      : Array.isArray(constraints.rentalRestrictions)
+        ? (constraints.rentalRestrictions as unknown[]).map(String)
+        : [];
+
+    const coverageRaw = String(
+      insuranceSettings?.coverageTier ??
+        constraints.coverageTier ??
+        constraints.insuranceCoverageTier ??
+        '',
+    ).toUpperCase();
+    const coverageTier: InsuranceCoverageTier | undefined =
+      coverageRaw === 'BASIC' || coverageRaw === 'STANDARD' || coverageRaw === 'FULL'
+        ? coverageRaw
+        : undefined;
+
+    const fordCrossing =
+      rentalRestrictions.includes('no_wading') ||
+      constraints.excludeFording === true ||
+      routeFlags.fordCrossing === true;
+
     return {
       isIcelandSelfDrive,
       routeReady:
@@ -654,6 +734,10 @@ export class DecisionCaseService {
       nearGlacier,
       glacierNeedsBooking,
       vehicleType: vehicleType || undefined,
+      vehicleClassLabel,
+      rentalRestrictions,
+      coverageTier,
+      fordCrossing,
       fRoadAllowed: constraints.fRoadAllowed,
       fRoadIdHint: Array.isArray(meta.fRoadIds)
         ? String((meta.fRoadIds as unknown[])[0] ?? 'F-road')
@@ -791,6 +875,10 @@ interface TripCaseContext {
   nearGlacier: boolean;
   glacierNeedsBooking: boolean;
   vehicleType?: string;
+  vehicleClassLabel?: string | null;
+  rentalRestrictions?: string[];
+  coverageTier?: InsuranceCoverageTier;
+  fordCrossing?: boolean;
   fRoadAllowed?: unknown;
   fRoadIdHint?: string;
   constraints: Record<string, unknown>;

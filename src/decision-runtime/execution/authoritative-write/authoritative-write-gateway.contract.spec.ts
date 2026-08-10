@@ -20,8 +20,6 @@ import {
 import { AuthoritativeWriteHandlerRegistryService } from './corridor-handler.registry';
 import {
   UWC_1B_WIRE_ORDER,
-  UWC_AUTHORITATIVE_HARD_BLOCK_REASON,
-  UWC_1C_OCC_UNLOCKED,
   resolveCorridorWriteMode,
 } from './corridor-write-mode.config';
 
@@ -190,32 +188,58 @@ describe('AuthoritativeWriteGateway contract v1', () => {
     expect(registry.listBound()).toEqual([...UWC_1B_WIRE_ORDER]);
   });
 
-  it('AUTHORITATIVE env is hard-blocked by dual gates after UWC-1c code complete', async () => {
+  it('AUTHORITATIVE: D1/D2/D3 corridor gates; global OCC unlocked (UWC-OCC-UNLOCK-01)', async () => {
     const {
       UWC_1C_OCC_CODE_COMPLETE,
       UWC_1C_OCC_SWITCH_AUTHORIZED,
       UWC_1C_OCC_UNLOCKED,
     } = require('./corridor-write-mode.config') as typeof import('./corridor-write-mode.config');
     expect(UWC_1C_OCC_CODE_COMPLETE).toBe(true);
-    expect(UWC_1C_OCC_SWITCH_AUTHORIZED).toBe(false);
-    expect(UWC_1C_OCC_UNLOCKED).toBe(false);
-    const resolved = resolveCorridorWriteMode('ACTIONS_COMMIT', {
-      UWC_CORRIDOR_MODE_ACTIONS_COMMIT: 'AUTHORITATIVE',
-    });
-    expect(resolved.authoritativeHardBlocked).toBe(true);
-    expect(resolved.effective).toBe('DISABLED');
-    expect(resolved.blockReason).toBe(UWC_AUTHORITATIVE_HARD_BLOCK_REASON);
+    expect(UWC_1C_OCC_SWITCH_AUTHORIZED).toBe(true);
+    expect(UWC_1C_OCC_UNLOCKED).toBe(true);
 
-    const handler = registry.get('ACTIONS_COMMIT');
-    const cmd = handler.buildCommand({
+    for (const corridor of [
+      'ACTIONS_COMMIT',
+      'ITINERARY_ADJUST',
+      'UNIFIED_EXECUTE',
+    ] as const) {
+      const envKey =
+        corridor === 'ACTIONS_COMMIT'
+          ? 'UWC_CORRIDOR_MODE_ACTIONS_COMMIT'
+          : corridor === 'ITINERARY_ADJUST'
+            ? 'UWC_CORRIDOR_MODE_ITINERARY_ADJUST'
+            : 'UWC_CORRIDOR_MODE_UNIFIED_EXECUTE';
+      const resolved = resolveCorridorWriteMode(corridor, {
+        [envKey]: 'AUTHORITATIVE',
+      });
+      expect(resolved.authoritativeHardBlocked).toBe(false);
+      expect(resolved.effective).toBe('AUTHORITATIVE');
+      expect(resolved.corridorAuthoritativeAuthorized).toBe(true);
+    }
+
+    const actionsHandler = registry.get('ACTIONS_COMMIT');
+    const aCmd = actionsHandler.buildCommand({
       trip_id: 't1',
       request_id: 'r1',
       context_signature: 'sig',
       expectedResourceVersion: 1,
       observedResourceVersion: 1,
     });
-    await expect(handler.authoritativeApply(cmd)).rejects.toThrow(
-      /AUTHORITATIVE_HARD_BLOCKED/,
+    const applied = await actionsHandler.authoritativeApply(aCmd);
+    expect(applied.outcome).toBe('APPLIED');
+    expect(applied.reasonCodes).toContain('UWC_CUTOVER_01_D1_ACTIONS_AUTHORITATIVE');
+
+    const uHandler = registry.get('UNIFIED_EXECUTE');
+    const uCmd = uHandler.buildCommand({
+      tripId: 't1',
+      decisionId: 'd1',
+      expectedPlanVersionId: 'pv_parent',
+      observedPlanVersionId: 'pv_parent',
+    });
+    const missing = await uHandler.authoritativeApply(uCmd);
+    expect(missing.outcome).toBe('REJECTED');
+    expect(missing.reasonCodes).toContain(
+      'UNIFIED_AUTHORITATIVE_REQUIRES_PRISMA_DECISION_PLAN_VERSION',
     );
   });
 });

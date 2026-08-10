@@ -41,6 +41,8 @@ import type { AccommodationHealthUi } from './accommodation-health-ui.util';
 import { buildOpenWorldDiscoveryUi } from '../delivery/utils/open-world-discovery-ui.builder.util';
 import type { OpenWorldDiscoveryUi } from '../delivery/utils/open-world-discovery-ui.builder.util';
 import { buildDecisionContextSliceFromOrchestrator } from '../../planning-policy/open-world/decision-context-sync.util';
+import { buildCognitionUiCards } from './build-cognition-ui-cards.util';
+import type { DecisionCognitionSlice } from '../../decision/kernel/decision-cognition.types';
 
 export interface ClientUiEnrichmentInput {
   existingUiDisplay?: DecisionUiDisplayDto | null;
@@ -52,6 +54,8 @@ export interface ClientUiEnrichmentInput {
   resultOk?: boolean;
   /** NARRATE 已产出的 leg 证据（优先于现场重建） */
   narration?: NarrationLike | null;
+  /** DSO 认知切片 → ui_display.cognition_cards */
+  cognition?: DecisionCognitionSlice | null;
   /** route_and_run payload 预订快照（航班/酒店/租车） */
   bookingPayload?: {
     flight_inventory_snapshot?: Record<string, unknown> | null;
@@ -246,6 +250,8 @@ export function enrichClientUiDisplay(input: ClientUiEnrichmentInput): DecisionU
     )
   ) as VoicePayload | undefined;
 
+  const cognition_cards = buildCognitionUiCards(input.cognition ?? undefined);
+
   return {
     ...base,
     dual_track_itinerary,
@@ -260,5 +266,6 @@ export function enrichClientUiDisplay(input: ClientUiEnrichmentInput): DecisionU
     ...(accommodation_health ? { accommodation_health } : {}),
     ...(open_world_discovery ? { open_world_discovery } : {}),
     ...(voice_payload ? { voice_payload } : {}),
+    ...(cognition_cards ? { cognition_cards } : {}),
   };
 }

@@ -3,6 +3,10 @@ import { Injectable, BadRequestException, NotFoundException, Optional, Inject, f
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateItineraryItemDto, ItemType } from './dto/create-itinerary-item.dto';
 import { OpeningHoursUtil, OPENING_HOURS_UNKNOWN } from '../common/utils/opening-hours.util';
+import {
+  resolveTripTimezone,
+  withDestinationDisplayTimes,
+} from '../common/utils/destination-timezone.util';
 import { DateTime } from 'luxon';
 import { randomUUID } from 'crypto';
 import { SmartRoutesService } from '../transport/services/smart-routes.service';
@@ -30,6 +34,7 @@ import { parseCoordsFromRestNote } from '../agent/utils/accommodation-place.util
 import { resolveEffectiveIcelandPlaceCoordinates } from '../places/utils/iceland-canonical-poi-coords.util';
 import { TripRevisionBumpService } from '../trips/services/trip-revision-bump.service';
 import { resolveEffectiveTravelMode } from '../trips/trip-constraint-solver/utils/constraints-summary.util';
+import { assertDirectEffectivePlanWriteBlocked } from '../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 
 @Injectable()
 export class ItineraryItemsService {
@@ -56,6 +61,9 @@ export class ItineraryItemsService {
    * @returns 创建成功的 ItineraryItem 对象（包含关联的 Place 信息）
    */
   async create(dto: CreateItineraryItemDto) {
+    // Agent Harness P0-1 W2 / D1：结构创建须走写链
+    assertDirectEffectivePlanWriteBlocked('itinerary-items.create');
+
     // ============================================
     // 步骤 1: 基础逻辑校验
     // ============================================
@@ -590,6 +598,11 @@ export class ItineraryItemsService {
     const dayIds = allOrderedDays.map((d) => d.id);
     const itemsByDayId = await this.loadItemsGroupedByTripDayIds(tripId, dayIds);
 
+    const timezone = resolveTripTimezone({
+      destination: trip.destination,
+      metadata: trip.metadata,
+    });
+
     const flat: any[] = [];
     for (const day of trip.TripDay) {
       const dayItems = await this.buildTimelineDayItems(
@@ -597,7 +610,9 @@ export class ItineraryItemsService {
         allOrderedDays,
         itemsByDayId,
       );
-      flat.push(...dayItems);
+      for (const item of dayItems) {
+        flat.push(withDestinationDisplayTimes(item as Record<string, unknown>, timezone));
+      }
     }
 
     if (options?.includePlace === false) {
@@ -1010,6 +1025,9 @@ export class ItineraryItemsService {
     updateDto: Partial<CreateItineraryItemDto> & { cascadeMode?: 'auto' | 'none' },
     options?: { forceUpdate?: boolean }
   ) {
+    // Agent Harness P0-1 W2 / D1：结构更新须走写链（cost/note 专用端点见 D2）
+    assertDirectEffectivePlanWriteBlocked('itinerary-items.update');
+
     const { forceUpdate = false } = options || {};
     const cascadeMode = updateDto.cascadeMode ?? 'auto'; // 默认为 'auto'
     
@@ -1710,6 +1728,9 @@ export class ItineraryItemsService {
    * 删除行程项
    */
   async remove(id: string) {
+    // Agent Harness P0-1 W2 / D1：删除须走写链
+    assertDirectEffectivePlanWriteBlocked('itinerary-items.remove');
+
     const item = await this.prisma.itineraryItem.findUnique({
       where: { id },
       include: { TripDay: { select: { tripId: true } } },

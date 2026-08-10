@@ -78,6 +78,10 @@ describe('OptimizationEngineAdapterService', () => {
 
     expect(hints?.method).toBe('CGUS');
     expect(cgusSearchMock.search).toHaveBeenCalled();
+    expect(hints?.cgusDecisionTrace?.schemaVersion).toBe('cgus-decision-trace/v1');
+    expect(hints?.cgusDecisionTrace?.decision_type).toBe('OPTIMIZE');
+    expect(hints?.cgusDecisionTrace?.trip_id).toBe('req-1');
+    expect(hints?.cgusDecisionTrace?.ranking?.length).toBeGreaterThan(0);
     const call = (cgusSearchMock.search as jest.Mock).mock.calls[0];
     const candidates = call?.[0] as CGUSCandidate[];
     expect(candidates.length).toBeGreaterThan(0);

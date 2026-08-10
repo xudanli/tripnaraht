@@ -43,6 +43,7 @@ import { DecisionModule } from '../trips/decision/decision.module';
 import { CausalRuntimeModule } from '../trips/causal-runtime/causal-runtime.module';
 import { OptimizationModule } from '../trips/decision/optimization/optimization.module';
 import { SharedMemoryModule } from './memory/shared-memory.module';
+import { TravelMemoryModule } from '../travel-memory/travel-memory.module';
 import { RagModule } from '../rag/rag.module';
 import { PlacesService } from '../places/places.service';
 import { TripsService } from '../trips/trips.service';
@@ -233,6 +234,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     forwardRef(() => CausalRuntimeModule),
     forwardRef(() => OptimizationModule),
     SharedMemoryModule,
+    TravelMemoryModule, // Travel Memory Runtime（Ledger/Views/Policy 门面；不平行重建 Memory SoT）
     forwardRef(() => RagModule), // RAG 模块（用于增强对话），使用 forwardRef 避免循环依赖（RagModule -> SkillsModule -> AgentModule）
     PlanExecuteModule, // Plan-and-Execute Agent 模块
     forwardRef(() => SkillsModule), // Skills 模块（用于 Claude 编排），使用 forwardRef 避免循环依赖（SkillsModule -> PlacesModule -> RagModule -> SkillsModule -> AgentModule）
@@ -420,6 +422,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
   ],
   exports: [
     AgentContextModule,
+    TravelMemoryModule,
     AgentService,
     ActionRegistryService,
     AgentOpsOutcomeBridgeService,

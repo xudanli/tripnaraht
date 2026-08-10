@@ -424,10 +424,11 @@ export class McpToolRegistryService implements OnModuleInit {
         serviceName: 'hotel',
         toolName: 'hotel.search',
         displayName: '搜索酒店',
-        description: '根据位置、日期、价格、评分等条件搜索酒店',
+        description:
+          '根据位置、日期、价格、评分等条件搜索酒店。中国行程优先飞猪 FlyAI（可跳转预订），其次高德 POI；海外优先 Airbnb / Google Places。',
         category: 'accommodation',
         parameters: [
-          { name: 'query', type: 'string', required: false, description: '搜索查询（自然语言，如 "纽约市中心酒店"）' },
+          { name: 'query', type: 'string', required: false, description: '搜索查询（自然语言，如 "纽约市中心酒店" / "成都宽窄巷子附近酒店"）' },
           { name: 'location', type: 'string', required: false, description: '位置（城市名称、地址或坐标对象，如 "Reykjavik" 或 {lat: 64.1466, lng: -21.9426}）' },
           { name: 'radius', type: 'number', required: false, description: '搜索半径（米）', defaultValue: 10000 },
           { name: 'priceLevel', type: 'number', required: false, description: '价格等级（1=便宜，4=昂贵）' },
@@ -436,14 +437,16 @@ export class McpToolRegistryService implements OnModuleInit {
           { name: 'checkOut', type: 'string', required: false, description: '退房日期（YYYY-MM-DD）' },
           { name: 'guests', type: 'number', required: false, description: '入住人数' },
           { name: 'language', type: 'string', required: false, description: '语言代码', defaultValue: 'en' },
+          { name: 'countryCode', type: 'string', required: false, description: '国家码（CN 时走飞猪）' },
+          { name: 'destination', type: 'string', required: false, description: '目的地（国内城市名）' },
         ],
         returnType: 'HotelDetails[]',
         examples: [
           '搜索冰岛的酒店',
+          '成都宽窄巷子附近酒店',
+          '三亚海景酒店',
           '找东京的酒店',
           '推荐巴黎的酒店',
-          '冰岛有什么酒店',
-          '搜索纽约市中心的高评分酒店'
         ],
         authRequired: false,
       },
@@ -466,6 +469,202 @@ export class McpToolRegistryService implements OnModuleInit {
         ],
         authRequired: false,
       }
+    ]);
+
+    // Activity 工具（Browserbase 探运营商订票页 + 目录回落；国内优先飞猪）
+    this.registerTools('activity', [
+      {
+        serviceName: 'activity',
+        toolName: 'activity.search',
+        displayName: '搜索活动预订',
+        description:
+          '搜索需提前预订的活动/门票。中国行程优先飞猪 FlyAI（可跳转预订）；冰岛走 Browserbase 探运营商页 + 静态目录回落。',
+        category: 'activity',
+        parameters: [
+          { name: 'query', type: 'string', required: false, description: '自然语言（如「哪些景点要提前预定」「冰川徒步」「九寨沟门票」）' },
+          { name: 'limit', type: 'number', required: false, description: '最多返回条数', defaultValue: 4 },
+          { name: 'date', type: 'string', required: false, description: '活动日期 YYYY-MM-DD（写入探页提示）' },
+          { name: 'countryCode', type: 'string', required: false, description: '国家码（CN 时走飞猪）' },
+          { name: 'destination', type: 'string', required: false, description: '目的地城市（国内 POI 检索）' },
+        ],
+        returnType: 'ActivitySearchResult',
+        examples: [
+          '有哪些景点是需要我提前预定的？',
+          '冰川徒步怎么订',
+          '蓝湖门票',
+          '九寨沟门票',
+          '成都大熊猫基地怎么订',
+        ],
+        authRequired: false,
+      },
+    ]);
+
+    // 小红书 MCP（只读社区体验）；http://localhost:18060/mcp
+    this.registerTools('xiaohongshu', [
+      {
+        serviceName: 'xiaohongshu',
+        toolName: 'xiaohongshu.search_feeds',
+        displayName: '小红书搜笔记',
+        description:
+          '搜索小红书旅行体验笔记（社区体验证据，非官方事实）。用于「值不值得去」类咨询。' +
+          '回答时必须标明「社区体验、非官方事实」；与天气/道路/库存冲突时以官方传感器为准。返回含 experience_bundle 与 disclaimer_zh。',
+        category: 'search',
+        parameters: [
+          { name: 'keyword', type: 'string', required: true, description: '关键词，如「冰岛 冰川徒步」' },
+          { name: 'limit', type: 'number', required: false, description: '期望条数上限 10–30', defaultValue: 20 },
+          {
+            name: 'filters',
+            type: 'object',
+            required: false,
+            description: '可选：sort_by / note_type / publish_time 等',
+          },
+        ],
+        returnType: 'XhsSearchFeedsResult',
+        examples: ['冰岛冰川徒步值不值得', '冰岛环岛自驾踩坑', '蓝湖温泉体验'],
+        authRequired: false,
+      },
+      {
+        serviceName: 'xiaohongshu',
+        toolName: 'xiaohongshu.get_feed_detail',
+        displayName: '小红书笔记详情',
+        description: '读取笔记正文、互动与评论摘录（需 feed_id + xsec_token）。',
+        category: 'search',
+        parameters: [
+          { name: 'feed_id', type: 'string', required: true, description: '笔记 id' },
+          { name: 'xsec_token', type: 'string', required: true, description: '搜索结果带回的 token' },
+          { name: 'load_all_comments', type: 'boolean', required: false, description: '是否拉全量评论', defaultValue: false },
+        ],
+        returnType: 'XhsFeedDetailResult',
+        examples: ['打开这条笔记详情'],
+        authRequired: false,
+      },
+      {
+        serviceName: 'xiaohongshu',
+        toolName: 'xiaohongshu.user_profile',
+        displayName: '小红书作者主页',
+        description: '作者弱可信度信号（粉丝/笔记数），不作事实权威。',
+        category: 'search',
+        parameters: [
+          { name: 'user_id', type: 'string', required: true, description: '用户 id' },
+          { name: 'xsec_token', type: 'string', required: true, description: 'token' },
+        ],
+        returnType: 'XhsUserProfileResult',
+        examples: ['看一下作者主页'],
+        authRequired: false,
+      },
+      {
+        serviceName: 'xiaohongshu',
+        toolName: 'xiaohongshu.list_feeds',
+        displayName: '小红书推荐 Feed',
+        description: '首页推荐流（冷启动/探索）；不作目的地决策主证据。',
+        category: 'search',
+        parameters: [],
+        returnType: 'XhsListFeedsResult',
+        examples: ['小红书首页热门'],
+        authRequired: false,
+      },
+    ]);
+
+    // 飞猪 FlyAI（官方 CLI → Fliggy MCP）；文档 https://open.fly.ai/docs/quickstart
+    this.registerTools('fliggy', [
+      {
+        serviceName: 'fliggy',
+        toolName: 'fliggy.search_hotel',
+        displayName: '飞猪搜酒店',
+        description:
+          '通过飞猪 FlyAI 搜索酒店，返回含 detailUrl 预订跳转的结构化结果（中国行程优先）。',
+        category: 'accommodation',
+        parameters: [
+          { name: 'dest_name', type: 'string', required: true, description: '目的地城市，如「成都」「杭州」' },
+          { name: 'key_words', type: 'string', required: false, description: '酒店名/商圈/品牌' },
+          { name: 'check_in_date', type: 'string', required: false, description: '入住 YYYY-MM-DD' },
+          { name: 'check_out_date', type: 'string', required: false, description: '退房 YYYY-MM-DD' },
+          { name: 'max_price', type: 'number', required: false, description: '每晚最高价（元）' },
+        ],
+        returnType: 'FliggyHotelSearchResult',
+        examples: ['成都宽窄巷子附近酒店', '三亚海景酒店', '杭州西湖边上的酒店'],
+        authRequired: false,
+      },
+      {
+        serviceName: 'fliggy',
+        toolName: 'fliggy.search_poi',
+        displayName: '飞猪搜景点门票',
+        description: '通过飞猪 FlyAI 搜索景点/门票，返回含 jumpUrl 预订跳转。',
+        category: 'activity',
+        parameters: [
+          { name: 'city_name', type: 'string', required: true, description: '城市名，如「成都」' },
+          { name: 'keyword', type: 'string', required: false, description: '景点关键词' },
+          { name: 'category', type: 'string', required: false, description: '类型，如「历史古迹」' },
+        ],
+        returnType: 'FliggyPoiSearchResult',
+        examples: ['成都大熊猫基地门票', '西安兵马俑', '九寨沟门票'],
+        authRequired: false,
+      },
+      {
+        serviceName: 'fliggy',
+        toolName: 'fliggy.search_flight',
+        displayName: '飞猪搜机票',
+        description:
+          '通过飞猪 FlyAI 结构化搜机票（中国行程优先），返回含 jumpUrl 的可订航班。',
+        category: 'transport',
+        parameters: [
+          { name: 'origin', type: 'string', required: true, description: '出发城市，如「成都」' },
+          { name: 'destination', type: 'string', required: false, description: '到达城市，如「拉萨」' },
+          { name: 'dep_date', type: 'string', required: false, description: '出发日 YYYY-MM-DD' },
+          { name: 'back_date', type: 'string', required: false, description: '返程日 YYYY-MM-DD' },
+        ],
+        returnType: 'FliggyFlightSearchResult',
+        examples: ['成都到拉萨机票', '北京飞上海明天', '杭州到三亚往返'],
+        authRequired: false,
+      },
+      {
+        serviceName: 'fliggy',
+        toolName: 'fliggy.keyword_search',
+        displayName: '飞猪关键词泛搜',
+        description:
+          '自然语言一站式搜索酒店/机票/门票/租车/美食等，返回带 jumpUrl 的结果（中国行程优先）。',
+        category: 'search',
+        parameters: [
+          { name: 'query', type: 'string', required: true, description: '自然语言，如「杭州三日游」「成都租车」「拉萨美食」' },
+        ],
+        returnType: 'FliggyKeywordSearchResult',
+        examples: ['三亚玩什么', '成都美食', '拉萨租车', '九寨沟门票'],
+        authRequired: false,
+      },
+    ]);
+
+    this.registerTools('restaurant', [
+      {
+        serviceName: 'restaurant',
+        toolName: 'restaurant.search',
+        displayName: '搜索餐厅',
+        description: '按地点/自然语言搜索餐厅（Google Places）；不可用时由上层目录回落',
+        category: 'dining',
+        parameters: [
+          { name: 'query', type: 'string', required: false, description: '如 restaurant Selfoss Iceland' },
+          { name: 'location', type: 'object', required: false, description: '{lat,lng}' },
+          { name: 'radius', type: 'number', required: false, description: '米' },
+          { name: 'minRating', type: 'number', required: false, description: '最低评分' },
+        ],
+        returnType: 'RestaurantDetails[]',
+        examples: ['推荐餐厅', '8.16的，请为我推荐餐厅', '塞尔福斯附近吃什么'],
+        authRequired: false,
+      },
+      {
+        serviceName: 'restaurant',
+        toolName: 'restaurant.nearby',
+        displayName: '附近餐厅',
+        description: '按坐标搜附近餐厅',
+        category: 'dining',
+        parameters: [
+          { name: 'location', type: 'object', required: true, description: '{lat,lng}' },
+          { name: 'radius', type: 'number', required: false, description: '米' },
+          { name: 'query', type: 'string', required: false, description: '附加查询' },
+        ],
+        returnType: 'RestaurantDetails[]',
+        examples: ['附近有什么好吃的'],
+        authRequired: false,
+      },
     ]);
 
   }

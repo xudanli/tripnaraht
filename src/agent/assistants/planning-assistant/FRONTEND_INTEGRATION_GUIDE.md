@@ -276,11 +276,37 @@ async function addAccommodationToTrip(params: {
 
 // 卡片按钮绑定示例
 function onAccommodationAction(
-  action: { action: string; params?: { accommodationIndex?: number; url?: string } },
+  action: {
+    action: string;
+    params?: {
+      accommodationIndex?: number;
+      url?: string;
+      appUrl?: string;
+      tbOpenUrl?: string;
+      webUrl?: string;
+      fallback_url?: string;
+      open_strategy?: 'app_then_web';
+    };
+  },
   ctx: { tripId: string; sessionId: string },
 ) {
-  if (action.action === 'view_accommodation' && action.params?.url) {
-    window.open(action.params.url, '_blank', 'noopener');
+  if (action.action === 'view_accommodation') {
+    const p = action.params ?? {};
+    // 飞猪/淘宝：先 Scheme（taobaotravel / tbopen），失败再开 https（避免浏览器中间页再点一次）
+    if (p.open_strategy === 'app_then_web') {
+      const appFirst = p.appUrl || p.tbOpenUrl || p.url;
+      const web = p.fallback_url || p.webUrl || p.url;
+      // iOS: UIApplication.shared.open(appFirst)；若未装 App / 失败 → open(web)
+      // Web: 可尝试 location.href = appFirst，超时回落 web
+      if (appFirst) {
+        window.location.href = appFirst;
+        if (web && web !== appFirst) {
+          setTimeout(() => window.open(web, '_blank', 'noopener'), 1200);
+        }
+        return;
+      }
+    }
+    if (p.url) window.open(p.url, '_blank', 'noopener');
     return;
   }
   if (action.action === 'add_accommodation_to_itinerary') {
