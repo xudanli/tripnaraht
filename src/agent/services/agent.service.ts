@@ -37,6 +37,8 @@ import { PreferenceRoundOrchestratorService } from '../../trips/process-fairness
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
 import { ContextSlidingWindowAdapter } from '../context/services/context-sliding-window-adapter.service';
 import { tryBuildTeamStructuredDiscussionFastPath } from './execution-gateway.route-and-run.orchestration';
+import { buildToolInvocationMetadataPatch } from './trip-run-tool-invocation.util';
+import { buildTripRunObservabilityMetadataPatch } from './trip-run-observability.util';
 
 import { TokenCalculator } from '../utils/token-calculator.util';
 import {
@@ -82,6 +84,9 @@ import { replayLifecycleManager } from '../utils/replay-lifecycle.manager';
 import { attachFullResponseReplayArtifactDescriptor } from '../utils/replay-artifact-descriptor.builder';
 import { ExecutionGatewayService } from './execution-gateway.service';
 import { RouteAndRunAsyncDelegationService } from './route-and-run-async-delegation.service';
+import { RouteAndRunAsyncService } from './route-and-run-async.service';
+import { RouteAndRunAsyncTaskStore } from './route-and-run-async-task.store';
+import { RouteAndRunAsyncTaskLeaseService } from './route-and-run-async-task-lease.service';
 import { attachFreshRuntimeMaterialization } from '../runtime/fresh-runtime-adapter.util';
 import { RuntimeReplayPersistenceService } from './runtime-replay-persistence.service';
 import { mergeRuntimeExecutionAnomaliesByCode } from '../utils/runtime-execution-profile.validation';
@@ -312,12 +317,19 @@ export class AgentService {
     @Optional() @Inject(SKILL_INTENT_RECOGNIZE) private readonly intentRecognizeSkill?: Skill,
     @Optional() private readonly routeRunRequestFitnessHydrator?: RouteRunRequestFitnessHydratorService,
     @Optional() private readonly routeRunIcelandMarketPriorHydrator?: RouteRunIcelandMarketPriorHydratorService,
-    @Optional() private readonly routeAndRunAsyncService?: import('./route-and-run-async.service').RouteAndRunAsyncService,
-    @Optional() private readonly routeAndRunAsyncTaskStore?: import('./route-and-run-async-task.store').RouteAndRunAsyncTaskStore,
+    /**
+     * 与 RouteAndRunAsyncService ↔ AgentService 成环：两侧都必须 forwardRef，
+     * 否则 @Optional 会静默得到 undefined → chat FORCE 异步直接 503「not configured」。
+     */
+    @Optional()
+    @Inject(forwardRef(() => RouteAndRunAsyncService))
+    private readonly routeAndRunAsyncService?: RouteAndRunAsyncService,
+    @Optional() private readonly routeAndRunAsyncTaskStore?: RouteAndRunAsyncTaskStore,
     @Optional()
     private readonly routeAndRunTaskProgress?: import('../runtime/route-and-run-task-progress.reporter').RouteAndRunTaskProgressReporter,
     @Optional()
-    private readonly routeAndRunAsyncTaskLease?: import('./route-and-run-async-task-lease.service').RouteAndRunAsyncTaskLeaseService,
+    @Inject(forwardRef(() => RouteAndRunAsyncTaskLeaseService))
+    private readonly routeAndRunAsyncTaskLease?: RouteAndRunAsyncTaskLeaseService,
     @Optional()
     @Inject(forwardRef(() => RouteAndRunAsyncDelegationService))
     private readonly routeAndRunAsyncDelegationService?: RouteAndRunAsyncDelegationService,
@@ -2760,6 +2772,55 @@ export class AgentService {
         `[UserStandingPreference] async merge failed: ${err instanceof Error ? err.message : String(err)}`,
       ),
     );
+
+    // 组装后可能才有完整 audits / traces：再合并 tool + 决策审计投影到 TripRun.metadata
+    const durableTripRunId =
+      typeof (withRobustness.observability as { durable_trip_run_id?: unknown } | undefined)
+        ?.durable_trip_run_id === 'string'
+        ? (withRobustness.observability as { durable_trip_run_id: string }).durable_trip_run_id
+        : null;
+    const toolPatch = buildToolInvocationMetadataPatch(withRobustness);
+    const goldenTaskId =
+      typeof (request.options as { golden_eval_task_id?: unknown } | undefined)?.golden_eval_task_id ===
+      'string'
+        ? String((request.options as { golden_eval_task_id: string }).golden_eval_task_id).trim()
+        : '';
+    const goldenEval = (request.options as { golden_eval?: Record<string, unknown> } | undefined)
+      ?.golden_eval;
+    const obsPatch = buildTripRunObservabilityMetadataPatch(withRobustness, {
+      userQuery: typeof request.message === 'string' ? request.message : null,
+      status: withRobustness.result?.status ?? null,
+      benchmark: goldenTaskId
+        ? {
+            taskId: goldenTaskId,
+            pass:
+              typeof goldenEval?.pass === 'boolean'
+                ? goldenEval.pass
+                : typeof goldenEval?.passed === 'boolean'
+                  ? (goldenEval.passed as boolean)
+                  : null,
+            score: typeof goldenEval?.score === 'number' ? (goldenEval.score as number) : null,
+            failedDimension: Array.isArray(goldenEval?.failedDimension)
+              ? (goldenEval!.failedDimension as unknown[]).map(String)
+              : Array.isArray(goldenEval?.failed_dimension)
+                ? (goldenEval!.failed_dimension as unknown[]).map(String)
+                : [],
+          }
+        : undefined,
+    });
+    const metaPatch = { ...toolPatch, ...obsPatch };
+    if (durableTripRunId && this.tripRunManager && Object.keys(metaPatch).length > 0) {
+      void this.tripRunManager
+        .updateTripRun({ runId: durableTripRunId, metadata: metaPatch })
+        .catch((err: unknown) =>
+          this.logger.warn(
+            `[TripRun] observability metadata merge failed: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          ),
+        );
+    }
+
     return this.finalizeSuccessfulFreshExecution(request, withRobustness, requestHash);
   }
 
@@ -2870,6 +2931,12 @@ export class AgentService {
     const travelMemoryConsume = request
       ? (request as any).__travelMemoryConsume
       : undefined;
+    const effectiveTravelerContext = request
+      ? (request as any).__effectiveTravelerContext
+      : undefined;
+    const etcDecisionParamsAudit =
+      this.agentExecutionContextStore.get()?.etcDecisionParamsAudit ??
+      (request ? (request as any).__etcDecisionParamsAudit : undefined);
     const memoryDecisionTrace =
       (request ? (request as any).__memoryDecisionTrace : undefined) ??
       (resp as any)?.result?.decisionState?.optimizationHints?.memoryDecisionTrace ??
@@ -2916,6 +2983,16 @@ export class AgentService {
                     ) ?? travelMemoryConsume.influenceKinds,
                 }
               : travelMemoryConsume,
+          }
+        : {}),
+      ...(effectiveTravelerContext
+        ? {
+            effective_traveler_context: etcDecisionParamsAudit
+              ? {
+                  ...effectiveTravelerContext,
+                  decision_params_audit: etcDecisionParamsAudit,
+                }
+              : effectiveTravelerContext,
           }
         : {}),
       ...(memoryDecisionTrace

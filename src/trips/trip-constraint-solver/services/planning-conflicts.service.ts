@@ -77,6 +77,52 @@ export class PlanningConflictsService {
     this.cache.clear(tripId);
   }
 
+  /**
+   * 约束控制台 / 合同首包用：只读 Decision Problem 投影，**绝不**同步跑 getConflicts/Route API。
+   * 投影不可用或超时则空冲突 + stale，保证合同主体秒级返回。
+   */
+  async getPlanningConflictsLite(
+    tripId: string,
+    opts?: { timeoutMs?: number },
+  ): Promise<PlanningConflictsResponse> {
+    const timeoutMs = opts?.timeoutMs ?? 3_000;
+    const unified = await this.raceTimeout(
+      this.tryUnifiedSsotProjection(tripId),
+      timeoutMs,
+    );
+    const conflicts = unified ?? [];
+    return {
+      tripId,
+      verdict: {
+        status: 'UNKNOWN',
+        headline:
+          unified != null
+            ? '冲突摘要来自决策问题投影（轻量）'
+            : '冲突计算降级，合同主体仍可用',
+      },
+      canStartExecute: false,
+      isStale: true,
+      reportVerifiedAt: undefined,
+      conflictsGeneratedAt: new Date().toISOString(),
+      summary: buildPlanningConflictsSummary(conflicts),
+      conflicts,
+    };
+  }
+
+  private async raceTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        promise.then((v) => v as T | null),
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), ms);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   /** deferred 首包：Decision Problem 投影 + 轻量 feasibility verdict */
   async loadArtifactsFast(tripId: string, opts?: PlanningConflictsLoadOpts): Promise<PlanningConflictsArtifacts> {
     const conflictsGeneratedAt = new Date().toISOString();

@@ -28,7 +28,7 @@
 
 ```bash
 # 后端
-cp .env.unified-decision-frontend.example  # 追加到 .env 后 npm run dev
+cp config/env/.env.unified-decision-frontend.example  # 追加到 .env 后 npm run dev
 npm run decision-center:unified-env-check    # 7/7 绿
 
 # 前端

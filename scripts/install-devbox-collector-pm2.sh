@@ -29,7 +29,7 @@ if [[ -z "${VEDUR_COLLECTOR_HMAC_SECRET:-}" ]]; then
 fi
 
 pm2 delete vedur-collector-ingest vedur-collector-tunnel 2>/dev/null || true
-pm2 start ecosystem.vedur-collector.config.js --update-env
+pm2 start config/ecosystem.vedur-collector.config.js --update-env
 pm2 save
 
 echo "[pm2] vedur collector stack installed"

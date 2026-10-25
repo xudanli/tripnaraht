@@ -1222,6 +1222,8 @@ export function assembleFeasibilityReport(input: {
   projectedGuardianIssues?: FeasibilityIssueDto[];
   /** Travel Product Catalog — session / meeting / eligibility / weather */
   productCatalogIssues?: FeasibilityIssueDto[];
+  /** P1.3 — 执行风险 ↔ 约束绑定激活的可行性 issue */
+  riskConstraintBindingIssues?: FeasibilityIssueDto[];
   /** Phase 6 slice-7 — Gateway PLAN_VERIFY domain coverage (strip legacy duplicate rules) */
   gatewayDomainCoverage?: AssemblerGatewayDomainCoverage;
 }): TripFeasibilityReportDto {
@@ -1246,6 +1248,7 @@ export function assembleFeasibilityReport(input: {
     ...(input.projectedScheduleIssues ?? []),
     ...(input.projectedGuardianIssues ?? []),
     ...(input.productCatalogIssues ?? []),
+    ...(input.riskConstraintBindingIssues ?? []),
   ];
   const filteredFindingIssues = filterAssemblerLegacyIssuesWhenProjected(
     findingIssues,
@@ -1260,6 +1263,7 @@ export function assembleFeasibilityReport(input: {
   const teamFitIssues = input.teamFitIssues ?? [];
   const itineraryIssues = input.itineraryCompletenessIssues ?? [];
   const productCatalogIssues = input.productCatalogIssues ?? [];
+  const riskConstraintBindingIssues = input.riskConstraintBindingIssues ?? [];
   const issues = dedupeFeasibilityIssues([
     ...filteredFindingIssues,
     ...filteredConflictIssues,
@@ -1269,6 +1273,7 @@ export function assembleFeasibilityReport(input: {
     ...(input.p0Issues ?? []),
     ...(input.projectedGuardianIssues ?? []),
     ...productCatalogIssues,
+    ...riskConstraintBindingIssues,
   ]).map((issue) =>
     enrichTravelScopeBffFields({
       ...issue,

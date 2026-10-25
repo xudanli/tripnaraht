@@ -7,11 +7,16 @@
 
 > TripNARA = **显式旅行本体** + **动态世界状态** + **规则型因果预测** + **多目标求解** + **可验证写回**
 
+**Ontology 成熟度口径（V0.5）：** 已建立面向决策的 Travel Ontology Core（实体契约 + WorldFact + Constraint）；**不是**完整旅行世界分类学。详见 [travel-ontology-v05-maturity.md](./travel-ontology-v05-maturity.md)。  
+**知识体系口径（7 层）：** 4 知识底座 + 3 运行时层（World State / Traveler Context / Decision Knowledge）；**不是** Travel RAG。详见 [tripnara-knowledge-system-v1.md](./tripnara-knowledge-system-v1.md)。  
+推荐对外句：见上述文档冻结表述。禁止宣称「完整 Travel Ontology」或「Vector 决定能不能走」；也勿贬低为「仅有 TypeScript interface」。
+
 在 Authority Consistency 基础完成前，**禁止**对外/对内宣称：
 
 - 隐式结构挖掘（从历史结果自动发现未注册规律）
 - 学习型世界模型（学习型状态转移）
 - 「完整」隐式 Causal World Model 已实现
+- 「完整」Travel World Ontology / 深 taxonomy 知识图谱已实现
 
 允许表述：显式规则与固定公式的时序因果预测、Decision Scope 裁剪、OR-Tools **Shadow** 候选、Preview→Confirm→Apply→PlanVersion 权威写回。
 
@@ -63,6 +68,8 @@ DecisionProblem → Gateway → Verification → Preview → Confirm → Apply/E
 
 ## 相关
 
+- [tripnara-knowledge-system-v1.md](./tripnara-knowledge-system-v1.md) — 知识体系 7 层总览
+- [travel-ontology-v05-maturity.md](./travel-ontology-v05-maturity.md) — Ontology V0.5 完成度与演进序
 - [travel-causal-decision/PHASE_GATE.md](../../src/travel-causal-decision/PHASE_GATE.md)
 - [travel-ontology-p2-temporal-prediction-charter.md](./travel-ontology-p2-temporal-prediction-charter.md)
 - [LATENT-IMPLICIT-PARSE-SHADOW-CHARTER.md](./LATENT-IMPLICIT-PARSE-SHADOW-CHARTER.md)

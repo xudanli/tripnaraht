@@ -172,6 +172,11 @@ export interface MobileTodayItineraryDto {
   participantCount: number;
   merchantName: string;
   confirmationCode: string;
+  /**
+   * Phase 4 P2 — L1 Passive 条带（Canary=L1_PASSIVE 时）。
+   * 不强打断；客户端渲染在今日行程顶部。
+   */
+  proactiveL1Passive?: import('./mobile-proactive-decision.types').MobileProactiveDecisionSurfaceDto['l1PassiveBanner'];
 }
 
 /** 行程日历 — 按 dayIndex 的天摘要（执行期总览，非规划期 day-theme） */
@@ -563,6 +568,8 @@ export interface ExecutionAdjustmentQueueDto {
   /** 按类型分组计数 */
   countsByType: Record<ExecutionInterventionType, number>;
   linkedActiveRiskCount?: number;
+  /** RFC-PD-001 — Proactive Decision V1 surface (optional) */
+  proactiveDecisionV1?: import('./mobile-proactive-decision.types').MobileProactiveDecisionSurfaceDto | null;
   /** 风险簇摘要 — 供调试 / 前端理解聚合关系，不替代 items[] */
   riskClusters?: Array<{
     clusterId: string;

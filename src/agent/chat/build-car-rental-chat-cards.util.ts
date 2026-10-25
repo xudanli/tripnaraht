@@ -44,7 +44,7 @@ export function isCarRentalChatCardQuery(message: string): boolean {
   const msg = String(message ?? '').trim();
   if (!msg) return false;
   return (
-    /我要租车|想租车|需要租车|推荐租车|租一辆车|租一辆|租辆|租越野|租台|查询租车|租车公司|车行推荐|哪家租车|车型报价|取车|还车|异地还|自驾租车|\bcar\s+rental\b|\brent\s+a\s+car\b|\brental\s+car\b/i.test(
+    /我要租车|想租车|需要租车|推荐租车|租车推荐|租一辆车|租一辆|租辆|租越野|租台|查询租车|租车公司|车行推荐|哪家租车|车型报价|取车|还车|异地还|自驾租车|\bcar\s+rental\b|\brent\s+a\s+car\b|\brental\s+car\b/i.test(
       msg,
     ) ||
     // 「成都租车」「拉萨租车」等城市锚点话术

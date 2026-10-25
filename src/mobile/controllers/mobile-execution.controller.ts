@@ -44,6 +44,7 @@ import { MobileDailyDriveService } from '../services/mobile-daily-drive.service'
 import { MobileInTripHomeService } from '../services/mobile-in-trip-home.service';
 import { MobileOverviewDashboardService } from '../services/mobile-overview-dashboard.service';
 import { MobileExecutionQuickActionsService } from '../services/mobile-execution-quick-actions.service';
+import { MobileProactiveDecisionService } from '../services/mobile-proactive-decision.service';
 import { MobileEmergencyPackService } from '../services/mobile-emergency-pack.service';
 import { MobilePushNotificationService } from '../services/mobile-push-notification.service';
 import { ConsumerDecisionQueueService } from '../../trips/travel-status/services/consumer-decision-queue.service';
@@ -66,6 +67,7 @@ export class MobileExecutionController {
     private readonly inTripHome: MobileInTripHomeService,
     private readonly overviewDashboard: MobileOverviewDashboardService,
     private readonly quickActions: MobileExecutionQuickActionsService,
+    private readonly proactiveDecision: MobileProactiveDecisionService,
     private readonly emergencyPack: MobileEmergencyPackService,
     private readonly access: ConstraintSolverAccessService,
     private readonly travelStatus: TravelStatusService,
@@ -232,6 +234,129 @@ export class MobileExecutionController {
   ) {
     return this.run(tripId, user, () =>
       this.mobile.getExecutionAdjustmentQueue(tripId, this.access.resolveUserId(user)),
+    );
+  }
+
+  @Get('execution/proactive-decision')
+  @ApiOperation({
+    summary: 'iOS Proactive Decision V1 表面（三层提醒卡 / Change Draft / Canary）',
+  })
+  async getProactiveDecisionSurface(
+    @Param('tripId') tripId: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.run(tripId, user, () =>
+      this.proactiveDecision.getSurface(tripId, this.access.resolveUserId(user)),
+    );
+  }
+
+  @Post('execution/proactive-decision/cta')
+  @ApiOperation({
+    summary: 'Proactive Decision CTA：VIEW_OPTIONS | DEFER | WHY',
+  })
+  async postProactiveDecisionCta(
+    @Param('tripId') tripId: string,
+    @Body() body: { cta?: string },
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.run(tripId, user, () => {
+      const cta = String(body?.cta ?? '').toUpperCase();
+      if (cta !== 'VIEW_OPTIONS' && cta !== 'DEFER' && cta !== 'WHY') {
+        throw new BadRequestException('cta must be VIEW_OPTIONS | DEFER | WHY');
+      }
+      return this.proactiveDecision.handleCta(
+        tripId,
+        this.access.resolveUserId(user),
+        cta,
+      );
+    });
+  }
+
+  @Post('execution/proactive-decision/confirm')
+  @ApiOperation({ summary: 'Proactive Change Draft Confirm（仍不 Apply）' })
+  async postProactiveDecisionConfirm(
+    @Param('tripId') tripId: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.run(tripId, user, () =>
+      this.proactiveDecision.confirmDraft(tripId, this.access.resolveUserId(user)),
+    );
+  }
+
+  @Post('execution/proactive-decision/apply')
+  @ApiOperation({
+    summary:
+      'Proactive Change Draft Apply（RFC001 finalize→authorize→execute；需 CONFIRM_APPLY_WRITE flag）',
+  })
+  async postProactiveDecisionApply(
+    @Param('tripId') tripId: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.run(tripId, user, () =>
+      this.proactiveDecision.applyDraft(tripId, this.access.resolveUserId(user)),
+    );
+  }
+
+  @Post('execution/proactive-decision/feedback')
+  @ApiOperation({
+    summary: 'Phase 5 验证反馈：useful=true|false → Useful Intervention 指标',
+  })
+  async postProactiveDecisionFeedback(
+    @Param('tripId') tripId: string,
+    @Body() body: { useful?: boolean },
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.run(tripId, user, () => {
+      if (typeof body?.useful !== 'boolean') {
+        throw new BadRequestException('useful must be boolean');
+      }
+      return this.proactiveDecision.submitFeedback(
+        tripId,
+        this.access.resolveUserId(user),
+        body.useful,
+      );
+    });
+  }
+
+  @Post('execution/proactive-decision/impression')
+  @ApiOperation({
+    summary:
+      'Phase 5 曝光：L1/L2 实际渲染后上报 → Accept Rate 分母（visibleShown）',
+  })
+  async postProactiveDecisionImpression(
+    @Param('tripId') tripId: string,
+    @Body() body: { surface?: string },
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.run(tripId, user, () => {
+      const surface = String(body?.surface ?? '').toUpperCase();
+      if (surface !== 'L1_PASSIVE' && surface !== 'L2_INTERRUPT') {
+        throw new BadRequestException(
+          'surface must be L1_PASSIVE | L2_INTERRUPT',
+        );
+      }
+      return this.proactiveDecision.markImpression(
+        tripId,
+        this.access.resolveUserId(user),
+        surface,
+      );
+    });
+  }
+
+  @Get('execution/proactive-decision/validation')
+  @ApiOperation({
+    summary:
+      'Phase 5 验证摘要：Dataset + Useful/Accept/FP + Canary 晋级门禁',
+  })
+  async getProactiveDecisionValidation(
+    @Param('tripId') tripId: string,
+    @CurrentUser() user?: CurrentUserPayload,
+  ) {
+    return this.run(tripId, user, () =>
+      this.proactiveDecision.getValidationSummary(
+        tripId,
+        this.access.resolveUserId(user),
+      ),
     );
   }
 

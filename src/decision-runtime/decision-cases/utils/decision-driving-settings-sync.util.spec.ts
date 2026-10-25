@@ -70,6 +70,20 @@ describe('decision-driving-settings-sync', () => {
     expect(constraints.insurance_fording_excluded).toBe(true);
     expect(constraints.excludeFRoad).toBe(true);
     expect(constraints.fRoadAllowed).toBe(false);
-    expect(constraints.maxDailyDriveHours).toBe(7);
+    expect(constraints.maxDailyDrivingHours).toBe(7);
+    expect(constraints.maxDailyDriveMinutes).toBe(420);
+    expect(constraints.maxDailyDriveHours).toBeUndefined();
+  });
+
+  it('mirrors drivers.dailyDrivingLimitHours when routePreference omits it', () => {
+    const constraints = mirrorDrivingSettingsIntoConstraints({
+      constraints: { maxDailyDrivingHours: 6, maxDailyDriveMinutes: 360 },
+      drivingSettings: {
+        drivers: { dailyDrivingLimitHours: 4 },
+        routePreference: { fRoadPreference: 'accept' },
+      },
+    });
+    expect(constraints.maxDailyDrivingHours).toBe(4);
+    expect(constraints.maxDailyDriveMinutes).toBe(240);
   });
 });

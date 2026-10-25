@@ -163,7 +163,7 @@ npm run test:patent-nz-5day
 
 **一键启用（联调/答辩）**
 
-已写入项目根目录 `.env`（Nest `ConfigModule` 自动加载）。模板见 `.env.patent-6.5.example`。
+已写入项目根目录 `.env`（Nest `ConfigModule` 自动加载）。模板见 `config/env/.env.patent-6.5.example`。
 
 ```bash
 # 当前终端（不重启 dev 时）

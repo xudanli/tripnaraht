@@ -77,6 +77,12 @@ import {
 import { ApplyOptimizationRequestDto } from './dto/trip-optimization.dto';
 import { BatchUpdateItemsRequestDto, BatchUpdateItemsResponseDto } from './dto/trip-items.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
+import { AdminTripListQueryDto } from './dto/admin-trip.dto';
+import { AdminTripWorldStateResponseDto } from './dto/admin-trip-world-state.dto';
+import { AdminTripWorldStateService } from './services/admin-trip-world-state.service';
+import { AdminTripDecisionContractResponseDto } from './dto/admin-trip-decision-contract.dto';
+import { AdminTripDecisionContractService } from './services/admin-trip-decision-contract.service';
+import { ListTripConstraintsQueryDto } from './trip-constraint-solver/dto/trip-constraint.dto';
 import { TripMetricsService } from './services/trip-metrics.service';
 import { ScheduleTimelineService } from './services/schedule-timeline.service';
 import { TimelineOverviewService } from './services/timeline-overview.service';
@@ -294,6 +300,8 @@ export class TripsController {
     private readonly jwtService: JwtService,
     private readonly embeddedHikingSummary: EmbeddedHikingTripSummaryService,
     private readonly moduleRef: ModuleRef,
+    private readonly adminTripWorldStateService: AdminTripWorldStateService,
+    private readonly adminTripDecisionContractService: AdminTripDecisionContractService,
     @Optional() private readonly hotelRecommendationService?: HotelRecommendationService,
     @Optional() private readonly contextEngineerService?: ContextEngineerService,
     @Inject(SKILLS_REGISTRY_TOKEN) @Optional() private readonly skillsRegistry?: SkillsRegistryService,
@@ -4997,7 +5005,7 @@ export class TripsController {
     description: '成功返回行程列表（统一响应格式）',
     type: ApiSuccessResponseDto,
   })
-  async findAllAdmin(@Query() query: any) {
+  async findAllAdmin(@Query() query: AdminTripListQueryDto) {
     try {
       const result = await this.tripsService.findAllAdmin(query);
       return successResponse(result);
@@ -5082,6 +5090,71 @@ export class TripsController {
       return successResponse(result);
     } catch (error: any) {
       this.logger.error(`批量操作失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get('admin/:id/world-state')
+  @ApiOperation({
+    summary: '获取行程世界状态投影（管理接口）',
+    description:
+      '只读投影：Environment / Road / Vehicle / Plan / Team / Constraints + 风险总览。' +
+      '基于已有落库与 metadata，不触发外部实时天气/路况抓取；缺字段为 null。',
+  })
+  @ApiParam({ name: 'id', description: '行程ID（UUID）' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回世界状态投影（统一响应格式）',
+    type: AdminTripWorldStateResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async getAdminWorldState(@Param('id') id: string) {
+    try {
+      const view = await this.adminTripWorldStateService.getWorldState(id);
+      return successResponse(view);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      this.logger.error(`获取行程世界状态失败: ${error.message}`, error.stack);
+      return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
+    }
+  }
+
+  @Get('admin/:id/decision-contract')
+  @ApiOperation({
+    summary: '获取行程旅行决策合同（管理接口）',
+    description:
+      '只读合成：与 GET /trips/:tripId/constraints 同构（meta.sections + items + contract），' +
+      '不校验行程成员；愿望/风险上下文优先使用 OWNER。不写库。',
+  })
+  @ApiParam({ name: 'id', description: '行程ID（UUID）' })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回旅行决策合同投影（统一响应格式）',
+    type: AdminTripDecisionContractResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: '行程不存在（统一响应格式）',
+    type: ApiErrorResponseDto,
+  })
+  async getAdminDecisionContract(
+    @Param('id') id: string,
+    @Query() query: ListTripConstraintsQueryDto,
+  ) {
+    try {
+      const view = await this.adminTripDecisionContractService.getDecisionContract(id, query);
+      return successResponse(view);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        return errorResponse(ErrorCode.NOT_FOUND, error.message);
+      }
+      this.logger.error(`获取行程旅行决策合同失败: ${error.message}`, error.stack);
       return errorResponse(ErrorCode.INTERNAL_ERROR, error.message);
     }
   }

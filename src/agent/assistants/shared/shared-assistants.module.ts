@@ -18,6 +18,7 @@ import { PersonaLanguageService } from './services/persona-language.service';
 import { RecommendationEngineService } from './services/recommendation-engine.service';
 import { PreferenceLearningService } from './services/preference-learning.service';
 import { RouteDirectionsModule } from '../../../route-directions/route-directions.module';
+import { TravelMemoryModule } from '../../../travel-memory/travel-memory.module';
 
 @Global()
 @Module({
@@ -25,6 +26,7 @@ import { RouteDirectionsModule } from '../../../route-directions/route-direction
     PrismaModule,
     LlmModule,
     forwardRef(() => RouteDirectionsModule), // 使用 forwardRef 避免循环依赖
+    forwardRef(() => TravelMemoryModule),
   ],
   providers: [
     PersonaLanguageService,

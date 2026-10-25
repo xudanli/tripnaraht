@@ -1,6 +1,6 @@
 // src/data-contracts/services/data-source-router.service.ts
 
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { RoadStatusAdapter } from '../adapters/road-status.adapter.interface';
 import { WeatherAdapter } from '../adapters/weather.adapter.interface';
 import { TransportAdapter } from '../adapters/transport.adapter.interface';
@@ -19,6 +19,7 @@ import {
   wrapWeatherDailyForecastAsEnvelope,
   wrapWeatherDataAsEnvelope,
 } from '../mappers/evidence-envelope.mapper';
+import { AdminWeatherSourceBridge } from './admin-weather-source-bridge.service';
 
 /**
  * 数据源路由器服务
@@ -41,6 +42,8 @@ export class DataSourceRouterService implements OnModuleInit {
   private weatherAdapterCache: Map<string, WeatherAdapter> = new Map();
   private transportAdapterCache: Map<string, TransportAdapter> = new Map();
   private ferryAdapterCache: Map<string, FerryAdapter> = new Map();
+
+  constructor(@Optional() private readonly weatherSourceBridge?: AdminWeatherSourceBridge) {}
 
   /**
    * 注册路况适配器
@@ -135,11 +138,18 @@ export class DataSourceRouterService implements OnModuleInit {
   async getWeather(query: WeatherQuery): Promise<WeatherData> {
     const countryCode = await this.getCountryCode(query.lat, query.lng);
     
-    // 获取所有候选适配器（按优先级排序）
-    const candidates = this.weatherAdapters.filter(adapter =>
-      adapter.getSupportedCountries().includes(countryCode) ||
-      adapter.getSupportedCountries().includes('*')
-    );
+    // 获取所有候选适配器（按优先级排序），并跳过 Admin 已禁用的源
+    const candidates = this.weatherAdapters.filter(adapter => {
+      const supportsCountry =
+        adapter.getSupportedCountries().includes(countryCode) ||
+        adapter.getSupportedCountries().includes('*');
+      if (!supportsCountry) return false;
+      if (this.weatherSourceBridge && !this.weatherSourceBridge.isEnabled(adapter.getName())) {
+        this.logger.debug(`跳过已禁用天气适配器: ${adapter.getName()}`);
+        return false;
+      }
+      return true;
+    });
     
     if (candidates.length === 0) {
       throw new Error(`未找到支持国家 ${countryCode} 的天气适配器`);
@@ -183,9 +193,13 @@ export class DataSourceRouterService implements OnModuleInit {
    * 获取逐日天气预报（Open-Meteo 等支持 daily 的适配器）
    */
   async getDailyWeatherForecast(query: WeatherForecastQuery): Promise<WeatherDailyForecast[]> {
-    const adapter = this.weatherAdapters.find(
-      (candidate) => typeof candidate.getDailyForecast === 'function',
-    );
+    const adapter = this.weatherAdapters.find((candidate) => {
+      if (typeof candidate.getDailyForecast !== 'function') return false;
+      if (this.weatherSourceBridge && !this.weatherSourceBridge.isEnabled(candidate.getName())) {
+        return false;
+      }
+      return true;
+    });
 
     if (!adapter?.getDailyForecast) {
       throw new Error('没有可用的逐日天气预报适配器');
@@ -305,17 +319,28 @@ export class DataSourceRouterService implements OnModuleInit {
    */
   private selectWeatherAdapter(countryCode: string): WeatherAdapter {
     if (this.weatherAdapterCache.has(countryCode)) {
-      return this.weatherAdapterCache.get(countryCode)!;
+      const cached = this.weatherAdapterCache.get(countryCode)!;
+      if (!this.weatherSourceBridge || this.weatherSourceBridge.isEnabled(cached.getName())) {
+        return cached;
+      }
+      this.weatherAdapterCache.delete(countryCode);
     }
 
-    const candidates = this.weatherAdapters.filter(adapter =>
-      adapter.getSupportedCountries().includes(countryCode) ||
-      adapter.getSupportedCountries().includes('*')
-    );
+    const candidates = this.weatherAdapters.filter(adapter => {
+      const supportsCountry =
+        adapter.getSupportedCountries().includes(countryCode) ||
+        adapter.getSupportedCountries().includes('*');
+      if (!supportsCountry) return false;
+      if (this.weatherSourceBridge && !this.weatherSourceBridge.isEnabled(adapter.getName())) {
+        return false;
+      }
+      return true;
+    });
 
     if (candidates.length === 0) {
-      const defaultAdapter = this.weatherAdapters.find(a => 
-        a.getSupportedCountries().includes('*')
+      const defaultAdapter = this.weatherAdapters.find(a =>
+        a.getSupportedCountries().includes('*') &&
+        (!this.weatherSourceBridge || this.weatherSourceBridge.isEnabled(a.getName()))
       );
       if (defaultAdapter) {
         this.weatherAdapterCache.set(countryCode, defaultAdapter);

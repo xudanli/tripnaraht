@@ -97,13 +97,25 @@ export class RouteAndRunAsyncService {
     });
 
     if (!resumeValidation.allowed && isAsyncMutationWriteGuardEnforce()) {
-      const reasons = resumeValidation.reasonCodes.join(',');
-      this.logger.warn(`[route_and_run/async] resume blocked task=${taskId} reasons=${reasons}`);
-      await this.taskStore.markFailed(
-        taskId,
-        `Async resume authority check failed: ${reasons}`,
-      );
-      return;
+      const reasons = resumeValidation.reasonCodes;
+      /**
+       * 只读咨询（推荐酒店等）创建时往往没有 DSO checkpoint → authority_snapshot 为 null。
+       * 续跑阶段不应因 AUTHORITY_SNAPSHOT_INCOMPLETE 直接杀死任务；写库仍由 commit 闸门把关。
+       */
+      const onlyIncomplete =
+        reasons.length === 1 && reasons[0] === 'AUTHORITY_SNAPSHOT_INCOMPLETE';
+      if (onlyIncomplete) {
+        this.logger.warn(
+          `[route_and_run/async] resume without authority snapshot (consult-safe) task=${taskId}`,
+        );
+      } else {
+        const reasonStr = reasons.join(',');
+        this.logger.warn(`[route_and_run/async] resume blocked task=${taskId} reasons=${reasonStr}`);
+        const err = `Async resume authority check failed: ${reasonStr}`;
+        await this.taskStore.markFailed(taskId, err);
+        await this.finalizeChatPlaceholder(taskId, { status: 'FAILED', error: err });
+        return;
+      }
     }
 
     const nextResume = (record.resume_count ?? 0) + 1;
@@ -235,7 +247,7 @@ export class RouteAndRunAsyncService {
   }
 
   /** agent-chat FORCE 异步：任务终态后写回「正在规划中…」占位并推 SSE。 */
-  private async finalizeChatPlaceholder(
+  async finalizeChatPlaceholder(
     taskId: string,
     outcome:
       | { status: 'SUCCESS'; data: RouteAndRunResponseDto }
@@ -251,5 +263,11 @@ export class RouteAndRunAsyncService {
         `[route_and_run/async] chat finalize failed task=${taskId}: ${msg}`,
       );
     }
+  }
+
+  /** Lease 耗尽等外部失败路径：标记失败并写回 chat 占位。 */
+  async markFailedAndFinalizeChat(taskId: string, error: string): Promise<void> {
+    await this.taskStore.markFailed(taskId, error);
+    await this.finalizeChatPlaceholder(taskId, { status: 'FAILED', error });
   }
 }

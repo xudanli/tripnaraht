@@ -1,6 +1,11 @@
 /**
  * Layer-1 Weather physical thresholds (C1 strict).
  *
+ * Code constants here are **fallback only**. Prefer Policy Lab config:
+ * - ruleId `drive_safety_v1` (kind: DRIVE_SAFETY) via Admin
+ *   PATCH /api/admin/physical-domain/policy/constraints/drive_safety_v1
+ * - Runtime: PolicyLabConflictMatrixService.resolveDriveSafetyWindThresholdMps
+ *
  * This file intentionally stays dependency-free so it can be imported by:
  * - fact derivation
  * - guards / evidence bundle assembly

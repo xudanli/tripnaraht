@@ -159,6 +159,13 @@ function projectStructuredByContract(
       out.planningStyle = full.planningStyle;
     }
   }
+  // Traveler Memory Contract：有用户画像字段需求时一并投影（供 ETC，非 dump）
+  if (
+    contract.includeUserProfileFields.length > 0 &&
+    full.travelerMemories?.length
+  ) {
+    out.travelerMemories = full.travelerMemories;
+  }
   return out;
 }
 
@@ -180,6 +187,9 @@ function projectTripByContract(
     maxDailyDrivingMinutes: allowPace ? full.maxDailyDrivingMinutes : undefined,
     temporaryConstraints: allowConstraints ? full.temporaryConstraints : undefined,
     participants: allowConstraints ? full.participants : undefined,
+    ...(full.travelerOverrides?.length
+      ? { travelerOverrides: full.travelerOverrides }
+      : {}),
   };
 }
 

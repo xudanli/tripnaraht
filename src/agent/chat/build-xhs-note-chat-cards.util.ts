@@ -15,8 +15,18 @@ export const XHS_NOTE_CARDS_SCHEMA = 'tripnara/chat_xhs_note_cards@v1' as const;
 export function isXhsCommunityEvidenceConsultQuery(message: string): boolean {
   const m = String(message ?? '').trim();
   if (!m) return false;
-  if (/小红书|xhs\b|xiaohongshu|rednote/i.test(m)) return true;
-  if (/值不值得|值得去吗|踩坑|避雷|大家怎么说|网上怎么说|社区(体验|评价|反馈)/.test(m)) {
+  // 显式点名平台 / 笔记卡
+  if (
+    /小红书|xhs\b|xiaohongshu|rednote|社区笔记|笔记推荐|看看笔记/i.test(m)
+  ) {
+    return true;
+  }
+  // 社区体验证询（不提平台名也会拉 XHS）
+  if (
+    /值不值得|值得去吗|踩坑|避雷|拔草|种草|安利|测评|口碑|真实体验|大家怎么说|网上怎么说|网上(评价|反馈)|社区(体验|评价|反馈)|别人怎么说|游客怎么说/.test(
+      m,
+    )
+  ) {
     return true;
   }
   return false;
@@ -28,17 +38,29 @@ export function buildXhsSearchKeywordFromMessage(
   destinationHint?: string | null,
 ): string {
   let k = String(message ?? '')
+    .replace(/\n+\s*\[(?:日程|行程|上下文|Context)\][\s\S]*$/iu, ' ')
     .replace(/看看小红书怎么[样做说看]?/g, ' ')
     .replace(/小红书|xhs|xiaohongshu|rednote/gi, ' ')
-    .replace(/然后|帮我|请问|一下/g, ' ')
+    .replace(
+      /值不值得|值得去吗|踩坑|避雷|拔草|种草|安利|测评|口碑怎么样|口碑如何|口碑|真实体验|大家怎么说|网上怎么说|网上(评价|反馈)|社区(体验|评价|反馈)|别人怎么说|游客怎么说|怎么说|推荐一下/g,
+      ' ',
+    )
+    .replace(/然后|帮我|请问|一下|看看/g, ' ')
+    .replace(/[，。！？、；：,.!?;:]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   const dest = String(destinationHint ?? '').trim();
   if (dest && dest.length <= 24 && !k.includes(dest)) {
     k = `${dest} ${k}`.trim();
   }
+  // 噪声清完后只剩短词时，用「目的地 + 旅行体验」更稳
   if (!k || k.length < 2) {
     k = dest ? `${dest} 旅行体验` : '旅行体验 值不值得';
+  } else if (k.length > 24 && dest && k.startsWith(dest)) {
+    // 「G318 八宿…」过长时收敛到目的地主题
+    const rest = k.slice(dest.length).trim();
+    if (rest.length <= 12) k = `${dest} ${rest}`.trim();
+    else k = `${dest} 旅行`;
   }
   return k.slice(0, 80);
 }

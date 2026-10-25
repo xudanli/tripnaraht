@@ -2,7 +2,7 @@
 
 **Audience:** 前端 `features/exploration` · `features/agent`（route_and_run 异步规划）  
 **后端 SSOT:** [EXPLORATION_API.md](../../src/trips/exploration/EXPLORATION_API.md) · [travel-compiler-integration-v1.md](../product/travel-compiler-integration-v1.md)  
-**Env 示例:** [.env.exploration-ai.example](../../.env.exploration-ai.example)  
+**Env 示例:** [config/env/.env.exploration-ai.example](../../config/env/.env.exploration-ai.example)  
 **CPRE 前端集成:** [frontend-cpre-integration-guide.md](./frontend-cpre-integration-guide.md)
 
 ---
@@ -290,7 +290,7 @@ VITE_MAPBOX_ACCESS_TOKEN=...         # 地图展示（与后端 ENGINE 可共用
 
 ## 九、后端 Env（运维已写入 `.env`）
 
-见项目根目录 `.env` 末尾 **Exploration Consumer Pipeline + AI 路线生成** 区块，或 `.env.exploration-ai.example`。
+见项目根目录 `.env` 末尾 **Exploration Consumer Pipeline + AI 路线生成** 区块，或 `config/env/.env.exploration-ai.example`。
 
 本地验证：
 

@@ -23,7 +23,7 @@ const batchArg = process.argv.find((a) => a.startsWith('--batch='));
 const BATCH = batchArg ? Math.max(1, parseInt(batchArg.split('=')[1], 10)) : 8;
 
 const PYTHON_AI_SERVICE_URL =
-  process.env.PYTHON_AI_SERVICE_URL || 'http://10.107.180.94:8001';
+  process.env.PYTHON_AI_SERVICE_URL || 'http://10.107.180.250:8001';
 
 const http = axios.create({
   baseURL: PYTHON_AI_SERVICE_URL,

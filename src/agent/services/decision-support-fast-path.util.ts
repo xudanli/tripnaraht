@@ -50,6 +50,12 @@ import {
   type HarnessRuntimeId,
 } from '../harness/hardening/runtime-transition.contract';
 import {
+  projectSystem1TurnTrace,
+  runSystem1DecisionSupportFromProblem,
+} from '../system1-runtime';
+import { evaluateClaimGroundingForHarness } from '../harness/hardening/claim-grounding-eval.util';
+import type { ClaimGroundingEvalV1 } from '../harness/hardening/claim-grounding-eval.util';
+import {
   projectTravelWorldStateForTurn,
   echoTravelWorldStateObservability,
   readTravelWorldStateSeedFromOptions,
@@ -63,6 +69,61 @@ function resolveDayCount(request: RouteAndRunRequestDto): number | null {
   const meta = (request as any)?.trip_meta?.day_count;
   if (Number.isFinite(Number(meta)) && Number(meta) > 0) return Number(meta);
   return null;
+}
+
+function projectDecisionSystem1Runtime(input: {
+  request: RouteAndRunRequestDto;
+  problem: TravelDecisionProblem;
+  answerText: string;
+  committed?: boolean;
+}): { system1: Record<string, unknown>; claimGrounding: ClaimGroundingEvalV1 } {
+  const message = resolveRouteAndRunUserMessage(input.request);
+  const trace = runSystem1DecisionSupportFromProblem({
+    message,
+    tripId: input.problem.tripId,
+    draftAnswer: input.answerText,
+    committed: input.committed === true,
+    problem: input.problem,
+    constraints: {
+      dayCount: resolveDayCount(input.request),
+      winterLikely: resolveWinterLikely(message, input.request),
+      vehicleHint: (input.request as any)?.trip_meta?.vehicle_type ?? null,
+    },
+  });
+  return {
+    system1: projectSystem1TurnTrace(trace),
+    claimGrounding: evaluateClaimGroundingForHarness(trace),
+  };
+}
+
+function withDecisionClaimGrounding(
+  harnessObs: Record<string, unknown> | undefined,
+  claimGrounding: ClaimGroundingEvalV1,
+): Record<string, unknown> | undefined {
+  if (!harnessObs) return harnessObs;
+  const turn = harnessObs.agent_turn_trace as Record<string, unknown> | undefined;
+  if (!turn) {
+    return { ...harnessObs, claim_grounding_eval: claimGrounding };
+  }
+  return {
+    ...harnessObs,
+    agent_turn_trace: {
+      ...turn,
+      claim_grounding: {
+        schema_id: claimGrounding.schemaId,
+        passed: claimGrounding.passed,
+        answer_mode: claimGrounding.answerMode,
+        sufficiency: claimGrounding.sufficiency,
+        candidate_claim_types: claimGrounding.candidateClaimTypes,
+        grounded_count: claimGrounding.groundedCount,
+        ungrounded_count: claimGrounding.ungroundedCount,
+        strong_without_verified: claimGrounding.strongWithoutVerified,
+        soft_recommend_blocked_by_safety: claimGrounding.softRecommendBlockedBySafety,
+        violations: claimGrounding.violations.map((v) => v.code),
+        claims: claimGrounding.claims,
+      },
+    },
+  };
 }
 
 function resolveWinterLikely(message: string, request: RouteAndRunRequestDto): boolean {
@@ -243,6 +304,7 @@ function buildDecisionResponse(params: {
     agent_turn_trace?: Record<string, unknown>;
     travel_world_state?: Record<string, unknown>;
     outcome_reconciliation?: Record<string, unknown>;
+    system1_runtime?: Record<string, unknown>;
   };
 }): RouteAndRunResponseDto {
   const { request, startTime, problem, answerText, status, reason } = params;
@@ -348,6 +410,9 @@ function buildDecisionResponse(params: {
             ...(harnessObs?.outcome_reconciliation
               ? { outcome_reconciliation: harnessObs.outcome_reconciliation }
               : {}),
+            ...(harnessObs?.system1_runtime
+              ? { system1_runtime: harnessObs.system1_runtime }
+              : {}),
           },
         } as DecisionLogEntry,
       ],
@@ -377,6 +442,7 @@ function buildDecisionResponse(params: {
       ...(harnessObs?.outcome_reconciliation
         ? { outcome_reconciliation: harnessObs.outcome_reconciliation }
         : {}),
+      ...(harnessObs?.system1_runtime ? { system1_runtime: harnessObs.system1_runtime } : {}),
     },
   } as unknown as RouteAndRunResponseDto;
 
@@ -419,6 +485,7 @@ async function finalizeCommit(
     agent_turn_trace?: Record<string, unknown>;
     travel_world_state?: Record<string, unknown>;
     outcome_reconciliation?: Record<string, unknown>;
+    system1_runtime?: Record<string, unknown>;
   },
 ): Promise<RouteAndRunResponseDto> {
   let persisted = false;
@@ -441,18 +508,31 @@ async function finalizeCommit(
     (request.options as any)?.decision_auto_draft === true ||
     (request.options as any)?.decision_select?.auto_draft === true;
 
+  const answerText = buildDecisionCommitAnswerText(problem);
+  const s1 = projectDecisionSystem1Runtime({
+    request,
+    problem,
+    answerText,
+    committed: true,
+  });
   return buildDecisionResponse({
     request,
     startTime,
     problem,
-    answerText: buildDecisionCommitAnswerText(problem),
+    answerText,
     status: 'OK',
     reason: 'DECISION_SUPPORT_COMMIT',
     persisted,
     contractPatch,
     travelDecisionContract,
     autoDraft,
-    harnessObservability,
+    harnessObservability: withDecisionClaimGrounding(
+      {
+        ...harnessObservability,
+        system1_runtime: s1.system1,
+      },
+      s1.claimGrounding,
+    ),
   });
 }
 
@@ -689,19 +769,29 @@ export async function tryBuildDecisionSupportFastPath(
         ? 'DECISION_SUPPORT_FAST_PATH_HARNESS'
         : 'DECISION_SUPPORT_FAST_PATH';
 
+  const answerText = buildDecisionSupportAnswerText(problem);
+  const s1 = projectDecisionSystem1Runtime({
+    request,
+    problem,
+    answerText,
+  });
   return buildDecisionResponse({
     request,
     startTime,
     problem,
-    answerText: buildDecisionSupportAnswerText(problem),
+    answerText,
     status: 'NEED_CONFIRMATION',
     reason,
-    harnessObservability: {
-      ...harnessObsBase,
-      ...(harnessPipe
-        ? { decision_runtime_pipeline: projectHarnessDecisionPipelineForTrace(harnessPipe) }
-        : {}),
-    },
+    harnessObservability: withDecisionClaimGrounding(
+      {
+        ...harnessObsBase,
+        ...(harnessPipe
+          ? { decision_runtime_pipeline: projectHarnessDecisionPipelineForTrace(harnessPipe) }
+          : {}),
+        system1_runtime: s1.system1,
+      },
+      s1.claimGrounding,
+    ),
   });
 }
 

@@ -130,7 +130,7 @@ Pre-signoff confirmation must verify commit unchanged vs this SHA.
 | Ingest route | `POST /internal/evidence/road/gagnaveita` |
 | Tunnel | PM2 `vedur-collector-tunnel` → Frankfurt `:19080` |
 | HMAC | `GAGNAVEITA_COLLECTOR_HMAC_SECRET` (fallback: `VEDUR_COLLECTOR_HMAC_SECRET`) |
-| PM2 config | `ecosystem.vedur-collector.config.js` |
+| PM2 config | `config/ecosystem.vedur-collector.config.js` |
 | Install script | `scripts/install-devbox-collector-pm2.sh` |
 
 ### Evidence

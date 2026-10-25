@@ -41,6 +41,11 @@ export type DecisionRuntimeTickObservabilityV1 = {
    * used=false，直至下游证明影响。
    */
   travel_memory_consume?: Record<string, unknown>;
+  /**
+   * EffectiveTravelerContext Shadow 观测（M1）。
+   * 不进 Injector/CGUS；供对照与后续 M2 读切换。
+   */
+  effective_traveler_context?: import('../../travel-memory/effective-context/effective-traveler-context.types').EffectiveTravelerContextObservabilityV1;
 };
 
 /**
@@ -65,6 +70,11 @@ export type DecisionRuntimeTickBundle = {
    * 旧 Memory OS 仍是主路径；此为并列决策提示通道。
    */
   travelMemoryConsume?: import('../../travel-memory/context-assembly/selective-consume.util').TravelMemoryConsumeProjectionV1 | null;
+  /**
+   * EffectiveTravelerContext（M1 Shadow）。
+   * 完整对象挂 bundle；下游决策模块 M1 禁止消费。
+   */
+  effectiveTravelerContext?: import('../../travel-memory/effective-context/effective-traveler-context.types').EffectiveTravelerContextV1 | null;
   /** 前置阶段早退（replay 快照缺失等） */
   earlyResponse?: RouteAndRunResponseDto;
 };

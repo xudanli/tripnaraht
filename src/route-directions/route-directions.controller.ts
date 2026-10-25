@@ -136,18 +136,34 @@ export class RouteDirectionsController {
   @Get('templates')
   @ApiOperation({ 
     summary: '查询路线模板列表', 
-    description: '根据条件查询路线模板列表，支持按路线方向ID、天数、激活状态筛选' 
+    description: '支持筛选激活状态；可选 includePackingSummary / hasPackingChecklist / includeBudgetSummary / hasBudgetEstimate' 
   })
   @ApiResponse({ status: 200, description: '成功返回路线模板列表' })
   async getRouteTemplates(
     @Query() query: QueryRouteTemplateDto,
     @Query('isActive') rawIsActive?: string,
+    @Query('includePackingSummary') rawIncludePackingSummary?: string,
+    @Query('hasPackingChecklist') rawHasPackingChecklist?: string,
+    @Query('includeBudgetSummary') rawIncludeBudgetSummary?: string,
+    @Query('hasBudgetEstimate') rawHasBudgetEstimate?: string,
   ) {
     try {
       const result = await this.routeDirectionsService.findRouteTemplates({
         routeDirectionId: query.routeDirectionId,
         durationDays: query.durationDays,
         isActive: parseBooleanQueryParam(rawIsActive) ?? query.isActive,
+        includePackingSummary:
+          parseBooleanQueryParam(rawIncludePackingSummary) ??
+          query.includePackingSummary,
+        hasPackingChecklist:
+          parseBooleanQueryParam(rawHasPackingChecklist) ??
+          query.hasPackingChecklist,
+        includeBudgetSummary:
+          parseBooleanQueryParam(rawIncludeBudgetSummary) ??
+          query.includeBudgetSummary,
+        hasBudgetEstimate:
+          parseBooleanQueryParam(rawHasBudgetEstimate) ??
+          query.hasBudgetEstimate,
         limit: query.limit,
         offset: query.offset,
       });

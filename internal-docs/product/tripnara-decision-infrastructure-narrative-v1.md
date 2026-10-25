@@ -9,6 +9,7 @@
 
 - [TripNARA AI Native 产品定位与收敛战略](./TRIPNARA_AI_NATIVE_POSITIONING.md)
 - [旅行本体与世界模型架构说明](./travel-ontology-world-model-v1.md)
+- [TripNARA 知识体系 7 层](./tripnara-knowledge-system-v1.md)
 - [Travel Compiler 集成设计](./travel-compiler-integration-v1.md)
 - [RFC-003 — Travel Context Protocol](./rfc-travel-context-protocol-v1.md)
 

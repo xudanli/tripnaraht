@@ -1,5 +1,9 @@
 // src/main.ts
-import 'reflect-metadata'; // 必须在最顶部导入，用于装饰器支持
+/* eslint-disable @typescript-eslint/no-require-imports */
+// reflect-metadata + dotenv 必须用 require，且早于其它 import（TS 会 hoist import，否则 RedisModule 读不到 .env）
+require('reflect-metadata');
+// override:true —— 父进程若已注入 DISABLE_REDIS=false，必须以 .env 为准
+require('dotenv').config({ quiet: true, override: true });
 
 // ⚠️ 重要：在导入任何模块之前设置环境变量，确保 RedisModule 能正确读取
 // 从 .env 文件读取 DISABLE_REDIS，如果没有设置且 Redis 不可用，则自动禁用
@@ -135,14 +139,16 @@ async function bootstrap() {
   const securityMiddleware = new SecurityMiddleware();
   const httpAdapter = app.getHttpAdapter();
   
-  // 添加根路径健康检查端点（绕过全局前缀）
-  httpAdapter.get('/health', (req: any, res: any) => {
+  // 健康检查：根路径 + /api/health（iOS / BFF 联调约定）
+  const healthHandler = (_req: any, res: any) => {
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
       service: 'tripnara-api',
     });
-  });
+  };
+  httpAdapter.get('/health', healthHandler);
+  httpAdapter.get('/api/health', healthHandler);
   
   // 添加 OAuth 回调端点（绕过全局前缀，供 MCP 服务使用）
   httpAdapter.get('/oauth/callback', (req: any, res: any) => {

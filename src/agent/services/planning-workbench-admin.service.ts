@@ -1,7 +1,9 @@
 // src/agent/services/planning-workbench-admin.service.ts
 /**
  * Planning Workbench Admin Service
- * 
+ *
+ * @deprecated 2026-08：Admin 读路径已废弃（`planning_plans` 空表）。服务暂保留供兼容 Controller。
+ *
  * 用于后台管理规划工作台的规划方案（PlanningPlan）
  */
 

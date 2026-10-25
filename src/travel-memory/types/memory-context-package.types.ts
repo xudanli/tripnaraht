@@ -17,6 +17,11 @@ export type UserProfileMemoryView = {
   preferredExperience?: MemoryFieldView<string[]>;
   planningStyle?: MemoryFieldView<string>;
   extras?: Record<string, MemoryFieldView>;
+  /**
+   * Traveler Memory Contract 对象（M4）。
+   * 决策消费仍经 EffectiveTravelerContext，不直读本数组。
+   */
+  travelerMemories?: import('../traveler-memory/traveler-memory-contract.types').TravelerMemoryObjectV1[];
 };
 
 export type TripMemoryView = {
@@ -28,6 +33,8 @@ export type TripMemoryView = {
   temporaryConstraints?: MemoryFieldView<unknown[]>;
   participants?: MemoryFieldView<Record<string, unknown>>;
   extras?: Record<string, MemoryFieldView>;
+  /** M5：本次旅行覆盖（Traveler Memory Contract, scope=TRIP） */
+  travelerOverrides?: import('../traveler-memory/traveler-memory-contract.types').TravelerMemoryObjectV1[];
 };
 
 export type DecisionHistoryView = {

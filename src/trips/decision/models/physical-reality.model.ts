@@ -145,6 +145,18 @@ export interface PhysicalRealityModel {
   };
 
   /**
+   * P0-3: tick-scoped POI operational overlay (authority resolve).
+   * Not a global SSOT — WorldBuild may apply DecisionTickPoiBindingStore.
+   * `open: null` means UNVERIFIED (do not forge OPEN/CLOSED).
+   */
+  poiOperationalStates?: Array<{
+    poiId: string;
+    open: boolean | null;
+    status: 'OPEN' | 'CLOSED' | 'RESTRICTED' | 'UNKNOWN' | 'UNVERIFIED';
+    metadata?: Record<string, unknown>;
+  }>;
+
+  /**
    * Warm-start evidence injected from Prefetcher/EvidenceCache.
    * These are raw evidence objects (e.g. weather_physics / road_state / public_transit) with cached_at/expires_at
    * so downstream fact derivation can remain deterministic and auditable.

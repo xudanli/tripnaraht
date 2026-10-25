@@ -80,8 +80,35 @@ export function toDestinationClockHm(
   return dt.setZone(timezone || 'utc').toFormat('HH:mm');
 }
 
+/** 绝对时刻 → 目的地墙钟日期 YYYY-MM-DD（勿用设备时区拆日期） */
+export function toDestinationDateLocal(
+  value: Date | string | null | undefined,
+  timezone: string,
+): string | null {
+  if (value == null) return null;
+  const dt = asDateTime(value);
+  if (!dt) return null;
+  return dt.setZone(timezone || 'utc').toFormat('yyyy-MM-dd');
+}
+
+/**
+ * 绝对时刻 → 目的地墙钟 datetime（无偏移后缀，如 2026-08-29T19:04:00）。
+ * 供 DatePicker 直接绑年月日时分，避免把 ...Z 当设备时区解析。
+ */
+export function toDestinationWallClockIso(
+  value: Date | string | null | undefined,
+  timezone: string,
+): string | null {
+  if (value == null) return null;
+  const dt = asDateTime(value);
+  if (!dt) return null;
+  return dt.setZone(timezone || 'utc').toFormat("yyyy-MM-dd'T'HH:mm:ss");
+}
+
 /**
  * 时间轴 / 列表响应：保留绝对瞬间，但用目的地 offset 序列化，并附带 Local 墙钟字段。
+ *
+ * iOS 编辑：优先用 `timezone` + `startAtLocal`/`endAtLocal`，不要用设备时区解 `startTime` 的 Z。
  */
 export function withDestinationDisplayTimes<T extends Record<string, any>>(
   item: T,
@@ -91,6 +118,10 @@ export function withDestinationDisplayTimes<T extends Record<string, any>>(
   endTime: string | Date | null;
   startTimeLocal: string | null;
   endTimeLocal: string | null;
+  startAtLocal: string | null;
+  endAtLocal: string | null;
+  startDateLocal: string | null;
+  endDateLocal: string | null;
   timezone: string;
 } {
   const tz = timezone || 'utc';
@@ -102,6 +133,10 @@ export function withDestinationDisplayTimes<T extends Record<string, any>>(
     endTime: endIso ?? item.endTime ?? null,
     startTimeLocal: toDestinationClockHm(item.startTime, tz),
     endTimeLocal: toDestinationClockHm(item.endTime, tz),
+    startAtLocal: toDestinationWallClockIso(item.startTime, tz),
+    endAtLocal: toDestinationWallClockIso(item.endTime, tz),
+    startDateLocal: toDestinationDateLocal(item.startTime, tz),
+    endDateLocal: toDestinationDateLocal(item.endTime, tz),
     timezone: tz,
   };
 }

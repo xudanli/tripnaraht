@@ -1,7 +1,7 @@
 # Harness Trace 排障部署 Runbook（Observability P0）
 
 > **Companion**：[harness-production-checklist.md](./harness-production-checklist.md) · [harness-architecture-map.md](./harness-architecture-map.md)  
-> **Env 模板**：仓库根目录 [`.env.harness-production.example`](../../.env.harness-production.example)
+> **Env 模板**：仓库根目录 [`config/env/.env.harness-production.example`](../../config/env/.env.harness-production.example)
 
 ## 1. 何时开启
 
@@ -38,7 +38,7 @@ volumes:
     emptyDir: {}
 ```
 
-本地开发：复制 `.env.harness-production.example` 中 Observability 块到 `.env`，重启 `npm run dev`。
+本地开发：复制 `config/env/.env.harness-production.example` 中 Observability 块到 `.env`，重启 `npm run dev`。
 
 ## 3. 失败 trace 如何产生
 

@@ -45,7 +45,7 @@ describe('iceland-self-drive-metadata-hydrate', () => {
     expect(isd.drivingSettings.insurance.configured).toBe(false);
   });
 
-  it('returns existing blob unchanged', () => {
+  it('returns complete existing blob unchanged', () => {
     const existing = bootstrapIcelandSelfDriveMetadata({
       tripId: 't1',
       existingMeta: { productLine: 'iceland_self_drive' },
@@ -58,5 +58,47 @@ describe('iceland-self-drive-metadata-hydrate', () => {
       },
     });
     expect(again.contextVersion).toBe(existing.contextVersion);
+  });
+
+  it('treats Iceland destination as self-drive product (even without productLine)', () => {
+    expect(isIcelandSelfDriveProductTrip({}, 'IS')).toBe(true);
+    expect(isIcelandSelfDriveProductTrip(null, 'IS')).toBe(true);
+    expect(isIcelandSelfDriveProductTrip({ productLine: 'other' }, 'NZ')).toBe(false);
+  });
+
+  it('treats pacingConfig self_drive as product trip', () => {
+    expect(
+      isIcelandSelfDriveProductTrip(
+        {},
+        'NO',
+        { travelMode: 'self_drive', transport: 'car' },
+      ),
+    ).toBe(true);
+  });
+
+  it('repairs partial blob missing wizard while keeping vehicle settings', () => {
+    const isd = bootstrapIcelandSelfDriveMetadata({
+      tripId: 'canary',
+      startDate: '2026-09-01',
+      endDate: '2026-09-07',
+      destination: 'IS',
+      existingMeta: {
+        productLine: 'iceland_self_drive',
+        icelandSelfDrive: {
+          productLine: 'iceland_self_drive',
+          drivingSettings: {
+            vehicle: {
+              is4wd: true,
+              vehicleClass: 'suv_4wd',
+              vehicleClassLabel: '四驱 / SUV',
+              rentalRestrictions: [],
+            },
+          },
+        },
+      },
+    });
+    expect(isd.wizard.vehicleAcquisition).toBe('rent');
+    expect(isd.drivingSettings.vehicle.vehicleClass).toBe('suv_4wd');
+    expect(isd.warnings.some((w) => w.code === 'ISD_METADATA_REPAIRED')).toBe(true);
   });
 });

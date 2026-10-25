@@ -580,7 +580,7 @@ export class TripConflictsService {
       conflicts.push(this.buildTravelTimingConflict({
         id: `same-day-travel-${current.id}-${next.id}`,
         issueKind: 'same_day_travel',
-        title: isStartTooEarly ? '交通时间不足' : '交通缓冲偏紧',
+        title: isStartTooEarly ? '赶不上下一站' : '两站之间缓冲偏紧',
         fromItem: current,
         toItem: next,
         fromName,
@@ -887,7 +887,7 @@ export class TripConflictsService {
       conflicts.push(this.buildTravelTimingConflict({
         id: `inter-day-travel-${fromItem.id}-${toItem.id}`,
         issueKind: 'inter_day_travel',
-        title: isStartTooEarly ? '跨天交通时间不足' : '跨天交通缓冲偏紧',
+        title: isStartTooEarly ? '跨天赶不上下一站' : '跨天两站缓冲偏紧',
         fromItem,
         toItem,
         fromName,
@@ -1051,24 +1051,7 @@ export class TripConflictsService {
       }
     }
 
-    try {
-      const segment = await this.poiHopTravelSegment.resolveSegment({
-        from: fromCoords,
-        to: toCoords,
-        preferredMode,
-        defaultMode: defaultTravelMode,
-        useRouteApi: !useHeuristicOnly,
-      });
-      return {
-        travelMinutes: segment.durationMinutes,
-        travelDistanceMeters: segment.distanceMeters,
-        travelMode: segment.travelMode,
-      };
-    } catch (e) {
-      if (e instanceof RealityBypassBlockedError || e instanceof RealityExecutionBlockedError) {
-        throw e;
-      }
-      this.logger.debug(`路线 API 调用失败，使用统一估算: ${(e as Error)?.message}`);
+    const resolveHeuristic = async (): Promise<TravelSegmentEstimate> => {
       const segment = await this.poiHopTravelSegment.resolveSegment({
         from: fromCoords,
         to: toCoords,
@@ -1081,6 +1064,42 @@ export class TripConflictsService {
         travelDistanceMeters: segment.distanceMeters,
         travelMode: segment.travelMode,
       };
+    };
+
+    if (useHeuristicOnly) {
+      return resolveHeuristic();
+    }
+
+    // 单段路线 API 预算；超时降级启发式，避免 conflicts 刷爆 SmartRoutes 拖死读路径
+    const ROUTE_API_BUDGET_MS = 2_500;
+    try {
+      const segment = await Promise.race([
+        this.poiHopTravelSegment.resolveSegment({
+          from: fromCoords,
+          to: toCoords,
+          preferredMode,
+          defaultMode: defaultTravelMode,
+          useRouteApi: true,
+        }),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), ROUTE_API_BUDGET_MS)),
+      ]);
+      if (!segment) {
+        this.logger.debug(
+          `路线 API 超时(${ROUTE_API_BUDGET_MS}ms)，使用统一估算`,
+        );
+        return resolveHeuristic();
+      }
+      return {
+        travelMinutes: segment.durationMinutes,
+        travelDistanceMeters: segment.distanceMeters,
+        travelMode: segment.travelMode,
+      };
+    } catch (e) {
+      if (e instanceof RealityBypassBlockedError || e instanceof RealityExecutionBlockedError) {
+        throw e;
+      }
+      this.logger.debug(`路线 API 调用失败，使用统一估算: ${(e as Error)?.message}`);
+      return resolveHeuristic();
     }
   }
 
@@ -1118,12 +1137,18 @@ export class TripConflictsService {
     timingSource: NonNullable<ConflictDto['timingSource']>;
   }): ConflictDto {
     const travelText = this.formatTravelMinutes(input.estimate.travelMinutes);
+    const shortfall =
+      input.shortfallMinutes != null && input.shortfallMinutes > 0
+        ? Math.round(input.shortfallMinutes)
+        : undefined;
     const suffix =
       input.timingSource === 'missing_times'
-        ? '缺少出发或开始时间，需确认交通衔接'
+        ? '缺少出发或开始时间，需确认两站之间怎么衔接'
         : input.isStartTooEarly
-          ? '首项开始时间偏早'
-          : '抵达后缓冲偏紧';
+          ? shortfall != null
+            ? `两站时间对不上，下一站会晚到约 ${shortfall} 分钟`
+            : '两站时间对不上，赶不上下一站开始时间'
+          : '抵达后留给下一站的缓冲偏紧';
     const description = `第${input.toDayNumber}天 · ${input.fromName} → ${input.toName}（约 ${input.distanceKm} km）：路上约需 ${travelText}，${suffix}`;
     const suggestedIso = input.suggestedTime?.toISO() ?? undefined;
 
@@ -1165,7 +1190,7 @@ export class TripConflictsService {
           description: suggestedIso
             ? `将「${input.toName}」开始时间调整到 ${formatClockLabel(suggestedIso)}`
             : `确认「${input.fromName}」和「${input.toName}」的时间锚点`,
-          impact: input.isStartTooEarly ? '消除交通时间不足' : '补足交通衔接缓冲',
+          impact: input.isStartTooEarly ? '把下一站开始时间挪到能赶到' : '补足两站之间的缓冲',
           payload: {
             suggestedValue: suggestedIso,
             itemId: input.toItem.id,

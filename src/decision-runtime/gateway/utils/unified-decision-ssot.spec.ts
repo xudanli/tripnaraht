@@ -62,13 +62,33 @@ describe('decision-queue-admission.util', () => {
     ).toBe(true);
   });
 
-  it('excludes plan object assessment from decision queue during execution', () => {
+  it('excludes meal window and rental insurance from decision queue', () => {
     expect(
       qualifiesForDecisionQueue({
         enforcement: 'REQUIRE_ADJUSTMENT',
         workflowStatus: 'WAITING_DECISION',
         problemId: 'dp_id:plan_object_meal_late_arrival_po_x',
         semanticKey: 'plan_object_meal_late_arrival_po_x',
+        title: '午餐窗冲突',
+      }),
+    ).toBe(false);
+    expect(
+      qualifiesForDecisionQueue({
+        enforcement: 'BLOCK',
+        workflowStatus: 'ASSESSING',
+        semanticKey: 'REQUIRED_CHOICE.RENTAL_INSURANCE',
+        title: '选择哪种租车保险？',
+      }),
+    ).toBe(false);
+  });
+
+  it('excludes plan object assessment from decision queue during execution', () => {
+    expect(
+      qualifiesForDecisionQueue({
+        enforcement: 'REQUIRE_ADJUSTMENT',
+        workflowStatus: 'WAITING_DECISION',
+        problemId: 'dp_id:plan_object_stay_missing_day_2',
+        semanticKey: 'plan_object_stay_missing_day_2',
         excludePlanObjectPlanning: true,
       }),
     ).toBe(false);
@@ -85,8 +105,8 @@ describe('decision-queue-admission.util', () => {
       qualifiesForDecisionQueue({
         enforcement: 'REQUIRE_ADJUSTMENT',
         workflowStatus: 'WAITING_DECISION',
-        problemId: 'dp_id:plan_object_meal_late_arrival_po_x',
-        semanticKey: 'plan_object_meal_late_arrival_po_x',
+        problemId: 'dp_id:plan_object_stay_missing_day_2',
+        semanticKey: 'plan_object_stay_missing_day_2',
         excludePlanObjectPlanning: false,
       }),
     ).toBe(true);

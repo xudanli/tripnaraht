@@ -28,6 +28,15 @@ function fieldAllowedInDecision(field?: MemoryFieldView): boolean {
 }
 
 function filterProfile(view: UserProfileMemoryView): UserProfileMemoryView {
+  const travelerMemories = view.travelerMemories?.filter(
+    (m) =>
+      m.status === 'STABLE' ||
+      m.status === 'CONFIRMED' ||
+      (m.source.includes('EXPLICIT') &&
+        m.status !== 'CANDIDATE' &&
+        m.status !== 'REVOKED' &&
+        m.status !== 'DECAYED'),
+  );
   return {
     pace: fieldAllowedInDecision(view.pace) ? view.pace : undefined,
     riskTolerance: fieldAllowedInDecision(view.riskTolerance)
@@ -42,6 +51,7 @@ function filterProfile(view: UserProfileMemoryView): UserProfileMemoryView {
     planningStyle: fieldAllowedInDecision(view.planningStyle)
       ? view.planningStyle
       : undefined,
+    ...(travelerMemories?.length ? { travelerMemories } : {}),
   };
 }
 

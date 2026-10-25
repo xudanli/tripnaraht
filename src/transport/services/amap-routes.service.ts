@@ -21,6 +21,7 @@ export class AmapRoutesService {
   private readonly apiKey: string | undefined;
   private readonly axiosInstance: AxiosInstance;
   private readonly baseUrl = 'https://restapi.amap.com/v3/direction';
+  private disabledLogged = false;
 
   constructor(@Optional() private configService?: ConfigService) {
     this.apiKey = this.configService?.get<string>('AMAP_API_KEY');
@@ -32,6 +33,23 @@ export class AmapRoutesService {
         key: this.apiKey || '',
       },
     });
+  }
+
+  /** AMAP_ENABLED / AMAP_ROUTES_ENABLED=false 时跳过一切高德路线扫描 */
+  isRoutesEnabled(): boolean {
+    const routes =
+      this.configService?.get<string>('AMAP_ROUTES_ENABLED') ?? process.env.AMAP_ROUTES_ENABLED;
+    const all = this.configService?.get<string>('AMAP_ENABLED') ?? process.env.AMAP_ENABLED;
+    const flagOff = (v: string | undefined) =>
+      v != null && /^(0|false|off|no)$/i.test(String(v).trim());
+    if (flagOff(routes) || flagOff(all)) return false;
+    return Boolean(this.apiKey);
+  }
+
+  private logDisabledOnce(): void {
+    if (this.disabledLogged) return;
+    this.disabledLogged = true;
+    this.logger.warn('高德路线 API 已关闭（AMAP_ENABLED/AMAP_ROUTES_ENABLED=false），跳过扫描');
   }
 
   /**
@@ -59,7 +77,10 @@ export class AmapRoutesService {
     distanceMeters: number;
     durationMinutes: number;
   } | null> {
-    if (!this.apiKey) return null;
+    if (!this.isRoutesEnabled()) {
+      this.logDisabledOnce();
+      return null;
+    }
 
     try {
       let apiPath: string;
@@ -120,9 +141,9 @@ export class AmapRoutesService {
       avoidTolls?: boolean;
     }
   ): Promise<TransportOption[]> {
-    // 如果没有 API Key，返回空数组（使用估算）
-    if (!this.apiKey) {
-      this.logger.debug('高德地图 API Key 未配置，使用估算数据');
+    // 如果没有 API Key / 已关闭，返回空数组（使用估算或降级）
+    if (!this.isRoutesEnabled()) {
+      this.logDisabledOnce();
       return [];
     }
 

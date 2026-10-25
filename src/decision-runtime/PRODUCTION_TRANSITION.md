@@ -186,7 +186,7 @@ type GatewayRolloutMode = 'OFF' | 'SHADOW' | 'SELECTIVE' | 'ON';
 
 **Layer 1 Trigger Gateway：** catalog **12/12 dispatch** 工程收口完成（`npm run trigger-wiring:status`）。
 
-**配置模板：** 项目根目录 [`.env.production-transition.example`](../../.env.production-transition.example)  
+**配置模板：** 项目根目录 [`config/env/.env.production-transition.example`](../../config/env/.env.production-transition.example)  
 **本地观察一键启动：** `npm run production-transition:dev-3000`
 
 ```bash

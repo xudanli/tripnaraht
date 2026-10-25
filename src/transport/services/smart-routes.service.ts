@@ -67,23 +67,27 @@ export class SmartRoutesService {
     }
 
     if (bothInChina) {
-      this.logger.debug('使用高德地图 API（国内路线）');
+      if (this.amapRoutesService.isRoutesEnabled()) {
+        this.logger.debug('使用高德地图 API（国内路线）');
 
-      const amapMode = this.convertTravelModeToAmap(travelMode);
-      const options = await this.amapRoutesService.getRoutes(
-        fromLat,
-        fromLng,
-        toLat,
-        toLng,
-        amapMode,
-        preferences,
-      );
+        const amapMode = this.convertTravelModeToAmap(travelMode);
+        const options = await this.amapRoutesService.getRoutes(
+          fromLat,
+          fromLng,
+          toLat,
+          toLng,
+          amapMode,
+          preferences,
+        );
 
-      if (options.length > 0) {
-        return this.tagProvider(options, 'AMAP', { fallbackUsed: false });
+        if (options.length > 0) {
+          return this.tagProvider(options, 'AMAP', { fallbackUsed: false });
+        }
+
+        this.logger.warn('高德地图 API 无结果，降级 Google Routes → Mapbox');
+      } else {
+        this.logger.debug('高德路线已关闭，国内路线直接降级 Google Routes → Mapbox');
       }
-
-      this.logger.warn('高德地图 API 无结果，降级 Google Routes → Mapbox');
       const fallback = await this.getGoogleRoutesWithMapboxFallback(
         fromLat,
         fromLng,

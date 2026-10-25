@@ -1,5 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { AuthModule } from '../../auth/auth.module';
+import { AdminStrictAuthGuard } from '../../admin/guards/admin-strict-auth.guard';
 import { InTripExecutionModule } from '../in-trip-execution/in-trip-execution.module';
 import { TripConstraintSolverModule } from '../trip-constraint-solver/trip-constraint-solver.module';
 import { DecisionGatewayModule } from '../../decision-runtime/gateway/decision-gateway.module';
@@ -9,6 +11,7 @@ import { GuardianDecisionCoreModule } from '../guardian-decision-core/guardian-d
 import { TepModule } from '../tep/tep.module';
 import { EffectivePlanExecutionModule } from '../../decision-runtime/execution/effective-plan-execution.module';
 import { ExecutionRisksController } from './controllers/execution-risks.controller';
+import { ExecutionRiskKnowledgeAdminController } from './controllers/execution-risk-knowledge-admin.controller';
 import { ActiveRiskAggregationService } from './services/active-risk-aggregation.service';
 import { ExecutionRiskSummaryService } from './services/execution-risk-summary.service';
 import { ExecutionRiskUserStateService } from './services/execution-risk-user-state.service';
@@ -32,10 +35,15 @@ import { ExecutionRiskCanonicalApplyAdapter } from './adapters/execution-risk-ca
 import { ExecutionRiskShadowCompareService } from './services/execution-risk-shadow-compare.service';
 import { ExecutionRiskShadowMetricsService } from './services/execution-risk-shadow-metrics.service';
 import { ExecutionUserNarrativeNarratorService } from './services/execution-user-narrative-narrator.service';
+import { ExecutionRiskKnowledgeAdminService } from './services/execution-risk-knowledge-admin.service';
+import { ExecutionRiskKnowledgeAdminDraftService } from './services/execution-risk-knowledge-admin-draft.service';
+import { ExecutionRiskConstraintBindingService } from './services/execution-risk-constraint-binding.service';
+import { AdminActivityLogService } from '../../admin/services/admin-activity-log.service';
 
 @Module({
   imports: [
     PrismaModule,
+    AuthModule,
     InTripExecutionModule,
     TripConstraintSolverModule,
     DecisionGatewayModule,
@@ -45,7 +53,7 @@ import { ExecutionUserNarrativeNarratorService } from './services/execution-user
     EffectivePlanExecutionModule,
     forwardRef(() => TripsModule),
   ],
-  controllers: [ExecutionRisksController],
+  controllers: [ExecutionRisksController, ExecutionRiskKnowledgeAdminController],
   providers: [
     ActiveRiskAggregationService,
     ExecutionRiskSummaryService,
@@ -69,6 +77,11 @@ import { ExecutionUserNarrativeNarratorService } from './services/execution-user
     ExecutionRiskShadowCompareService,
     ExecutionRiskShadowMetricsService,
     ExecutionUserNarrativeNarratorService,
+    ExecutionRiskKnowledgeAdminService,
+    ExecutionRiskKnowledgeAdminDraftService,
+    ExecutionRiskConstraintBindingService,
+    AdminActivityLogService,
+    AdminStrictAuthGuard,
   ],
   exports: [
     ActiveRiskAggregationService,
@@ -84,6 +97,9 @@ import { ExecutionUserNarrativeNarratorService } from './services/execution-user
     ExecutionRiskShadowCompareService,
     ExecutionRiskShadowMetricsService,
     ExecutionUserNarrativeNarratorService,
+    ExecutionRiskKnowledgeAdminService,
+    ExecutionRiskKnowledgeAdminDraftService,
+    ExecutionRiskConstraintBindingService,
   ],
 })
 export class ExecutionRiskCenterModule {}

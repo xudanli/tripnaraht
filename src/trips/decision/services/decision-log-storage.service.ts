@@ -481,6 +481,222 @@ export class DecisionLogStorageService {
   }
 
   /**
+   * 将 DecisionLog + metadata 投影为 Admin 可读字段（列表/详情共用）。
+   * 近年数据的细节多在 metadata（route_and_run / request_message / statistics），列字段如
+   * availableOptions / confidenceLevel 多为空，需提升 metadata 才能「够详细」。
+   */
+  private asMetaRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  }
+
+  private truncateText(value: string | null | undefined, max: number): string | null {
+    if (!value) return null;
+    const t = value.trim();
+    if (!t) return null;
+    return t.length <= max ? t : `${t.slice(0, max)}…`;
+  }
+
+  private promoteDecisionLogAdminFields(
+    log: {
+      id: string;
+      tripId: string | null;
+      countryCode: string | null;
+      routeDirectionId: string | null;
+      persona: string;
+      action: string;
+      decisionSource: string;
+      decisionStage: string;
+      explanation: string;
+      reasonCodes: string[];
+      evidenceRefs: string[];
+      timestamp: Date;
+      metadata: unknown;
+      availableOptions?: unknown;
+      userChoice?: unknown;
+      userReasoning?: string | null;
+      confidenceLevel?: number | null;
+      systemRecommendation?: unknown;
+      alignmentScore?: number | null;
+    },
+    opts?: {
+      trip?: {
+        id: string;
+        name: string | null;
+        destination: string | null;
+        status: string | null;
+      } | null;
+      outcomeCount?: number;
+      outcomes?: unknown[];
+      detail?: boolean;
+    },
+  ): Record<string, unknown> {
+    const meta = this.asMetaRecord(log.metadata);
+    const routeAndRun = this.asMetaRecord(meta.route_and_run);
+    const statistics = this.asMetaRecord(meta.statistics);
+    const requestMessage =
+      typeof meta.request_message === 'string' ? meta.request_message : null;
+    const durationMs =
+      typeof meta.duration_ms === 'number'
+        ? meta.duration_ms
+        : typeof meta.durationMs === 'number'
+          ? meta.durationMs
+          : null;
+    const requestId =
+      (typeof meta.request_id === 'string' && meta.request_id) ||
+      (typeof routeAndRun.request_id === 'string' && routeAndRun.request_id) ||
+      null;
+    const tripRunId =
+      (typeof meta.tripRunId === 'string' && meta.tripRunId) ||
+      (typeof meta.trip_run_id === 'string' && meta.trip_run_id) ||
+      null;
+    const step =
+      (typeof routeAndRun.step === 'string' && routeAndRun.step) ||
+      (typeof meta.step === 'string' && meta.step) ||
+      null;
+    const actor =
+      (typeof routeAndRun.actor === 'string' && routeAndRun.actor) ||
+      (typeof meta.actor === 'string' && meta.actor) ||
+      null;
+    const inputsSummary =
+      typeof routeAndRun.inputs_summary === 'string' ? routeAndRun.inputs_summary : null;
+    const outputsSummary =
+      typeof routeAndRun.outputs_summary === 'string' ? routeAndRun.outputs_summary : null;
+    const source =
+      (typeof meta.source === 'string' && meta.source) || null;
+    const planVersion =
+      typeof meta.plan_version === 'number'
+        ? meta.plan_version
+        : typeof meta.planVersion === 'number'
+          ? meta.planVersion
+          : null;
+
+    const contentKind: 'orchestration' | 'engine' =
+      source === 'route_and_run' ? 'orchestration' : 'engine';
+
+    const base: Record<string, unknown> = {
+      id: log.id,
+      tripId: log.tripId,
+      countryCode: log.countryCode,
+      routeDirectionId: log.routeDirectionId,
+      persona: log.persona,
+      action: log.action,
+      decisionSource: log.decisionSource,
+      decisionStage: log.decisionStage || 'FINALIZE',
+      explanation: log.explanation,
+      explanationPreview: this.truncateText(log.explanation, opts?.detail ? 2000 : 240),
+      reasonCodes: log.reasonCodes || [],
+      evidenceRefs: log.evidenceRefs || [],
+      evidenceRefsCount: (log.evidenceRefs || []).length,
+      timestamp: log.timestamp.toISOString(),
+      confidenceLevel: log.confidenceLevel ?? null,
+      alignmentScore: log.alignmentScore ?? null,
+      /** orchestration=route_and_run 步骤；engine=更接近决策引擎 */
+      contentKind,
+      // 从 metadata 提升的观测字段
+      source,
+      requestId,
+      tripRunId,
+      durationMs,
+      planVersion,
+      step,
+      actor,
+      requestMessagePreview: this.truncateText(requestMessage, opts?.detail ? 4000 : 160),
+      inputsSummaryPreview: this.truncateText(inputsSummary, opts?.detail ? 2000 : 160),
+      outputsSummaryPreview: this.truncateText(outputsSummary, opts?.detail ? 2000 : 160),
+      statistics: Object.keys(statistics).length > 0 ? statistics : null,
+      cognitionMarker:
+        typeof meta.cognition_marker === 'string' ? meta.cognition_marker : null,
+      outcomeCount: opts?.outcomeCount ?? (opts?.outcomes?.length ?? 0),
+      trip: opts?.trip
+        ? {
+            id: opts.trip.id,
+            name: opts.trip.name,
+            destination: opts.trip.destination,
+            status: opts.trip.status,
+          }
+        : null,
+    };
+
+    if (opts?.detail) {
+      base.requestMessage = requestMessage;
+      base.inputsSummary = inputsSummary;
+      base.outputsSummary = outputsSummary;
+      base.routeAndRun = Object.keys(routeAndRun).length > 0 ? routeAndRun : null;
+      base.availableOptions = log.availableOptions ?? null;
+      base.userChoice = log.userChoice ?? null;
+      base.userReasoning = log.userReasoning ?? null;
+      base.systemRecommendation = log.systemRecommendation ?? null;
+      base.outcomes = opts.outcomes ?? [];
+      base.hallucinationAuditZh =
+        typeof meta.hallucination_audit_zh === 'string'
+          ? meta.hallucination_audit_zh
+          : null;
+      base.hallucinationDeliveryGate =
+        meta.hallucination_delivery_gate_v1 ?? null;
+      base.ebpStance = typeof meta.ebp_stance === 'string' ? meta.ebp_stance : null;
+      base.conflictCount =
+        typeof meta.conflict_count === 'number' ? meta.conflict_count : null;
+      base.effectiveVoiceTone = meta.effective_voice_tone ?? null;
+      base.metadata = meta;
+      // 便于 Admin 跳转 Agent Run
+      base.links = {
+        tripRunAdminPath: tripRunId ? `/api/agent/admin/runs/${tripRunId}` : null,
+        tripAdminPath: log.tripId ? `/api/trips/admin/${log.tripId}` : null,
+      };
+    } else {
+      // 列表仍带精简 metadata，避免前端丢字段；大字段已提升到顶层
+      base.metadata = {
+        source,
+        request_id: requestId,
+        tripRunId,
+        duration_ms: durationMs,
+        plan_version: planVersion,
+        step,
+        actor,
+        statistics: Object.keys(statistics).length > 0 ? statistics : undefined,
+        cognition_marker: base.cognitionMarker,
+      };
+    }
+
+    return base;
+  }
+
+  private async loadTripsForAdmin(
+    tripIds: string[],
+  ): Promise<
+    Map<
+      string,
+      { id: string; name: string | null; destination: string | null; status: string | null }
+    >
+  > {
+    const map = new Map<
+      string,
+      { id: string; name: string | null; destination: string | null; status: string | null }
+    >();
+    const cleaned = [...new Set(tripIds.filter((id) => typeof id === 'string' && id.trim()))];
+    if (cleaned.length === 0) return map;
+    try {
+      const trips = await this.prisma.trip.findMany({
+        where: { id: { in: cleaned } },
+        select: { id: true, name: true, destination: true, status: true },
+      });
+      for (const t of trips) {
+        map.set(t.id, {
+          id: t.id,
+          name: t.name ?? null,
+          destination: t.destination ?? null,
+          status: t.status ?? null,
+        });
+      }
+    } catch (e: any) {
+      this.logger.warn(`加载 DecisionLog 关联行程失败: ${e?.message ?? e}`);
+    }
+    return map;
+  }
+
+  /**
    * 分页查询决策日志（后台管理）
    */
   async queryLogsPaginated(filters: {
@@ -489,6 +705,11 @@ export class DecisionLogStorageService {
     persona?: 'ABU' | 'DR_DRE' | 'NEPTUNE';
     decisionSource?: 'PHYSICAL' | 'HUMAN' | 'PHILOSOPHY' | 'HEURISTIC';
     action?: 'ALLOW' | 'REJECT' | 'ADJUST' | 'REPLACE';
+    /** all | orchestration(route_and_run) | engine(非 route_and_run 或 PHYSICAL) */
+    contentKind?: 'all' | 'orchestration' | 'engine';
+    source?: string;
+    excludeSource?: string;
+    reasonCode?: string;
     startDate?: Date;
     endDate?: Date;
     page?: number;
@@ -532,15 +753,52 @@ export class DecisionLogStorageService {
       }
     }
 
-    // 如果提供了 userId，需要通过 Trip 关联查询
-    if (filters.userId) {
-      where.trip = {
-        collaborators: {
-          some: {
-            userId: filters.userId,
-          },
+    if (filters.reasonCode?.trim()) {
+      where.reasonCodes = { has: filters.reasonCode.trim() };
+    }
+
+    // metadata.source 精确 / 排除
+    const sourceEquals = (value: string) => ({
+      metadata: { path: ['source'], equals: value },
+    });
+    const sourceNotEquals = (value: string) => ({
+      NOT: { metadata: { path: ['source'], equals: value } },
+    });
+
+    const contentKind = filters.contentKind ?? 'all';
+    if (contentKind === 'orchestration') {
+      Object.assign(where, sourceEquals('route_and_run'));
+    } else if (contentKind === 'engine') {
+      // 决策引擎向：非 route_and_run，或明确 PHYSICAL（路况/封闭等）
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [sourceNotEquals('route_and_run'), { decisionSource: 'PHYSICAL' }],
         },
-      };
+      ];
+    }
+
+    if (filters.source?.trim()) {
+      Object.assign(where, sourceEquals(filters.source.trim()));
+    }
+    if (filters.excludeSource?.trim()) {
+      where.AND = [...(where.AND || []), sourceNotEquals(filters.excludeSource.trim())];
+    }
+
+    // DecisionLog 无 Trip 关系字段；按协作者 userId 先解析 tripId 再过滤
+    if (filters.userId) {
+      try {
+        const collabs = await this.prisma.tripCollaborator.findMany({
+          where: { userId: filters.userId },
+          select: { tripId: true },
+          take: 5000,
+        });
+        const tripIds = [...new Set(collabs.map((c) => c.tripId).filter(Boolean))];
+        where.tripId = tripIds.length > 0 ? { in: tripIds } : '__no_match__';
+      } catch (e: any) {
+        this.logger.warn(`按 userId 过滤 DecisionLog 失败: ${e?.message ?? e}`);
+        where.tripId = '__no_match__';
+      }
     }
 
     // 排序
@@ -552,30 +810,28 @@ export class DecisionLogStorageService {
     // 查询总数
     const total = await this.prisma.decisionLog.count({ where });
 
-    // 查询数据
+    // 查询数据（含 outcome 计数；DecisionLog 无 Trip 关系，行程另批查）
     const logs = await this.prisma.decisionLog.findMany({
       where,
       orderBy,
       skip,
       take: limit,
+      include: {
+        _count: { select: { outcomes: true } },
+      },
     });
 
-    // 转换为响应格式
-    const items = logs.map(log => ({
-      id: log.id,
-      tripId: log.tripId,
-      userId: undefined, // 需要关联查询
-      persona: log.persona,
-      action: log.action,
-      explanation: log.explanation,
-      reasonCodes: log.reasonCodes,
-      decisionSource: log.decisionSource,
-      decisionStage: (log as any).decisionStage || 'FINALIZE',
-      timestamp: log.timestamp.toISOString(),
-      countryCode: log.countryCode,
-      routeDirectionId: log.routeDirectionId,
-      metadata: log.metadata || {},
-    }));
+    const tripMap = await this.loadTripsForAdmin(
+      logs.map((l) => l.tripId).filter((id): id is string => !!id),
+    );
+
+    const items = logs.map((log) =>
+      this.promoteDecisionLogAdminFields(log, {
+        trip: log.tripId ? tripMap.get(log.tripId) ?? null : null,
+        outcomeCount: (log as any)._count?.outcomes ?? 0,
+        detail: false,
+      }),
+    );
 
     return {
       items,
@@ -604,28 +860,14 @@ export class DecisionLogStorageService {
         return null;
       }
 
-      return {
-        id: log.id,
-        tripId: log.tripId,
-        countryCode: log.countryCode,
-        routeDirectionId: log.routeDirectionId,
-        persona: log.persona,
-        action: log.action,
-        decisionSource: log.decisionSource,
-        decisionStage: (log as any).decisionStage || 'FINALIZE',
-        explanation: log.explanation,
-        reasonCodes: log.reasonCodes,
-        evidenceRefs: log.evidenceRefs,
-        timestamp: log.timestamp.toISOString(),
-        metadata: log.metadata || {},
-        availableOptions: (log as any).availableOptions,
-        userChoice: (log as any).userChoice,
-        userReasoning: (log as any).userReasoning,
-        confidenceLevel: (log as any).confidenceLevel,
-        systemRecommendation: (log as any).systemRecommendation,
-        alignmentScore: (log as any).alignmentScore,
+      const tripMap = await this.loadTripsForAdmin(log.tripId ? [log.tripId] : []);
+
+      return this.promoteDecisionLogAdminFields(log, {
+        trip: log.tripId ? tripMap.get(log.tripId) ?? null : null,
         outcomes: log.outcomes || [],
-      };
+        outcomeCount: log.outcomes?.length ?? 0,
+        detail: true,
+      });
     } catch (error: any) {
       this.logger.error(`获取决策日志详情失败: ${error.message}`, error.stack);
       throw error;

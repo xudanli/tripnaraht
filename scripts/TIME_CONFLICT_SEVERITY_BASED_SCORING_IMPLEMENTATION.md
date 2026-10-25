@@ -137,7 +137,7 @@ score -= finalPenalty;
 ## 📝 相关文档
 
 - `.claude/product-decisions/time-conflict-health-score-calculation.md` - 产品决策文档（已更新为方案C）
-- `scripts/HEALTH_METRICS_CALCULATION_LOGIC.md` - 健康度计算逻辑文档（已更新）
+- `internal-docs/archive/scripts-worklogs/HEALTH_METRICS_CALCULATION_LOGIC.md` - 健康度计算逻辑文档（已更新）
 - `scripts/HEALTH_SCORE_TIME_CONFLICT_FIX.md` - 时间冲突检测修复文档
 
 ---

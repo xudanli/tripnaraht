@@ -1,10 +1,13 @@
 /**
  * 小红书 MCP Direct（只读 Phase-1）。
- * 上游: http://localhost:18060/mcp
+ * 上游: http://localhost:18060/mcp ；检索优先走 REST /api/v1/feeds/search（更稳）。
  *
  * 环境变量：
  * - XHS_MCP_ENABLED=false 可关闭
  * - XHS_MCP_URL 默认 http://localhost:18060/mcp
+ * - XHS_REST_BASE_URL 可选，默认由 MCP URL 去掉 /mcp
+ * - XHS_SEARCH_TRANSPORT=rest_first|rest|mcp（默认 rest_first）
+ * - XHS_REST_SEARCH_MS 默认 35000
  */
 
 import { Injectable, Logger, Optional } from '@nestjs/common';
@@ -104,6 +107,69 @@ export class XiaohongshuDirectService {
     return this.client;
   }
 
+  /** REST 基址：与 MCP 同进程 sidecar（去掉 /mcp） */
+  private restBaseUrl(): string {
+    const override =
+      this.configService?.get<string>('XHS_REST_BASE_URL')?.trim() ||
+      process.env.XHS_REST_BASE_URL?.trim();
+    if (override) return override.replace(/\/$/, '');
+    return (
+      this.serverUrl.replace(/\/mcp\/?$/i, '').replace(/\/$/, '') ||
+      'http://localhost:18060'
+    );
+  }
+
+  private searchTransport(): 'rest_first' | 'rest' | 'mcp' {
+    const raw = (
+      this.configService?.get<string>('XHS_SEARCH_TRANSPORT') ??
+      process.env.XHS_SEARCH_TRANSPORT ??
+      'rest_first'
+    )
+      .trim()
+      .toLowerCase();
+    if (raw === 'rest' || raw === 'mcp') return raw;
+    return 'rest_first';
+  }
+
+  private async searchFeedsViaRest(
+    keyword: string,
+    filters?: XhsSearchFeedsParams['filters'],
+  ): Promise<unknown> {
+    const url = `${this.restBaseUrl()}/api/v1/feeds/search`;
+    const timeoutMs = Math.max(
+      5000,
+      Number(
+        this.configService?.get<string>('XHS_REST_SEARCH_MS') ??
+          process.env.XHS_REST_SEARCH_MS ??
+          35000,
+      ) || 35000,
+    );
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          keyword,
+          ...(filters ? { filters } : {}),
+        }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        throw new Error(`XHS REST search HTTP ${res.status}`);
+      }
+      return await res.json();
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        throw new Error(`XHS REST search timeout ${timeoutMs}ms`);
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   /** 统一入口：硬拒绝写 Tool */
   async callReadonlyTool(
     toolName: string,
@@ -142,6 +208,41 @@ export class XiaohongshuDirectService {
         error: 'keyword 必填',
       };
     }
+    if (!this.isServiceAvailable()) {
+      return {
+        success: false,
+        source: 'xiaohongshu',
+        keyword,
+        raw: null,
+        error: 'Xiaohongshu MCP 已关闭（XHS_MCP_ENABLED=false）',
+      };
+    }
+
+    const transport = this.searchTransport();
+    const tryRest = transport === 'rest' || transport === 'rest_first';
+    const tryMcp = transport === 'mcp' || transport === 'rest_first';
+
+    if (tryRest) {
+      try {
+        const raw = await this.enqueue(() =>
+          this.searchFeedsViaRest(keyword, params.filters),
+        );
+        return { success: true, source: 'xiaohongshu', keyword, raw };
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        this.logger.warn(`search_feeds REST 失败: ${msg}`);
+        if (!tryMcp) {
+          return {
+            success: false,
+            source: 'xiaohongshu',
+            keyword,
+            raw: null,
+            error: msg,
+          };
+        }
+      }
+    }
+
     try {
       const args: Record<string, unknown> = { keyword };
       if (params.filters) args.filters = params.filters;

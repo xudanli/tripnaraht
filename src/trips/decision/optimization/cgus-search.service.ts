@@ -37,6 +37,7 @@ import { ExperienceRoutingPolicyService } from '../policies/experience-routing-p
 import { resolveExperienceRoutingWeights } from '../policies/experience-routing-policy';
 import type { ExperienceRoutingWeights } from '../policies/experience-routing-policy';
 import type { WorldModelContext, RoutePlanDraft } from '../shared/world-model.types';
+import { resolveWindFromPhysicalReality } from '../shared/evidence-precedence.util';
 import { PlanFeaturesService } from './plan-features/plan-features.service';
 import { ExposureMapService } from './plan-features/exposure-map.service';
 import type { CandidateScorerPerCandidateOutput, ICandidateScorer } from './scoring/candidate-scorer.interface';
@@ -52,6 +53,9 @@ import { buildCgusUtilityBreakdown } from './cgus-decision-trace.util';
 import type { CgusCandidateUtilityBreakdownV1 } from './cgus-decision-trace.types';
 import type { CGUSOptimizationPolicy } from './cgus-optimization-policy.types';
 import { scoreCandidatePreferenceAgainstPolicy } from './apply-cgus-optimization-policy.util';
+import { DecisionTickRoadBindingStore } from '../world-consistency/decision-tick-road-binding.store';
+import { injectWorldStoreViolationsIntoCgusCandidates } from '../../../world/inject-world-store-into-cgus-candidates.util';
+import type { WorldConstraintStoreSnapshot } from '../../../world/world-snapshot';
 
 /** 候选方案（动作 a） */
 export interface CGUSCandidate {
@@ -174,6 +178,7 @@ export class CGUSSearchService {
     @Optional() private readonly exposureMap?: ExposureMapService,
     @Optional() @Inject(CANDIDATE_SCORER) private readonly candidateScorer?: ICandidateScorer,
     @Optional() private readonly experienceRoutingPolicy?: ExperienceRoutingPolicyService,
+    @Optional() private readonly decisionTickRoadBinding?: DecisionTickRoadBindingStore,
   ) {}
 
   /**
@@ -255,6 +260,11 @@ export class CGUSSearchService {
        * executionAuthority 禁止参与评分。
        */
       optimizationPolicy?: CGUSOptimizationPolicy;
+      /**
+       * P0-1: optional tick ConstraintStore snapshot (Look→Authority).
+       * When omitted, may load from DecisionTickRoadBindingStore via candidate tripId.
+       */
+      worldConstraintSnapshot?: WorldConstraintStoreSnapshot;
     },
   ): Promise<CGUSSearchResult> {
     const freezeRoute = options?.freezeRouteSelection === true;
@@ -263,10 +273,28 @@ export class CGUSSearchService {
     }
 
     let workingCandidates = candidates;
-    if (freezeRoute && candidates.length > 0) {
-      const anchorSig = routeSkeletonSignature(candidates[0].plan);
+
+    // P0-1: Look→Authority tick ConstraintStore → CGUS hard/soft road violations
+    const tripIdForBinding = workingCandidates[0]?.plan?.tripId;
+    const tickSnap =
+      options?.worldConstraintSnapshot ??
+      (tripIdForBinding
+        ? this.decisionTickRoadBinding?.getConstraintSnapshot(tripIdForBinding)
+        : undefined);
+    if (tickSnap) {
+      workingCandidates = injectWorldStoreViolationsIntoCgusCandidates(
+        workingCandidates,
+        tickSnap,
+      );
+      this.logger.debug(
+        `[CGUS] injected decision-tick world constraint violations trip=${tripIdForBinding ?? 'n/a'}`,
+      );
+    }
+
+    if (freezeRoute && workingCandidates.length > 0) {
+      const anchorSig = routeSkeletonSignature(workingCandidates[0].plan);
       if (anchorSig) {
-        workingCandidates = candidates.filter(
+        workingCandidates = workingCandidates.filter(
           (c) => routeSkeletonSignature(c.plan) === anchorSig,
         );
         if (workingCandidates.length === 0) {
@@ -1078,13 +1106,25 @@ export class CGUSSearchService {
     const physical = worldContext.physical;
 
     // 安全性：基于天气、道路状态、危险区域
+    // Decision-time consistency: authority/observation wind > seasonal prior
     let safety = 0.9;
     const typicalWeather = physical?.climateSeasonality?.typicalWeather;
-    if (typicalWeather) {
-      const windSpeed = typicalWeather.windSpeedMps ?? 0;
-      const precipitation = typicalWeather.precipitationMmPerHour ?? 0;
+    const resolvedWind = physical
+      ? resolveWindFromPhysicalReality({
+          weatherEvidence: physical.weatherEvidence,
+          climateSeasonality: physical.climateSeasonality,
+          authorityWindMps: (physical as { authorityWindMps?: number }).authorityWindMps,
+          authorityAlertLevel: (physical as { authorityAlertLevel?: string })
+            .authorityAlertLevel,
+        })
+      : null;
+    const windSpeed = resolvedWind?.windSpeedMps ?? 0;
+    if (resolvedWind) {
       if (windSpeed > 20) safety -= 0.2;
       else if (windSpeed > 15) safety -= 0.1;
+    }
+    if (typicalWeather) {
+      const precipitation = typicalWeather.precipitationMmPerHour ?? 0;
       if (precipitation > 10) safety -= 0.15;
       else if (precipitation > 5) safety -= 0.05;
     }
@@ -1138,15 +1178,25 @@ export class CGUSSearchService {
     const physical = worldContext.physical;
     const human = worldContext.human;
 
-    // 1. 天气风险（从 climateSeasonality.typicalWeather 获取）
+    // 1. 天气风险：observation/authority wind 优先于 seasonal typical（Decision-time consistency）
     const typicalWeather = physical?.climateSeasonality?.typicalWeather;
-    if (typicalWeather) {
-      const windSpeed = typicalWeather.windSpeedMps ?? 0;
-      const precipitation = typicalWeather.precipitationMmPerHour ?? 0;
-      const visibility = typicalWeather.visibilityMeters ?? 10000;
-
+    const resolvedWind = physical
+      ? resolveWindFromPhysicalReality({
+          weatherEvidence: physical.weatherEvidence,
+          climateSeasonality: physical.climateSeasonality,
+          authorityWindMps: (physical as { authorityWindMps?: number }).authorityWindMps,
+          authorityAlertLevel: (physical as { authorityAlertLevel?: string })
+            .authorityAlertLevel,
+        })
+      : null;
+    if (resolvedWind) {
+      const windSpeed = resolvedWind.windSpeedMps;
       if (windSpeed > 20) risk += 0.2;
       else if (windSpeed > 15) risk += 0.1;
+    }
+    if (typicalWeather) {
+      const precipitation = typicalWeather.precipitationMmPerHour ?? 0;
+      const visibility = typicalWeather.visibilityMeters ?? 10000;
 
       if (precipitation > 15) risk += 0.2;
       else if (precipitation > 10) risk += 0.15;

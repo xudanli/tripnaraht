@@ -1,11 +1,17 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { RiskGenerationMode } from '../../../generated/execution-risk-contracts';
 import type { ActiveRisk, RiskSourceProjection } from '../types/execution-risk.types';
+import { ExecutionRiskConstraintBindingService } from '../services/execution-risk-constraint-binding.service';
 import { resolveKnowledgeCode } from './risk-canonical-mapping.util';
 import { ExecutionRiskKnowledgeRepositoryService } from './execution-risk-knowledge.repository';
 import { SeverityRuleEvaluatorService } from './severity-rule-evaluator.service';
 import { computeSeverityDataGaps } from './severity-data-gaps.util';
 import { SeverityHysteresisService } from './severity-hysteresis.service';
+import {
+  resolveRiskConstraintBindingSync,
+  severityLevelForBinding,
+  toRiskConstraintBindingAttachment,
+} from './risk-constraint-binding-runtime.util';
 
 @Injectable()
 export class ActiveRiskKnowledgeEnrichmentService {
@@ -13,6 +19,7 @@ export class ActiveRiskKnowledgeEnrichmentService {
     private readonly knowledge: ExecutionRiskKnowledgeRepositoryService,
     private readonly severityEvaluator: SeverityRuleEvaluatorService,
     @Optional() private readonly hysteresis?: SeverityHysteresisService,
+    @Optional() private readonly constraintBindings?: ExecutionRiskConstraintBindingService,
   ) {}
 
   async enrichProjections(projections: RiskSourceProjection[]): Promise<RiskSourceProjection[]> {
@@ -36,7 +43,7 @@ export class ActiveRiskKnowledgeEnrichmentService {
     };
 
     if (enriched.generationMode !== RiskGenerationMode.DIRECT_DETECTION) {
-      return enriched;
+      return this.attachConstraintBinding(enriched);
     }
 
     const rules = await this.knowledge.findSeverityRules(knowledgeCode);
@@ -48,26 +55,26 @@ export class ActiveRiskKnowledgeEnrichmentService {
         level: evaluation.level,
         executionGate: evaluation.executionGate,
       });
-      return {
+      return this.attachConstraintBinding({
         ...applied,
         matchedRuleId: evaluation.matchedRuleId,
         metricValue: evaluation.metricValue,
         metricUnit: evaluation.metricUnit,
         severityState: 'KNOWN',
         dataGaps: [],
-      };
+      });
     }
 
     const dataGaps = computeSeverityDataGaps(rules, metrics);
     if (dataGaps.length > 0) {
-      return {
+      return this.attachConstraintBinding({
         ...enriched,
         severityState: 'UNKNOWN',
         dataGaps,
-      };
+      });
     }
 
-    return enriched;
+    return this.attachConstraintBinding(enriched);
   }
 
   private async enrichRisk(risk: ActiveRisk): Promise<ActiveRisk> {
@@ -87,14 +94,64 @@ export class ActiveRiskKnowledgeEnrichmentService {
       rootEventId,
     };
 
-    if (base.severityState === 'UNKNOWN') {
+    const withBinding = await this.attachConstraintBinding(base);
+
+    if (withBinding.severityState === 'UNKNOWN') {
       return {
-        ...base,
+        ...withBinding,
         treatmentStatus: 'ACTION_REQUIRED',
       };
     }
 
-    return base;
+    return withBinding;
+  }
+
+  private async attachConstraintBinding<
+    T extends { knowledgeCode?: string; executionGate?: ActiveRisk['executionGate']; constraintBinding?: ActiveRisk['constraintBinding'] },
+  >(item: T): Promise<T> {
+    if (!item.knowledgeCode) return item;
+    if (item.constraintBinding?.templateIds?.length) return item;
+
+    const severityLevel = severityLevelForBinding({ executionGate: item.executionGate });
+    if (this.constraintBindings) {
+      try {
+        const resolved = await this.constraintBindings.resolve({
+          knowledgeCode: item.knowledgeCode,
+          severityLevel: severityLevel ?? undefined,
+        });
+        const attachment = toRiskConstraintBindingAttachment({
+          bindings: resolved.bindings.map((b) => ({
+            id: b.id,
+            constraintTemplateId: b.constraintTemplateId,
+            feasibilityDimension: b.feasibilityDimension,
+            violationClass: b.violationClass,
+            executionGate: b.executionGate,
+            notesZh: b.notesZh,
+            blocked: b.blocked,
+          })),
+          primary: resolved.primary
+            ? {
+                id: resolved.primary.id,
+                constraintTemplateId: resolved.primary.constraintTemplateId,
+                feasibilityDimension: resolved.primary.feasibilityDimension,
+                violationClass: resolved.primary.violationClass,
+                executionGate: resolved.primary.executionGate,
+                notesZh: resolved.primary.notesZh,
+              }
+            : null,
+          anyBlocked: resolved.anyBlocked,
+        });
+        if (attachment) return { ...item, constraintBinding: attachment };
+      } catch {
+        // fall through to sync defaults
+      }
+    }
+
+    const sync = resolveRiskConstraintBindingSync({
+      knowledgeCode: item.knowledgeCode,
+      severityLevel,
+    });
+    return sync ? { ...item, constraintBinding: sync } : item;
   }
 
   private async applyHysteresisToProjection(

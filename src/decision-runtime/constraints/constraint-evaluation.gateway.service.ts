@@ -25,10 +25,14 @@ import { isConstraintGatewayPlanVerifyProjectionEnabled } from './constraint-pla
 import { GuardianConstraintProvider } from './providers/guardian-constraint.provider';
 import { LegacyConstraintCheckerAdapter } from './providers/legacy-checker.provider';
 import { OntologyConstraintProvider } from './providers/ontology-constraint.provider';
+import { PolicyLabConstraintProvider } from './providers/policy-lab-constraint.provider';
 import { evaluateWorldStateCompleteness } from './world-state/completeness-evaluator.util';
 import { buildCompletenessAssertions } from './world-state/reality-completeness.provider';
 import { recordConstraintGatewayIngressFromReport } from './constraint-gateway-ingress-audit.util';
 import { evaluateDecisionScopeBoundRun } from '../verification/evaluate-decision-scope.util';
+import { DecisionTickRoadGateProvider } from '../../trips/decision/world-consistency/decision-tick-road-gate.provider';
+import { DecisionTickPoiGateProvider } from '../../trips/decision/world-consistency/decision-tick-poi-gate.provider';
+import { enforceKnowledgeDecisionIngress } from '../../knowledge-system/runtime/assert-knowledge-decision-ingress.util';
 
 @Injectable()
 export class ConstraintEvaluationGatewayService {
@@ -41,6 +45,9 @@ export class ConstraintEvaluationGatewayService {
     private readonly ontologyProvider: OntologyConstraintProvider,
     private readonly failurePolicy: ConstraintFailurePolicyService,
     @Optional() private readonly userConstraintProvider?: UserConstraintProvider,
+    @Optional() private readonly policyLabProvider?: PolicyLabConstraintProvider,
+    @Optional() private readonly decisionTickRoadGate?: DecisionTickRoadGateProvider,
+    @Optional() private readonly decisionTickPoiGate?: DecisionTickPoiGateProvider,
   ) {}
 
   async evaluatePlan(input: EvaluatePlanInput): Promise<CanonicalConstraintReport> {
@@ -66,6 +73,14 @@ export class ConstraintEvaluationGatewayService {
         tripId: input.tripId,
         guardianAssertions: input.guardianAssertions,
       }),
+      // P0-1: same-tick Look→Authority road disposition
+      ...(this.decisionTickRoadGate
+        ? this.decisionTickRoadGate.evaluate({ tripId: input.tripId })
+        : []),
+      // P0-3: same-tick POI authority disposition
+      ...(this.decisionTickPoiGate
+        ? this.decisionTickPoiGate.evaluate({ tripId: input.tripId })
+        : []),
     ];
 
     const report = this.buildReport({
@@ -91,6 +106,29 @@ export class ConstraintEvaluationGatewayService {
     input: EvaluatePlanInput,
   ): Promise<CanonicalConstraintReport> {
     const evaluatedAt = new Date().toISOString();
+
+    // Knowledge Runtime SSOT — prefer snapshot/travel world facts; ban vector HARD BLOCK
+    const hasWorldFacts =
+      (input.travelWorldFacts?.length ?? 0) > 0 ||
+      (input.snapshotWorldFacts?.length ?? 0) > 0;
+    const ksIngress = enforceKnowledgeDecisionIngress({
+      consumer: 'Constraint',
+      requireSnapshot: false,
+      hardBlockFromVector: false,
+      // When facts present, treat as SSOT path OK without full Canonical snapshot object
+      // (gateway still accepts TravelWorldFact[] / WorldFact[] from Snapshot assemblers)
+    });
+    if (!ksIngress.ok && ksIngress.enforceMode === 'shadow') {
+      this.logger.warn(
+        `[ConstraintGateway] knowledge_runtime_ssot: ${ksIngress.violations.join(' | ')}`,
+      );
+    }
+    if (!hasWorldFacts && ksIngress.enforceMode === 'shadow') {
+      this.logger.debug(
+        `[ConstraintGateway] trip=${input.tripId} no snapshot/travel world facts on ingress`,
+      );
+    }
+
     const userEvaluation = this.userConstraintProvider
       ? await this.userConstraintProvider.evaluate({
           tripId: input.tripId,
@@ -168,6 +206,20 @@ export class ConstraintEvaluationGatewayService {
       }),
     );
 
+    // P0-1: Look→Authority same-tick road disposition for Gate
+    if (this.decisionTickRoadGate) {
+      assertionBatches.push(
+        this.decisionTickRoadGate.evaluate({ tripId: input.tripId }),
+      );
+    }
+
+    // P0-3: POI authority same-tick disposition for Gate
+    if (this.decisionTickPoiGate) {
+      assertionBatches.push(
+        this.decisionTickPoiGate.evaluate({ tripId: input.tripId }),
+      );
+    }
+
     assertionBatches.push(
       this.packProvider.evaluate({
         tripId: input.tripId,
@@ -182,6 +234,19 @@ export class ConstraintEvaluationGatewayService {
         snapshotWorldFacts: input.snapshotWorldFacts,
       }),
     );
+
+    if (this.policyLabProvider) {
+      assertionBatches.push(
+        await this.runProvider('policy-lab', () =>
+          this.policyLabProvider!.evaluate({
+            tripId: input.tripId,
+            plan: input.plan,
+            worldState: input.worldState,
+            candidateId: input.candidateId,
+          }),
+        ),
+      );
+    }
 
     for (const batch of assertionBatches) {
       for (const failure of batch.filter((a) => a.reasonCode === 'PROVIDER_EVALUATION_FAILED')) {

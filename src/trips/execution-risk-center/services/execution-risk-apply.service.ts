@@ -169,6 +169,8 @@ export class ExecutionRiskApplyService {
         gate: (risk.executionGate ?? 'AT_RISK') as ExecutionGate,
         newRisks: [],
         resolvedRiskIds: [],
+        constraintTemplateIds: risk.constraintBinding?.templateIds ?? [],
+        anyBlocked: risk.constraintBinding?.anyBlocked ?? false,
       },
     };
 

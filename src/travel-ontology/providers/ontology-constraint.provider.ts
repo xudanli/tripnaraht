@@ -12,6 +12,7 @@ import {
 } from '../evaluators/ontology-constraint.evaluator';
 import type { OntologyConstraintResult, OntologyConstraintSeverity } from '../evaluators/ontology-constraint.types';
 import type { TravelWorldFact } from '../contracts/travel-world-fact.types';
+import { selectFactsForOntologyHardBlock } from '../../knowledge-system/runtime/select-facts-for-ontology-hard-block.util';
 
 function mapSeverity(severity: OntologyConstraintSeverity): ConstraintAssertion['status'] {
   switch (severity) {
@@ -65,12 +66,16 @@ export function evaluateOntologyConstraintAssertions(input: {
   travelWorldFacts?: TravelWorldFact[];
   snapshotWorldFacts?: WorldFact[];
 }): ConstraintAssertion[] {
-  const facts =
+  const rawFacts =
     input.travelWorldFacts ??
     (input.snapshotWorldFacts ? parseTravelWorldFactsFromSnapshot(input.snapshotWorldFacts) : []);
 
-  if (facts.length === 0) return [];
+  if (rawFacts.length === 0) return [];
 
-  const evaluation = evaluateOntologyConstraints(facts);
+  // Knowledge System: stale facts must not drive HARD BLOCK alone
+  const { eligible } = selectFactsForOntologyHardBlock(rawFacts);
+  if (eligible.length === 0) return [];
+
+  const evaluation = evaluateOntologyConstraints(eligible);
   return evaluation.results.map((r) => ontologyResultToConstraintAssertion(input.tripId, r));
 }

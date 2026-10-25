@@ -255,7 +255,8 @@ export function projectActiveRiskToExecutionAlert(
     impact: buildAlertImpactSummary(risk),
     affectedActivities,
     evidenceRefs: risk.evidenceRefs.map((e) => e.id),
-    observedAt: risk.updatedAt,
+    // 发生时间用 detectedAt；updatedAt 在每次聚合会被刷成「现在」，会误导成 21:56 才发生
+    observedAt: risk.detectedAt ?? risk.updatedAt,
     requiresImmediateAttention: level === 'STOP' || level === 'REPLAN_REQUIRED',
     treatmentStatus: risk.treatmentStatus,
     recommendationIds: risk.recommendationIds,

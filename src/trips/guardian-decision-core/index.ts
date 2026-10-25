@@ -20,6 +20,7 @@ export { ExcessiveDailyLoadPipelineService } from './detection/excessive-daily-l
 export { RoadCloseImpactAnalyzerService } from './detection/road-close-impact-analyzer.service';
 export { DecisionProblemDetectorService } from './detection/decision-problem-detector.service';
 export { Rfc001DecisionProblemStoreService } from './persistence/rfc001-decision-problem.store';
+export { ProactiveDecisionOrchestratorService } from '../proactive-decision/orchestration/proactive-decision-orchestrator.service';
 export { DecisionWorkspaceService } from './workspace/decision-workspace.service';
 export { RoadSegmentUnavailableEvaluateService } from './orchestration/road-segment-unavailable-evaluate.service';
 export { WeatherActivityProhibitedEvaluateService } from './orchestration/weather-activity-prohibited-evaluate.service';

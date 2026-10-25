@@ -1335,6 +1335,8 @@ export async function resolveHotelSearchParamsForMcp(
     language: 'zh',
     ...(countryCode ? { countryCode } : {}),
   };
+  const msg = (request.message ?? '').trim();
+  if (msg) params.naturalLanguage = msg;
   if (effectiveTripId) params.tripId = effectiveTripId;
   if (tripStartYmd) params._resolvedTripStartYmd = tripStartYmd;
   if (tripEndYmd) params._resolvedTripEndYmd = tripEndYmd;
@@ -2856,7 +2858,7 @@ export async function runLiveXhsSensorBranch(
   );
   const budgetMs = Math.max(
     6000,
-    Number(process.env.LIVE_TOOL_XHS_MS ?? 28000) || 28000,
+    Number(process.env.LIVE_TOOL_XHS_MS ?? 45000) || 45000,
   );
   const started = Date.now();
   try {

@@ -17,6 +17,7 @@ import type {
 import { readIcelandSelfDriveMetadata } from './iceland-self-drive-response.util';
 import {
   bootstrapIcelandSelfDriveMetadata,
+  isCompleteIcelandSelfDriveMetadata,
   isIcelandSelfDriveProductTrip,
 } from './iceland-self-drive-metadata-hydrate.util';
 import {
@@ -44,6 +45,11 @@ import {
   type UserDrivingDefaultsProjection,
 } from './iceland-self-drive-user-defaults-projection.util';
 import { mirrorDrivingSettingsIntoConstraints } from '../../../decision-runtime/decision-cases/utils/decision-driving-settings-sync.util';
+import { TRIP_CONSTRAINT_LEGACY_IDS } from '../../trip-constraint-solver/types/trip-constraint.types';
+import {
+  readConstraintExtendedValue,
+  writeConstraintExtendedValue,
+} from '../../trip-constraint-solver/utils/constraint-scope-binding.util';
 import { DecisionCaseService } from '../../../decision-runtime/decision-cases/services/decision-case.service';
 import { toInputJsonValue } from '../../budget-os/utils/prisma-json.util';
 import {
@@ -66,7 +72,27 @@ export class IcelandSelfDriveDrivingSettingsService {
     userId: string,
     tripId: string,
   ): Promise<IcelandSelfDriveDrivingSettingsResponse> {
-    const { isd } = await this.requireOwnedIcelandTrip(userId, tripId);
+    const { isd } = await this.requireOwnedSelfDriveTrip(userId, tripId);
+    return this.buildGetResponse(tripId, isd);
+  }
+
+  /** 管理端：不校验 collaborator */
+  async getAdmin(tripId: string): Promise<IcelandSelfDriveDrivingSettingsResponse> {
+    const { isd } = await this.requireOwnedSelfDriveTrip(null, tripId, {
+      asAdmin: true,
+    });
+    return this.buildGetResponse(tripId, isd);
+  }
+
+  private async buildGetResponse(
+    tripId: string,
+    isd: {
+      contextVersion: string;
+      drivingSettings: Parameters<typeof normalizeDrivingSettingsState>[0];
+      wizard: { vehicleAcquisition: Parameters<typeof normalizeDrivingSettingsState>[1]; regionIds: string[] };
+      routeSkeleton?: Parameters<typeof buildDrivingSettingsResponse>[0]['routeSkeleton'];
+    },
+  ): Promise<IcelandSelfDriveDrivingSettingsResponse> {
     const members = await this.loadTripMembers(tripId);
     const settings = normalizeDrivingSettingsState(
       isd.drivingSettings,
@@ -77,7 +103,6 @@ export class IcelandSelfDriveDrivingSettingsService {
       settings.drivers.candidates,
       projections,
     );
-    // Also seed synthetic candidate stubs for members with no stored state so GET shows defaults.
     const stateById = new Map(enrichedCandidates.map((c) => [c.memberId, c]));
     for (const m of members) {
       if (stateById.has(m.memberId)) continue;
@@ -112,7 +137,26 @@ export class IcelandSelfDriveDrivingSettingsService {
     tripId: string,
     dto: PatchIcelandSelfDriveDrivingSettingsDto,
   ): Promise<IcelandSelfDriveDrivingSettingsResponse> {
-    const { tripMeta, isd } = await this.requireOwnedIcelandTrip(userId, tripId);
+    const { tripMeta, isd } = await this.requireOwnedSelfDriveTrip(userId, tripId);
+    return this.executePatch(tripId, tripMeta, isd, dto);
+  }
+
+  async patchAdmin(
+    tripId: string,
+    dto: PatchIcelandSelfDriveDrivingSettingsDto,
+  ): Promise<IcelandSelfDriveDrivingSettingsResponse> {
+    const { tripMeta, isd } = await this.requireOwnedSelfDriveTrip(null, tripId, {
+      asAdmin: true,
+    });
+    return this.executePatch(tripId, tripMeta, isd, dto);
+  }
+
+  private async executePatch(
+    tripId: string,
+    tripMeta: unknown,
+    isd: IcelandSelfDriveTripMetadata,
+    dto: PatchIcelandSelfDriveDrivingSettingsDto,
+  ): Promise<IcelandSelfDriveDrivingSettingsResponse> {
     const members = await this.loadTripMembers(tripId);
     const memberIds = new Set(members.map((m) => m.memberId));
 
@@ -218,7 +262,7 @@ export class IcelandSelfDriveDrivingSettingsService {
     tripId: string,
     dto: PreviewDrivingSettingsImpactDto,
   ): Promise<IcelandSelfDriveVehicleImpactPreview> {
-    const { isd } = await this.requireOwnedIcelandTrip(userId, tripId);
+    const { isd } = await this.requireOwnedSelfDriveTrip(userId, tripId);
     const current = normalizeDrivingSettingsState(
       isd.drivingSettings,
       isd.wizard.vehicleAcquisition,
@@ -247,7 +291,7 @@ export class IcelandSelfDriveDrivingSettingsService {
     previewBullets: string[];
     contextVersion: string;
   }> {
-    const { tripMeta, isd } = await this.requireOwnedIcelandTrip(userId, tripId);
+    const { tripMeta, isd } = await this.requireOwnedSelfDriveTrip(userId, tripId);
     const settings = normalizeDrivingSettingsState(
       isd.drivingSettings,
       isd.wizard.vehicleAcquisition,
@@ -296,7 +340,7 @@ export class IcelandSelfDriveDrivingSettingsService {
     tripId: string,
     input: VehicleDocumentUploadInput,
   ): Promise<IcelandSelfDriveVehicleDocumentRecord> {
-    const { tripMeta, isd } = await this.requireOwnedIcelandTrip(userId, tripId);
+    const { tripMeta, isd } = await this.requireOwnedSelfDriveTrip(userId, tripId);
     const record = createVehicleDocumentRecord(input);
     const nextIsd: IcelandSelfDriveTripMetadata = {
       ...isd,
@@ -326,7 +370,7 @@ export class IcelandSelfDriveDrivingSettingsService {
     tripId: string,
     docId: string,
   ): Promise<IcelandSelfDriveVehicleDocumentRecord> {
-    const { isd } = await this.requireOwnedIcelandTrip(userId, tripId);
+    const { isd } = await this.requireOwnedSelfDriveTrip(userId, tripId);
     const doc = isd.vehicleDocuments?.[docId];
     if (!doc) {
       throw new NotFoundException({
@@ -392,13 +436,29 @@ export class IcelandSelfDriveDrivingSettingsService {
       prev,
       nextIsd.contextVersion,
     );
+    const countryCode = String(
+      (prev.selfDrive as { countryCode?: string } | undefined)?.countryCode ??
+        nextIsd.wizard?.destinationCode ??
+        'UNKNOWN',
+    ).toUpperCase();
     await this.prisma.trip.update({
       where: { id: tripId },
       data: {
         metadata: toInputJsonValue({
           ...prev,
           icelandSelfDrive: nextIsd,
-          productLine: 'iceland_self_drive',
+          selfDrive: {
+            schemaId: 'tripnara.self_drive_settings@v1',
+            countryCode,
+            productLine: 'self_drive',
+            contextVersion: nextIsd.contextVersion,
+            drivingSettings: nextIsd.drivingSettings,
+            wizard: nextIsd.wizard,
+          },
+          productLine:
+            countryCode === 'IS' || countryCode === 'ICELAND'
+              ? 'iceland_self_drive'
+              : prev.productLine ?? 'self_drive',
         }),
         updatedAt: new Date(),
       },
@@ -420,6 +480,22 @@ export class IcelandSelfDriveDrivingSettingsService {
       },
       drivingSettings: nextIsd.drivingSettings as unknown as Record<string, unknown>,
     });
+    const hours = Number(constraints.maxDailyDrivingHours);
+    if (Number.isFinite(hours) && hours > 0) {
+      Object.assign(
+        prev,
+        writeConstraintExtendedValue(prev, TRIP_CONSTRAINT_LEGACY_IDS.MAX_DAILY_DRIVE, {
+          ...(readConstraintExtendedValue(prev, TRIP_CONSTRAINT_LEGACY_IDS.MAX_DAILY_DRIVE) ??
+            {}),
+          hours,
+          maxHours: hours,
+          maxDailyDrivingHours: hours,
+          raw: hours,
+          judgmentRule: `单日驾驶时长不超过 ${hours} 小时`,
+          rule: `单日驾驶时长不超过 ${hours} 小时`,
+        }),
+      );
+    }
     const now = new Date().toISOString();
     if (flags.vehicleTouched && nextIsd.drivingSettings.vehicle.vehicleClass) {
       prev.vehicleConfirmedAt = now;
@@ -431,6 +507,11 @@ export class IcelandSelfDriveDrivingSettingsService {
       prev,
       nextIsd.contextVersion,
     );
+    const countryCode = String(
+      (prev.selfDrive as { countryCode?: string } | undefined)?.countryCode ??
+        nextIsd.wizard?.destinationCode ??
+        'UNKNOWN',
+    ).toUpperCase();
 
     await this.prisma.trip.update({
       where: { id: tripId },
@@ -438,7 +519,18 @@ export class IcelandSelfDriveDrivingSettingsService {
         metadata: toInputJsonValue({
           ...prev,
           icelandSelfDrive: nextIsd,
-          productLine: 'iceland_self_drive',
+          selfDrive: {
+            schemaId: 'tripnara.self_drive_settings@v1',
+            countryCode,
+            productLine: 'self_drive',
+            contextVersion: nextIsd.contextVersion,
+            drivingSettings: nextIsd.drivingSettings,
+            wizard: nextIsd.wizard,
+          },
+          productLine:
+            countryCode === 'IS' || countryCode === 'ICELAND'
+              ? 'iceland_self_drive'
+              : prev.productLine ?? 'self_drive',
           constraints,
         }),
         updatedAt: new Date(),
@@ -447,7 +539,11 @@ export class IcelandSelfDriveDrivingSettingsService {
     emitSelfDriveReadinessChanged(tripId, readinessCv);
   }
 
-  private async requireOwnedIcelandTrip(userId: string, tripId: string) {
+  private async requireOwnedSelfDriveTrip(
+    userId: string | null,
+    tripId: string,
+    opts?: { asAdmin?: boolean },
+  ) {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
       select: {
@@ -456,11 +552,16 @@ export class IcelandSelfDriveDrivingSettingsService {
         destination: true,
         startDate: true,
         endDate: true,
-        TripCollaborator: {
-          where: { userId },
-          select: { userId: true },
-          take: 1,
-        },
+        pacingConfig: true,
+        ...(opts?.asAdmin
+          ? {}
+          : {
+              TripCollaborator: {
+                where: { userId: userId ?? '__none__' },
+                select: { userId: true },
+                take: 1,
+              },
+            }),
       },
     });
 
@@ -470,45 +571,106 @@ export class IcelandSelfDriveDrivingSettingsService {
         message: `Trip ${tripId} not found`,
       });
     }
-    if (trip.TripCollaborator.length === 0) {
-      throw new ForbiddenException({
-        code: 'FORBIDDEN',
-        message: 'Not a collaborator on this trip',
-      });
+    if (!opts?.asAdmin) {
+      const collab = (trip as { TripCollaborator?: Array<{ userId: string }> })
+        .TripCollaborator;
+      if (!userId || !collab?.length) {
+        throw new ForbiddenException({
+          code: 'FORBIDDEN',
+          message: 'Not a collaborator on this trip',
+        });
+      }
     }
 
     let isd = readIcelandSelfDriveMetadata(trip.metadata);
-    if (!isd) {
-      if (!isIcelandSelfDriveProductTrip(trip.metadata, trip.destination)) {
-        throw new NotFoundException({
-          code: 'NOT_ICELAND_SELF_DRIVE',
-          message: 'Trip is not an iceland_self_drive product trip',
-        });
+    // Also accept global metadata.selfDrive.drivingSettings as source of truth
+    if (!isCompleteIcelandSelfDriveMetadata(isd)) {
+      const meta =
+        trip.metadata && typeof trip.metadata === 'object' && !Array.isArray(trip.metadata)
+          ? (trip.metadata as Record<string, unknown>)
+          : {};
+      const global = meta.selfDrive;
+      if (global && typeof global === 'object' && !Array.isArray(global)) {
+        const g = global as Record<string, unknown>;
+        if (g.drivingSettings && typeof g.drivingSettings === 'object') {
+          isd = {
+            ...(isd ?? ({} as IcelandSelfDriveTripMetadata)),
+            productLine:
+              (typeof g.productLine === 'string' ? g.productLine : null) ??
+              'self_drive',
+            contextVersion:
+              (typeof g.contextVersion === 'string' ? g.contextVersion : null) ??
+              isd?.contextVersion ??
+              `cv_${Date.now()}`,
+            drivingSettings: g.drivingSettings as IcelandSelfDriveTripMetadata['drivingSettings'],
+            wizard: (g.wizard as IcelandSelfDriveTripMetadata['wizard']) ?? isd?.wizard,
+          } as IcelandSelfDriveTripMetadata;
+        }
       }
-      // Initial Plan 行程常只有 productLine，缺 icelandSelfDrive 块 → 惰性补齐并落库
+    }
+
+    const needsHydrate =
+      !isCompleteIcelandSelfDriveMetadata(isd) &&
+      isIcelandSelfDriveProductTrip(
+        trip.metadata,
+        trip.destination,
+        trip.pacingConfig,
+      );
+
+    if (!isd && !needsHydrate) {
+      throw new NotFoundException({
+        code: 'NOT_SELF_DRIVE_TRIP',
+        message: 'Trip is not a self-drive trip (check destination / travelMode)',
+      });
+    }
+
+    if (needsHydrate || !isCompleteIcelandSelfDriveMetadata(isd)) {
       isd = bootstrapIcelandSelfDriveMetadata({
         tripId,
         startDate: trip.startDate,
         endDate: trip.endDate,
         destination: trip.destination,
-        existingMeta: trip.metadata,
+        existingMeta: {
+          ...((trip.metadata as object) ?? {}),
+          icelandSelfDrive: isd ?? undefined,
+        },
       });
       const prev = (trip.metadata as Record<string, unknown>) ?? {};
+      const countryCode = String(trip.destination ?? 'UNKNOWN').toUpperCase();
+      const selfDriveBlob = {
+        schemaId: 'tripnara.self_drive_settings@v1',
+        countryCode,
+        productLine: 'self_drive',
+        contextVersion: isd.contextVersion,
+        drivingSettings: isd.drivingSettings,
+        wizard: isd.wizard,
+      };
       await this.prisma.trip.update({
         where: { id: tripId },
         data: {
           metadata: toInputJsonValue({
             ...prev,
             icelandSelfDrive: isd,
-            productLine: 'iceland_self_drive',
+            selfDrive: selfDriveBlob,
+            productLine:
+              countryCode === 'IS' || countryCode === 'ICELAND'
+                ? 'iceland_self_drive'
+                : prev.productLine ?? 'self_drive',
           }),
           updatedAt: new Date(),
         },
       });
-      this.logger.log(`Hydrated icelandSelfDrive metadata for trip=${tripId}`);
-      return { tripMeta: { ...prev, icelandSelfDrive: isd, productLine: 'iceland_self_drive' }, isd };
+      this.logger.log(`Hydrated/repaired selfDrive metadata for trip=${tripId}`);
+      return {
+        tripMeta: {
+          ...prev,
+          icelandSelfDrive: isd,
+          selfDrive: selfDriveBlob,
+        },
+        isd,
+      };
     }
 
-    return { tripMeta: trip.metadata, isd };
+    return { tripMeta: trip.metadata, isd: isd! };
   }
 }

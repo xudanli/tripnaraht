@@ -2,7 +2,11 @@
 
 /**
  * Decision Draft Controller（统一接口）
- * 
+ *
+ * @deprecated 2026-08：决策草案 HTTP API（含 Admin `/admin/decision-draft`）已废弃。
+ * 数据停更于 decision_drafts（约 2026-05）；观测请用 `/api/agent/admin/runs`。
+ * 模块内部生成/存储服务仍可能被行程创建等调用，勿整包删除本模块。
+ *
  * 统一API接口，通过权限控制区分用户端和管理端功能
  * - 普通用户：查看、解释、轻量编辑
  * - Expert用户：完整编辑、批量操作
@@ -44,7 +48,8 @@ import { StudioModeGuard, RequireStudio } from '../guards/studio-mode.guard';
 // import { JwtAuthGuard, RolesGuard } from '../../auth/guards/jwt-auth.guard';
 // import { Roles } from '../../auth/decorators/roles.decorator';
 
-@ApiTags('Decision Draft')
+/** @deprecated 见文件头注释 */
+@ApiTags('Decision Draft (deprecated)')
 @Controller('decision-draft')
 @Public() // 临时开放测试，生产环境应移除并启用认证
 // @UseGuards(JwtAuthGuard) // TODO: 启用认证（待实现）
@@ -65,7 +70,7 @@ export class DecisionDraftController {
    * 用户端接口：通过 tripId 查询决策草案（用于自然语言创建的行程）
    */
   @Get('trip/:tripId')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '根据 tripId 获取决策草案',
     description: '通过 tripId 查询关联的决策草案（仅适用于自然语言创建的行程）',
   })
@@ -115,7 +120,7 @@ export class DecisionDraftController {
    * ⚠️ 注意：此路由必须放在 :draftId 参数路由之前，否则 'stats' 会被当作 draftId
    */
   @Get('stats')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '获取统计信息',
     description: '获取决策草案的统计信息（总数、平均决策数、平均生成时间等）',
   })
@@ -146,7 +151,7 @@ export class DecisionDraftController {
    * 管理后台专用：获取所有决策草案的分页列表，支持筛选和排序
    */
   @Get('admin/list')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '[Admin] 决策草案分页列表',
     description: '管理后台专用：获取所有决策草案，支持分页、筛选、排序',
   })
@@ -245,7 +250,7 @@ export class DecisionDraftController {
    * 管理后台专用：获取全局的决策质量指标，用于 AI 质量监控
    */
   @Get('admin/quality-stats')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '[Admin] 全局决策质量统计',
     description: '管理后台专用：获取决策系统的全局质量指标，包括成功率、用户满意度、平均决策时间等',
   })
@@ -325,7 +330,7 @@ export class DecisionDraftController {
    * 管理后台专用：获取用户决策风格的汇总分析，用于了解用户偏好
    */
   @Get('admin/user-styles')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '[Admin] 用户决策风格汇总',
     description: '管理后台专用：获取用户决策风格的汇总分析，包括偏好分布、行为模式等',
   })
@@ -409,7 +414,7 @@ export class DecisionDraftController {
    * 管理后台专用：获取决策异常和错误的监控数据
    */
   @Get('admin/anomalies')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '[Admin] 决策异常监控',
     description: '管理后台专用：获取决策过程中的异常、错误和警告信息',
   })
@@ -476,7 +481,7 @@ export class DecisionDraftController {
    * 用户端接口：只读，返回决策草案（根据用户模式返回 ToC 或 Expert 视图）
    */
   @Get(':draftId')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '获取决策草案',
     description: '根据用户模式返回决策草案（ToC 模式只显示业务层，Expert 模式显示完整双层结构）',
   })
@@ -526,7 +531,7 @@ export class DecisionDraftController {
    * 用户端接口：提供 ToC 模式（轻解释）或 Expert 模式（完整解释）
    */
   @Get(':draftId/explanation')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '获取决策解释',
     description: '根据模式返回决策解释（ToC 模式：轻解释，Expert 模式：完整解释，Studio 模式：完整技术解释，需要 Studio 权限）',
   })
@@ -576,7 +581,7 @@ export class DecisionDraftController {
    * 用户端接口：提供单个决策步骤的完整解释（包括 Step Drafts、证据链、决策日志）
    */
   @Get(':draftId/step/:stepId/explanation')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '获取决策步骤解释',
     description: '获取单个决策步骤的详细解释（包括 Step Drafts、证据链、决策日志、三人格评审）',
   })
@@ -606,7 +611,7 @@ export class DecisionDraftController {
    * 用户端接口：查看决策草案的版本历史
    */
   @Get(':draftId/versions')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '获取版本列表',
     description: '获取决策草案的所有版本（只返回版本摘要，不返回完整数据）',
   })
@@ -648,7 +653,7 @@ export class DecisionDraftController {
    * 用户端接口：查看特定版本的决策草案
    */
   @Get(':draftId/versions/:versionId')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '获取版本详情',
     description: '获取特定版本的决策草案（根据用户模式返回 ToC 或 Expert 视图）',
   })
@@ -709,7 +714,7 @@ export class DecisionDraftController {
    * 用户端接口：对比两个版本的差异（决策步骤差异、Step Drafts 差异）
    */
   @Get(':draftId/versions/:versionId1/compare/:versionId2')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '对比版本',
     description: '对比两个版本的差异（决策步骤差异、Step Drafts 差异）',
   })
@@ -745,7 +750,7 @@ export class DecisionDraftController {
    * 用户端接口：编辑单个决策步骤（接受/拒绝/修改）
    */
   @Put(':draftId/step/:stepId')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '编辑决策步骤',
     description: '编辑单个决策步骤（接受/拒绝/修改）',
   })
@@ -794,7 +799,7 @@ export class DecisionDraftController {
    * 将已批准或修改的决策步骤应用到行程
    */
   @Post(':draftId/apply')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '应用决策草案',
     description: '将已批准或修改的决策步骤应用到行程',
   })
@@ -838,7 +843,7 @@ export class DecisionDraftController {
    * 根据用户输入和旅行需求生成决策草案
    */
   @Post('generate')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '生成决策草案',
     description: '根据用户输入和旅行需求，生成决策草案（业务层 + 技术层）',
   })
@@ -877,7 +882,7 @@ export class DecisionDraftController {
    * 批量编辑多个决策步骤（Expert模式及以上）
    */
   @Put(':draftId/steps/batch')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '批量编辑决策步骤',
     description: '批量编辑多个决策步骤',
   })
@@ -916,7 +921,7 @@ export class DecisionDraftController {
    * 根据用户的编辑操作，只重新生成受影响的决策步骤和步骤草案
    */
   @Post(':draftId/regenerate')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '局部重算',
     description: '根据用户的编辑操作，只重新生成受影响的决策步骤和步骤草案（非全量重生成）',
   })
@@ -959,7 +964,7 @@ export class DecisionDraftController {
    * 重新排序决策步骤
    */
   @Put(':draftId/steps/reorder')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '重新排序决策步骤',
     description: '重新排序决策步骤',
   })
@@ -996,7 +1001,7 @@ export class DecisionDraftController {
    * 保存当前决策草案为版本
    */
   @Post(':draftId/version')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '保存版本',
     description: '保存当前决策草案为版本',
   })
@@ -1037,7 +1042,7 @@ export class DecisionDraftController {
    * 回滚到指定版本
    */
   @Post(':draftId/version/:versionId/rollback')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '回滚版本',
     description: '回滚到指定版本',
   })
@@ -1078,7 +1083,7 @@ export class DecisionDraftController {
    * 基于指定版本创建新分支
    */
   @Post(':draftId/version/:versionId/fork')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: 'Fork 版本',
     description: '基于指定版本创建新分支（生成新的 workflow_id）',
   })
@@ -1131,7 +1136,7 @@ export class DecisionDraftController {
   @Get(':draftId/debug-info')
   @UseGuards(StudioModeGuard)
   @RequireStudio()
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '获取调试信息',
     description: '获取决策草案的完整调试信息（LLM Calls、Skill Calls、性能指标、执行追踪等），需要 Studio 权限',
   })
@@ -1171,7 +1176,7 @@ export class DecisionDraftController {
    * 预览对决策步骤的编辑会产生什么影响（不实际执行）
    */
   @Post(':draftId/preview-impact')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '预览编辑影响',
     description: '预览对决策步骤的编辑会产生什么影响，包括受影响的步骤、预估变更等（不实际执行修改）',
   })
@@ -1277,7 +1282,7 @@ export class DecisionDraftController {
    * 获取决策草案的回放数据，包括决策时间线、快照和可视化数据
    */
   @Get(':draftId/replay')
-  @ApiOperation({
+  @ApiOperation({ deprecated: true,
     summary: '获取决策回放数据',
     description: '获取决策草案的回放数据，用于前端决策可视化和回放功能',
   })

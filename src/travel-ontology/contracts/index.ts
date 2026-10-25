@@ -6,4 +6,5 @@ export * from './constraint-assessment.types';
 export * from './action-proposal.types';
 export * from './fact-epistemic-boundary.types';
 export * from './build-constraint-assessment';
+export * from '../catalog';
 

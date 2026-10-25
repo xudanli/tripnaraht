@@ -42,6 +42,7 @@ type DayStop = {
   to: string;
   driveKmHint?: number;
   overnight?: string;
+  overnightAltitudeM?: number;
   highlights?: string[];
   notesCN?: string;
 };
@@ -66,7 +67,7 @@ function templateUuid(routeId: string, variantId: string): string {
 
 /** 主题/节奏标签，不是可绑定景点（到达城由 to 生成 CITY） */
 const NON_PLACE_HIGHLIGHT_RE =
-  /^(缓冲|返程|适应|休整|整备|轻游|起步|终点|抵|渐进|降海拔|高原|检修|补给|出征|短距|天气|深度|强制|预留|汇入|滇藏|黄土|秦岭|秦巴|巴山|乌江|村寨|传统村落|南段|天山|草原|长江|西安缓冲|入藏|出入境|阿里|新藏|接日|轻活动|金沙江|北线|羌塘|通行|过境)/;
+  /^(缓冲|返程|适应|休整|整备|轻游|起步|终点|抵|渐进|降海拔|高原|检修|补给|出征|短距|天气|深度|强制|预留|汇入|滇藏|黄土|秦岭|秦巴|巴山|乌江|村寨|传统村落|南段|天山|草原|长江|西安缓冲|入藏|出入境|阿里|新藏|接日|轻活动|北线|羌塘|通行|过境)/;
 
 function normalizePlaceKey(name: string): string {
   return name
@@ -170,6 +171,7 @@ function stopsToDayPlans(stops: DayStop[]) {
       day: stop.day,
       theme: `${stop.from}→${stop.to}`,
       overnight: stop.overnight,
+      overnightAltitudeM: stop.overnightAltitudeM,
       driveKmHint: stop.driveKmHint,
       notes: stop.notesCN || undefined,
       pois,

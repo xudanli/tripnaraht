@@ -16,5 +16,6 @@ export * from './agents/agent-grounding.util';
 export * from './intents/intent-transition.util';
 export * from './replanning/replanning.util';
 export * from './replanning/rfc001-road-close-context-bridge.util';
+export * from './decision-world-consistency';
 export * from '../reports/context-diff.util';
 export * from './regression/travel-context/travel-context-regression-gate.util';

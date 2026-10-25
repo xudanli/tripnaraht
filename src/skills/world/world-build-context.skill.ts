@@ -31,6 +31,10 @@ import {
 } from '../../trips/decision/persona/project-party-from-request.util';
 import { mapCountryPhysicalData } from './utils/country-physical-data.mapper';
 import { collectDemEvidenceFromTripTerrain } from './utils/collect-dem-evidence-from-trip-terrain.util';
+import { DecisionTickRoadBindingStore } from '../../trips/decision/world-consistency/decision-tick-road-binding.store';
+import { bindLookRoadAuthorityIntoWorldModelContext } from '../../trips/decision/world-consistency/bind-look-road-into-world-model-context.util';
+import { DecisionTickPoiBindingStore } from '../../trips/decision/world-consistency/decision-tick-poi-binding.store';
+import { bindAllPoiAuthorityIntoWorldModelContext } from '../../trips/decision/world-consistency/bind-poi-into-world-model-context.util';
 
 /**
  * 错误严重级别
@@ -152,12 +156,52 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
     @Optional() private readonly cacheService?: CacheService,
     @Optional() private readonly countryConfigService?: CountryConfigService,
     @Optional() private readonly evidenceCache?: EvidenceCacheService,
+    @Optional() private readonly roadBindingStore?: DecisionTickRoadBindingStore,
+    @Optional() private readonly poiBindingStore?: DecisionTickPoiBindingStore,
   ) {
     if (this.cacheService) {
       this.logger.log('✅ 世界模型缓存已启用');
     } else {
       this.logger.debug('⚠️ 缓存服务不可用，世界模型构建将不使用缓存');
     }
+  }
+
+  /** P0-1: overlay Look→Authority tick binding onto physical.roadStates (tick-scoped). */
+  private applyDecisionTickRoadBinding(
+    tripId: string | undefined,
+    world: WorldModelContext,
+  ): WorldModelContext {
+    if (!tripId || !this.roadBindingStore) return world;
+    const binding = this.roadBindingStore.getLatest(tripId);
+    if (!binding) return world;
+    this.logger.debug(
+      `[world.buildContext] apply decision-tick road binding road=${binding.roadId} status=${binding.roadStatus} version=${binding.sourceVersion.version}`,
+    );
+    return bindLookRoadAuthorityIntoWorldModelContext(world, binding);
+  }
+
+  /** P0-3: overlay POI authority tick bindings onto physical.poiOperationalStates. */
+  private applyDecisionTickPoiBinding(
+    tripId: string | undefined,
+    world: WorldModelContext,
+  ): WorldModelContext {
+    if (!tripId || !this.poiBindingStore) return world;
+    const list = this.poiBindingStore.listForTrip(tripId);
+    if (!list.length) return world;
+    this.logger.debug(
+      `[world.buildContext] apply decision-tick poi bindings count=${list.length}`,
+    );
+    return bindAllPoiAuthorityIntoWorldModelContext(world, list);
+  }
+
+  private applyDecisionTickBindings(
+    tripId: string | undefined,
+    world: WorldModelContext,
+  ): WorldModelContext {
+    return this.applyDecisionTickPoiBinding(
+      tripId,
+      this.applyDecisionTickRoadBinding(tripId, world),
+    );
   }
 
   async execute(input: WorldBuildContextInput): Promise<WorldBuildContextOutput> {
@@ -172,7 +216,10 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
         const cached = await this.cacheService.get<WorldBuildContextOutput>(cacheKey);
         if (cached) {
           this.logger.debug(`✅ 从缓存获取世界模型: ${cacheKey}`);
-          return cached;
+          return {
+            ...cached,
+            world: this.applyDecisionTickBindings(input.tripId, cached.world),
+          };
         }
       } catch (error: any) {
         this.logger.warn(`缓存获取失败: ${error.message}，继续构建`);
@@ -966,6 +1013,8 @@ export class WorldBuildContextSkill implements Skill<WorldBuildContextInput, Wor
       if (worldValidation.warnings.length > 0) {
         this.logger.warn(`WorldModelContext验证警告: ${worldValidation.warnings.join('; ')}`);
       }
+
+      world = this.applyDecisionTickBindings(input.tripId, world);
 
       const result: WorldBuildContextOutput = {
         world,

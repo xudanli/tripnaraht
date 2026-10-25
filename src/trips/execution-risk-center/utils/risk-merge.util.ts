@@ -92,6 +92,7 @@ function mergeProjectionGroup(group: RiskSourceProjection[]): ActiveRisk {
     severityState: knowledgePrimary.severityState,
     dataGaps: knowledgePrimary.dataGaps,
     hysteresis: knowledgePrimary.hysteresis,
+    constraintBinding: knowledgePrimary.constraintBinding,
   };
 }
 

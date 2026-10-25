@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Optional, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBody, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { createHash } from 'crypto';
 import { Public } from '../../auth/decorators/public.decorator';
@@ -21,6 +21,10 @@ import {
 } from '../dto/physical-domain-admin.dto';
 import { StaticPoliciesReadResponseDto } from '../dto/policy-lab.dto';
 import { PhysicalValidatorService } from '../../domain/ontology/validator/physical-validator.service';
+import {
+  ADMIN_WEATHER_SOURCE_DEFAULT_BASE_URL,
+  AdminWeatherSourceBridge,
+} from '../../data-contracts/services/admin-weather-source-bridge.service';
 
 @ApiTags('Admin - Physical Domain')
 @Controller('admin/physical-domain')
@@ -29,6 +33,7 @@ export class PhysicalDomainAdminController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly physicalValidator: PhysicalValidatorService,
+    @Optional() private readonly weatherSourceBridge?: AdminWeatherSourceBridge,
   ) {}
 
   private computeResourceHash(input: {
@@ -63,13 +68,36 @@ export class PhysicalDomainAdminController {
       },
     });
     await (this.prisma as any).physicalDomainConstraintConfig.upsert({
+      where: { ruleId: 'drive_safety_v1' },
+      update: {},
+      create: {
+        ruleId: 'drive_safety_v1',
+        enabled: true,
+        threshold: 18,
+        description: 'Drive safety wind/gust thresholds (m/s); editable in Policy Lab',
+        params: {
+          kind: 'DRIVE_SAFETY',
+          unit: 'mps',
+          high_profile_mps: 18,
+          default_mps: 20,
+          thresholds_mps: { high_profile: 18, default: 20 },
+        },
+      },
+    });
+    await (this.prisma as any).physicalDomainConstraintConfig.upsert({
       where: { ruleId: 'wind_speed_drive_limit_v1' },
       update: {},
       create: {
         ruleId: 'wind_speed_drive_limit_v1',
         enabled: true,
-        threshold: 50,
-        params: { unit: 'kph' },
+        threshold: 20,
+        description: 'Legacy wind limit; prefer drive_safety_v1',
+        params: {
+          kind: 'DRIVE_SAFETY',
+          unit: 'mps',
+          high_profile_mps: 18,
+          default_mps: 20,
+        },
       },
     });
     await (this.prisma as any).physicalDomainDataSourceConfig.upsert({
@@ -79,7 +107,7 @@ export class PhysicalDomainAdminController {
         sourceId: 'weather-api',
         provider: 'DefaultWeatherAdapter',
         enabled: true,
-        baseUrl: 'https://example-weather-provider',
+        baseUrl: ADMIN_WEATHER_SOURCE_DEFAULT_BASE_URL,
         fallbackStrategy: 'cache_then_estimate',
       },
     });
@@ -718,20 +746,27 @@ export class PhysicalDomainAdminController {
         fallbackStrategy: dto.fallbackStrategy,
       },
     });
+    this.weatherSourceBridge?.applyRuntime(sourceId, {
+      enabled: row.enabled,
+      baseUrl: row.baseUrl,
+    });
     return successResponse(row);
   }
 
   @Post('data-sources/:sourceId/test')
-  @ApiOperation({ summary: '测试数据源连通性（最小实现）' })
+  @ApiOperation({ summary: '测试数据源连通性（真实探测已映射 Adapter）' })
   @ApiParam({ name: 'sourceId', type: String })
   async testDataSource(@Param('sourceId') sourceId: string) {
     await this.ensureDefaults();
+    if (this.weatherSourceBridge) {
+      return successResponse(await this.weatherSourceBridge.probe(sourceId));
+    }
     const src = await (this.prisma as any).physicalDomainDataSourceConfig.findUnique({ where: { sourceId } });
     return successResponse({
       sourceId,
       ok: Boolean(src?.enabled),
       checkedAt: new Date().toISOString(),
-      detail: src?.enabled ? 'SIMULATED_OK' : 'SIMULATED_DISABLED',
+      detail: src?.enabled ? 'BRIDGE_UNAVAILABLE' : 'DISABLED',
     });
   }
 }

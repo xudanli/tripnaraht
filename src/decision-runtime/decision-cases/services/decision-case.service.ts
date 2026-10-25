@@ -15,9 +15,7 @@ import type {
 } from '../contracts/decision-case.types';
 import {
   buildFroadMismatchCase,
-  buildInsuranceShellCase,
   buildVehicleShellCase,
-  enrichInsuranceCase,
   enrichVehicleCase,
   SEMANTIC_EXCESSIVE_DRIVE,
   SEMANTIC_GLACIER_EXPERIENCE,
@@ -242,33 +240,13 @@ export class DecisionCaseService {
       dirty = true;
     }
 
-    let insurance = Object.values(state.byProblemId).find(
-      (c) => c.semanticKey === 'REQUIRED_CHOICE.RENTAL_INSURANCE',
-    );
-    if (!insurance) {
-      insurance = buildInsuranceShellCase(tripId);
-      state.byProblemId[insurance.problemId] = insurance;
-      dirty = true;
-    }
-
-    const vehicleConfirmed = Boolean(ctx.vehicleType && vehicle.resolvedOptionId);
-    if (
-      ctx.routeReady &&
-      (vehicleConfirmed || vehicle.enrichmentStage === 'ENRICHED') &&
-      !insurance.resolvedOptionId
-    ) {
-      const needsEnrichShell = insurance.enrichmentStage === 'SHELL';
-      const needsFordingHintRefresh = !insurance.options.every(
-        (o) => o.writebackPayload?.fordingExcluded === true,
-      );
-      if (needsEnrichShell || needsFordingHintRefresh) {
-        insurance = enrichInsuranceCase(insurance, {
-          gravelRisk: ctx.hasGravel,
-          highWind: ctx.highWind,
-          highlands: ctx.hasFRoad,
-          vehicleConfirmed: vehicleConfirmed || vehicle.enrichmentStage === 'ENRICHED',
-        });
-        state.byProblemId[insurance.problemId] = insurance;
+    // 产品决策队列不再自动塞「租车保险方案」；已有未解决壳取消 published。
+    for (const c of Object.values(state.byProblemId)) {
+      if (c.semanticKey !== 'REQUIRED_CHOICE.RENTAL_INSURANCE') continue;
+      if (c.resolvedOptionId) continue;
+      if (c.published) {
+        c.published = false;
+        c.updatedAt = new Date().toISOString();
         dirty = true;
       }
     }

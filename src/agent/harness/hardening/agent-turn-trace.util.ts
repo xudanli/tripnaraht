@@ -8,6 +8,8 @@ import { projectAgentTaskContractForTrace } from '../compile-agent-task-contract
 import type { EvidenceFactV1 } from './evidence.contract';
 import { classifyEvidenceBucket } from './evidence.contract';
 import type { HarnessRuntimeId } from './runtime-transition.contract';
+import type { ClaimGroundingEvalV1 } from './claim-grounding-eval.util';
+import { projectClaimGroundingEvalForObservability } from './claim-grounding-eval.util';
 
 export const AGENT_TURN_TRACE_SCHEMA = 'nara.agent_turn_trace@v1' as const;
 
@@ -25,6 +27,8 @@ export type AgentTurnTraceV1 = {
     facts: EvidenceFactV1[];
     bucket: ReturnType<typeof classifyEvidenceBucket>;
   };
+  /** System1 Claim Grounding Eval（可选 Decision Artifact） */
+  claimGrounding?: ClaimGroundingEvalV1;
   runtime: {
     selected: HarnessRuntimeId;
     previous?: HarnessRuntimeId;
@@ -61,6 +65,7 @@ export function buildAgentTurnTrace(input: {
   transitionReason?: string;
   acquiredContextKeys?: string[];
   evidence?: EvidenceFactV1[];
+  claimGrounding?: ClaimGroundingEvalV1;
   attemptedCapabilities?: string[];
   deniedCapabilities?: string[];
   gateOk?: boolean;
@@ -88,6 +93,7 @@ export function buildAgentTurnTrace(input: {
       facts: evidence,
       bucket: classifyEvidenceBucket(evidence),
     },
+    claimGrounding: input.claimGrounding,
     runtime: {
       selected: input.runtimeSelected,
       previous: input.runtimePrevious,
@@ -120,16 +126,40 @@ export function buildAgentTurnTrace(input: {
 export function projectAgentTurnTraceForObservability(
   trace: AgentTurnTraceV1,
 ): Record<string, unknown> {
+  const task = (trace.task ?? {}) as Record<string, unknown>;
+  const facts = (trace.evidence.facts ?? []).slice(0, 20).map((f) => ({
+    key: f.key,
+    valueZh: f.valueZh,
+    freshness: f.freshness,
+    ...(f.source ? { source: f.source } : {}),
+    ...(f.observedAt ? { observedAt: f.observedAt } : {}),
+  }));
+  const constraints = Array.isArray(task.context_required)
+    ? task.context_required.map(String).slice(0, 12)
+    : [];
   return {
     schema_id: trace.schemaId,
     turn_id: trace.turnId,
-    task_type: (trace.task as any).taskType,
+    task_type: task.taskType,
+    task: {
+      taskType: task.taskType ?? null,
+      userGoal:
+        (typeof task.semanticMessage === 'string' && task.semanticMessage.slice(0, 240)) || null,
+      constraintsDetected: constraints,
+      authority: task.authority ?? null,
+      allowFullPlanning: task.allowFullPlanning ?? null,
+    },
     runtime: trace.runtime.selected,
     transition_ok: trace.runtime.transitionOk,
     evidence_bucket: trace.evidence.bucket,
+    evidence_facts: facts,
+    claim_grounding: trace.claimGrounding
+      ? projectClaimGroundingEvalForObservability(trace.claimGrounding)
+      : null,
     capability_denied: trace.capability.denied,
     applied_to_itinerary: trace.action.appliedToItinerary,
     unauthorized_write_attempt: trace.action.unauthorizedWriteAttempt,
     result_status: trace.result.status,
+    conclusion_strength: trace.result.conclusionStrength,
   };
 }

@@ -27,6 +27,7 @@ import {
   resolveFliggyDestName,
   resolveFliggyHotelKeywords,
   resolveFliggyLodgingSearch,
+  extractScheduleOvernightTownZh,
   stripClientContextAppendix,
 } from '../../../../mcp/fliggy-dest.util';
 import { XiaohongshuDirectService } from '../../../../mcp/xiaohongshu-direct.service';
@@ -859,19 +860,19 @@ export class McpToolDispatcherService implements OnModuleInit {
               locationFromItineraryPlace?.nameCN?.trim() ||
               locationFromItineraryPlace?.placeName?.trim() ||
               null;
+            const nl =
+              typeof params.naturalLanguage === 'string' ? params.naturalLanguage : null;
+            const scheduleOvernight = extractScheduleOvernightTownZh(
+              nl || (typeof params.query === 'string' ? params.query : '') || '',
+            );
             const lodging = resolveFliggyLodgingSearch({
               destination:
                 typeof params.destination === 'string' ? params.destination : null,
-              placeHint:
-                typeof params.naturalLanguage === 'string'
-                  ? params.naturalLanguage
-                  : null,
-              naturalLanguage:
-                typeof params.naturalLanguage === 'string'
-                  ? params.naturalLanguage
-                  : null,
+              placeHint: nl,
+              naturalLanguage: nl,
               query: typeof params.query === 'string' ? params.query : null,
-              itineraryPlaceName,
+              // 日程过夜镇优先于当日中途景点（避免「怒江大桥」盖掉「八宿」）
+              itineraryPlaceName: scheduleOvernight || itineraryPlaceName,
             });
             if (!lodging?.destName) {
               this.logger.warn(
@@ -887,7 +888,8 @@ export class McpToolDispatcherService implements OnModuleInit {
                     typeof params.naturalLanguage === 'string'
                       ? params.naturalLanguage
                       : null,
-                  placeHint: itineraryPlaceName,
+                  // 有日程过夜镇时不要用中途景点当 kw
+                  placeHint: scheduleOvernight || itineraryPlaceName,
                 });
               this.logger.log(
                 `酒店搜索：国内优先飞猪 dest=${lodging.destName}` +

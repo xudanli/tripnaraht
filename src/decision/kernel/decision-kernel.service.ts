@@ -54,6 +54,7 @@ import {
 } from '../../trips/decision/optimization/cgus-trip-review.util';
 import { CgusOutcomeLoopError } from '../../trips/decision/optimization/cgus-decision-outcome-loop.util';
 import { TravelMemoryRuntimeService } from '../../travel-memory/runtime/travel-memory-runtime.service';
+import { WmOutcomeValidationBridgeService } from '../../trips/decision/outcome-validation/wm-outcome-validation-bridge.service';
 import type { CgusDecisionTraceV1 } from '../../trips/decision/optimization/cgus-decision-trace.types';
 import { REPLAN_TRIGGER, type IReplanTrigger } from './replan-trigger.interface';
 import type { DecisionStateFeedback } from './decision-state.types';
@@ -210,6 +211,9 @@ export class DecisionKernelService {
     @Optional() private readonly multiPersonDecision?: MultiPersonDecisionService,
     /** Travel Memory Runtime：CGUS Outcome → Episode → Ledger（失败不阻断主路径） */
     @Optional() private readonly travelMemoryRuntime?: TravelMemoryRuntimeService,
+    /** WM Outcome Validation：A vs B vs actual（失败不阻断主路径） */
+    @Optional()
+    private readonly wmOutcomeValidation?: WmOutcomeValidationBridgeService,
   ) {
     if (this.kernelHard) {
       this.logger.warn(
@@ -2472,6 +2476,13 @@ export class DecisionKernelService {
           null,
       });
 
+      // WM Outcome Validation：accept/outcome → A vs B ledger（不阻断 Outcome Loop）
+      this.feedWmOutcomeValidationFromCgus({
+        tripId: params.tripRunId,
+        trace: nextTrace,
+        payload: params.payload,
+      });
+
       return {
         ok: true,
         persisted: true,
@@ -2488,6 +2499,40 @@ export class DecisionKernelService {
         this.logger.warn(`[Kernel] writeCgusDecisionOutcomeLoop: ${msg}`);
       }
       return { ok: false, persisted: false, error: msg };
+    }
+  }
+
+  /**
+   * CGUS Outcome Loop → WM Outcome Validation ledger。
+   * Optional 注入；任何异常仅 warn，绝不回滚 DSO 回写。
+   */
+  private feedWmOutcomeValidationFromCgus(input: {
+    tripId: string;
+    trace: CgusDecisionTraceV1;
+    payload: CgusOutcomeLoopWritePayload;
+  }): void {
+    if (!this.wmOutcomeValidation) return;
+    try {
+      if (input.payload.kind === 'action') {
+        this.wmOutcomeValidation.onCgusUserAction({
+          tripId: input.tripId,
+          decisionId: input.trace.decision_id,
+          userAction: input.payload.user_action,
+          overrideNote: input.payload.override_reason,
+        });
+        return;
+      }
+      if (input.payload.kind === 'outcome') {
+        this.wmOutcomeValidation.onCgusOutcome({
+          tripId: input.tripId,
+          decisionId: input.trace.decision_id,
+          actualOutcome: input.payload.actual_outcome,
+          decisionRegret: input.payload.decision_regret,
+        });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`[Kernel] feedWmOutcomeValidationFromCgus: ${msg}`);
     }
   }
 

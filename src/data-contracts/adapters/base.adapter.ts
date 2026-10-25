@@ -30,6 +30,15 @@ export abstract class BaseAdapter {
     this.httpClient = HttpClientFactory.create(httpConfig);
   }
 
+  setBaseUrl(url: string): void {
+    this.httpClient.defaults.baseURL = url;
+  }
+
+  getBaseUrl(): string | undefined {
+    const base = this.httpClient.defaults.baseURL;
+    return typeof base === 'string' ? base : undefined;
+  }
+
   /**
    * 安全执行 HTTP 请求，自动处理错误
    */

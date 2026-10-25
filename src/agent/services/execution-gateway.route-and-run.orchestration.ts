@@ -3,6 +3,7 @@ import type { TripRunDsoCheckpointPayload } from './trip-run-manager.service';
 import { RouteAndRunRequestDto, RouteAndRunResponseDto } from '../dto/route-and-run.dto';
 import { mergeTripIdAliasesIntoRouteAndRunRequest } from '../utils/route-and-run-trip-id-merge.util';
 import { signalsFromRequest } from '../utils/orchestration-signals.util';
+import { isInventoryCardSyncQuery } from '../chat/inventory-card-sync-query.util';
 import { resolveGatewayRoutePolicy } from '../routing/request-router.facade';
 import { MetricsRecorder } from '../utils/agent-metrics.util';
 import {
@@ -16,6 +17,9 @@ import {
 import type { RecoveryInvocationContext } from '../interfaces/claude-orchestration.interface';
 import { DecisionLogEntry } from '../interfaces/trip-plan.interface';
 import { mergeReplanLineageIntoTripRunMetadata } from '../utils/trip-run-replan-metadata.util';
+import { buildTripRunContextMemoryMetadata } from './trip-run-context-memory.util';
+import { buildToolInvocationMetadataPatch } from './trip-run-tool-invocation.util';
+import { buildTripRunObservabilityMetadataPatch } from './trip-run-observability.util';
 import { classifyOrchestratorFailure } from '../utils/orchestrator-failure-taxonomy.util';
 import {
   runRouteAndRunBackoffLoop,
@@ -253,6 +257,7 @@ async function runRouteAndRunTickBody(
               request_id: request.request_id,
               entry_point: request.options?.entry_point,
               max_seconds: request.options?.max_seconds,
+              ...buildTripRunContextMemoryMetadata(request, memory),
             },
             request.options,
           ),
@@ -472,36 +477,43 @@ async function runRouteAndRunTickBody(
       }
 
       if (!replayStrictSeal) {
-        const wantsTripSummary =
-          request.conversation_context?.context_type?.trim() === 'active_trip_summary';
-        if (wantsTripSummary) {
-          if (dosExecutionContext) {
-            dosExecutionContext.applyNarrativeToConversationContext(request);
+        const msgForEnrich = resolveRouteAndRunUserMessage(request);
+        if (isInventoryCardSyncQuery(msgForEnrich)) {
+          $.logger.debug(
+            `[AgentService] skip heavy ContextEnricher for inventory card request_id=${request.request_id}`,
+          );
+        } else {
+          const wantsTripSummary =
+            request.conversation_context?.context_type?.trim() === 'active_trip_summary';
+          if (wantsTripSummary) {
+            if (dosExecutionContext) {
+              dosExecutionContext.applyNarrativeToConversationContext(request);
+            } else {
+              await $.routeContextEnricher?.maybeInjectActiveTripSummary(request);
+            }
           } else {
             await $.routeContextEnricher?.maybeInjectActiveTripSummary(request);
           }
-        } else {
-          await $.routeContextEnricher?.maybeInjectActiveTripSummary(request);
-        }
-        await $.routeContextEnricher?.maybeInjectTripWishlistContext(request);
-        await $.routeContextEnricher?.maybeInjectTripIntentDigestContext(request);
-        await $.routeContextEnricher?.maybeInjectUserStandingSummary(request);
+          await $.routeContextEnricher?.maybeInjectTripWishlistContext(request);
+          await $.routeContextEnricher?.maybeInjectTripIntentDigestContext(request);
+          await $.routeContextEnricher?.maybeInjectUserStandingSummary(request);
 
-        // Phase 6：导入意图 → 挂载已有 Guide-to-Plan session（不扩意图词典）
-        if (detectGuideToPlanImportIntentHint(resolveRouteAndRunUserMessage(request))) {
-          const prisma =
-            $.prisma ?? $.moduleRef?.get?.(PrismaService, { strict: false });
-          if (prisma) {
-            const g2p = await resolveGuideToPlanSessionForConversation({
-              prisma,
-              tripId: request.trip_id,
-              userId: request.user_id,
-            });
-            if (g2p) {
-              attachGuideToPlanSessionToRequest(
-                request as unknown as Record<string, unknown>,
-                g2p,
-              );
+          // Phase 6：导入意图 → 挂载已有 Guide-to-Plan session（不扩意图词典）
+          if (detectGuideToPlanImportIntentHint(msgForEnrich)) {
+            const prisma =
+              $.prisma ?? $.moduleRef?.get?.(PrismaService, { strict: false });
+            if (prisma) {
+              const g2p = await resolveGuideToPlanSessionForConversation({
+                prisma,
+                tripId: request.trip_id,
+                userId: request.user_id,
+              });
+              if (g2p) {
+                attachGuideToPlanSessionToRequest(
+                  request as unknown as Record<string, unknown>,
+                  g2p,
+                );
+              }
             }
           }
         }
@@ -1114,6 +1126,9 @@ async function runRouteAndRunTickBody(
                 mode_final: decision.mode,
                 fallback_used: false,
                 latency_ms: Date.now() - startTime,
+                ...buildToolInvocationMetadataPatch(agenticFastPath),
+
+                ...buildTripRunObservabilityMetadataPatch(agenticFastPath),
               });
             } catch (error: any) {
               $.logger.warn(`Failed to update TripRun to COMPLETED: ${error.message}`);
@@ -1165,6 +1180,9 @@ async function runRouteAndRunTickBody(
               mode_final: decision.mode,
               fallback_used: false,
               latency_ms: Date.now() - startTime,
+              ...buildToolInvocationMetadataPatch(res),
+
+              ...buildTripRunObservabilityMetadataPatch(res),
             });
           } catch (error: any) {
             $.logger.warn(`Failed to update TripRun to COMPLETED: ${error.message}`);
@@ -1293,6 +1311,9 @@ async function runRouteAndRunTickBody(
                     latency_ms: Date.now() - startTime,
                     recovery_retry_attempts: attempt,
                     recovery_trace: traceRef,
+                    ...buildToolInvocationMetadataPatch(res),
+
+                    ...buildTripRunObservabilityMetadataPatch(res),
                   });
                 } catch (err: any) {
                   $.logger.warn(`Failed to update TripRun to COMPLETED: ${err.message}`);
@@ -1377,13 +1398,18 @@ async function runRouteAndRunTickBody(
           // === 更新 TripRun 为 FAILED ===
           if (tripRunId && $.tripRunManager) {
             try {
+              const failRobust = classifyOrchestratorFailure(e, {});
               await $.tripRunManager.failTripRun(tripRunId, e, {
                 mode_final: decision.mode,
                 fallback_used: false,
                 latency_ms: Date.now() - startTime,
-                orchestrator_robustness: classifyOrchestratorFailure(e, {}),
+                orchestrator_robustness: failRobust,
                 recovery_trace: recoveryTrace,
                 recovery_retry_attempts: recoveryTrace.length,
+                ...buildTripRunObservabilityMetadataPatch(
+                  { observability: { mode_final: decision.mode, recovery_trace: recoveryTrace } },
+                  { robustness: failRobust, status: 'FAILED' },
+                ),
               });
             } catch (error: any) {
               $.logger.warn(`Failed to update TripRun to FAILED: ${error.message}`);
@@ -1431,6 +1457,9 @@ async function runRouteAndRunTickBody(
                   mode_final: nextMode,
                   fallback_used: true,
                   latency_ms: Date.now() - startTime,
+                  ...buildToolInvocationMetadataPatch(res),
+
+                  ...buildTripRunObservabilityMetadataPatch(res),
                 });
               } catch (error: any) {
                 $.logger.warn(`Failed to update TripRun to COMPLETED: ${error.message}`);
@@ -1471,13 +1500,18 @@ async function runRouteAndRunTickBody(
         // === 更新 TripRun 为 FAILED ===
         if (tripRunId && $.tripRunManager) {
           try {
+            const failRobust = classifyOrchestratorFailure(e, {});
             await $.tripRunManager.failTripRun(tripRunId, e, {
               mode_final: finalMode,
               fallback_used: usedFallback,
               latency_ms: Date.now() - startTime,
-              orchestrator_robustness: classifyOrchestratorFailure(e, {}),
+              orchestrator_robustness: failRobust,
               recovery_trace: recoveryTrace,
               recovery_retry_attempts: recoveryTrace.length,
+              ...buildTripRunObservabilityMetadataPatch(
+                { observability: { mode_final: finalMode, recovery_trace: recoveryTrace } },
+                { robustness: failRobust, status: 'FAILED' },
+              ),
             });
           } catch (error: any) {
             $.logger.warn(`Failed to update TripRun to FAILED: ${error.message}`);
@@ -1507,9 +1541,15 @@ async function runRouteAndRunTickBody(
       // === 更新 TripRun 为 FAILED（最外层 catch） ===
       if (tripRunId && $.tripRunManager) {
         try {
+          const failRobust = classifyOrchestratorFailure(error, {});
           await $.tripRunManager.failTripRun(tripRunId, error, {
             error_type: 'unhandled_exception',
             caught_at: 'routeAndRun_outer_catch',
+            orchestrator_robustness: failRobust,
+            ...buildTripRunObservabilityMetadataPatch(
+              null,
+              { robustness: failRobust, status: 'FAILED' },
+            ),
           });
         } catch (updateError: any) {
           $.logger.warn(`Failed to update TripRun to FAILED in outer catch: ${updateError.message}`);

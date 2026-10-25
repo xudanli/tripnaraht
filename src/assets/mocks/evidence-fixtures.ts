@@ -1,6 +1,6 @@
 /**
  * Storybook / playground fixtures: wind + solar (aurora), Tier 1–3.
- * Keep in sync with `playgrounds/iron-shield-evidence-ui.html` when tuning copy.
+ * Former playgrounds/iron-shield-evidence-ui.html removed; keep fixture copy self-contained.
  */
 import type { EvidenceCardUIProps } from '@/shared/interfaces/evidence-ui.interface';
 import type { DecisionEvidenceCardPayload } from '@/agent/utils/evidence-payload-assembler.util';

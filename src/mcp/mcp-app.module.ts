@@ -17,6 +17,7 @@ import { PostgreSQLMcpModule } from './postgresql-mcp.module';
 import { BrowserbaseMcpModule } from './browserbase-mcp.module';
 import { GoogleMapsDirectModule } from './google-maps-direct.module';
 import { WeatherDirectModule } from './weather-direct.module';
+import { QWeatherModule } from './qweather.module';
 import { VisionModule } from '../vision/vision.module';
 import { McpCapabilityModule } from './mcp-capability.module';
 
@@ -48,6 +49,7 @@ const enableGoogleMapsModule = process.env.DISABLE_GOOGLE_SERVICES !== 'true';
     BrowserbaseMcpModule, // Browserbase MCP 模块（用于智能体工具）
     ...(enableGoogleMapsModule ? [GoogleMapsDirectModule] : []), // Google Maps 直接 API 模块（路线规划、地理编码等），可通过 DISABLE_GOOGLE_SERVICES=true 禁用
     WeatherDirectModule, // Weather 直接 API 模块（使用 Open-Meteo API，无需 Python）
+    QWeatherModule, // 和风天气（国内天气/预警）
     VisionModule, // Vision Service + OCR 模块（图片识别、OCR提取文字）
     McpCapabilityModule, // MCP 能力管理模块（统一控制各能力的开启/关闭）
   ],

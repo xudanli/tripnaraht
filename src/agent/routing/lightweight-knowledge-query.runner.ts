@@ -32,6 +32,17 @@ import { isDayLodgingChoiceQuery } from '../utils/day-lodging-choice.util';
 import { readAgentTaskContract } from '../harness/compile-agent-task-contract.util';
 import { resolveTaskContextSlice } from '../harness/resolve-task-context-slice.util';
 import {
+  acquireTripQueryEvidenceBag,
+  buildSystem1AskUserAnswerZh,
+  compileSystem1AcquisitionPlan,
+  compileSystem1TaskFrame,
+  projectSystem1TurnTrace,
+  resolveSystem1RuntimeFamily,
+  runSystem1TripQueryFromSlice,
+  runSystem1WeatherRoadConsultFromSensors,
+  runSystem1InventoryConsultFromHits,
+} from '../system1-runtime';
+import {
   buildTripLodgingCoverageAnswerZh,
   formatTripLodgingCoveragePromptLines,
   isLodgingGapDirectAnswerQuery,
@@ -186,9 +197,109 @@ export async function runLightweightKnowledgeQueryPath(
       let wishlistInjectedForTrip = false;
       const taskContract = readAgentTaskContract(request);
       let taskContextSlice: Awaited<ReturnType<typeof resolveTaskContextSlice>> = null;
+      let tripQueryAcquisition: import('../system1-runtime').EvidenceAcquisitionPlan | undefined;
+      let tripQueryCre: import('../system1-runtime').System1CreOrchestration | undefined;
       if (effectiveTripId && !lightweightTriviaFact) {
         try {
-          if (taskContract) {
+          const frame = compileSystem1TaskFrame({
+            message: request.message ?? '',
+            tripId: effectiveTripId,
+            contract: taskContract,
+            taskType: taskContract?.taskType,
+            creOperation: context.contextRequirementPlan?.operation,
+          });
+          const family = resolveSystem1RuntimeFamily(
+            frame,
+            taskContract?.scope?.contextRegistryKey,
+            request.message ?? '',
+          );
+          if (
+            family === 'TRIP_QUERY_LODGING' ||
+            family === 'TRIP_QUERY_TODAY' ||
+            family === 'TRIP_QUERY_NEXT'
+          ) {
+            const compiled = compileSystem1AcquisitionPlan({
+              family,
+              evidence: [],
+              tripId: effectiveTripId,
+              crePlan: context.contextRequirementPlan,
+            });
+            const required = compiled.required;
+            const prePlan = compiled.plan;
+            tripQueryCre = compiled.cre;
+            if (prePlan.fetchKeys.length > 0) {
+              const bag = await acquireTripQueryEvidenceBag({
+                prisma: host.prisma,
+                tripId: effectiveTripId,
+                family,
+                message: request.message ?? '',
+                fetchKeys: prePlan.fetchKeys,
+              });
+              taskContextSlice = bag.slice;
+              const postCompiled = compileSystem1AcquisitionPlan({
+                family,
+                evidence: bag.evidence,
+                tripId: effectiveTripId,
+                alreadyFetched: prePlan.fetchKeys,
+                crePlan: context.contextRequirementPlan,
+              });
+              const postPlan = postCompiled.plan;
+              postPlan.fetchedKeys = prePlan.fetchKeys;
+              postPlan.fetchLog = bag.fetchLog;
+              tripQueryAcquisition = postPlan;
+              tripQueryCre = postCompiled.cre ?? compiled.cre;
+              if (postPlan.askKeys.length > 0) {
+                const duration = Math.max(0, Date.now() - startTime);
+                const askText = buildSystem1AskUserAnswerZh(postPlan.askKeys);
+                const askRuntime = runSystem1TripQueryFromSlice({
+                  message: request.message ?? '',
+                  tripId: effectiveTripId,
+                  contract: taskContract,
+                  slice: bag.slice ?? {
+                    registryKey: family,
+                    promptLines: [],
+                    skipFullTripSummary: true,
+                  },
+                  acquisition: postPlan,
+                  requiredEvidence: required,
+                  cre: postCompiled.cre ?? compiled.cre,
+                });
+                askRuntime.finalAnswer = askText;
+                host.logger.log(
+                  `[LightweightQA] system1 ASK_USER keys=${postPlan.askKeys.join(',')} trip_id=${effectiveTripId} ms=${duration}`,
+                );
+                return {
+                  success: false,
+                  status: 'NEED_USER_INPUT',
+                  technicalSuccess: true,
+                  userTaskCompleted: false,
+                  answerText: askText,
+                  result: {
+                    routingDecision: {
+                      route: 'SYSTEM1_API',
+                      confidence: 1,
+                      reasoning: 'system1_context_requirement_ask_user',
+                      budget: {
+                        max_seconds: 5,
+                        max_steps: 1,
+                        max_browser_steps: 0,
+                      },
+                      requiredCapabilities: ['qa'],
+                      consentRequired: false,
+                      selected_path: 'QA_LIGHT_ASK',
+                    } satisfies RoutingDecision,
+                    needsUserConfirmation: true,
+                    clarificationMessage: askText,
+                    missingParams: postPlan.askKeys,
+                    system1_runtime: projectSystem1TurnTrace(askRuntime),
+                    routingTaskType: context.routingTaskType,
+                  },
+                  stepsExecuted: [],
+                  totalDuration: duration,
+                };
+              }
+            }
+          } else if (taskContract) {
             taskContextSlice = await resolveTaskContextSlice({
               prisma: host.prisma,
               tripId: effectiveTripId,
@@ -199,7 +310,6 @@ export async function runLightweightKnowledgeQueryPath(
             isLodgingGapDirectAnswerQuery(request.message ?? '') ||
             /哪一天没住宿|哪天没住宿|还缺住宿|缺住宿/.test(request.message ?? '')
           ) {
-            /** 入口未挂 contract 时仍按 Registry 最小切片答缺口（防测/旁路） */
             const lodging = await loadTripLodgingCoverageFactSlice(host.prisma, effectiveTripId);
             if (lodging) {
               taskContextSlice = {
@@ -223,8 +333,16 @@ export async function runLightweightKnowledgeQueryPath(
       /** CASE-Q01：住宿缺口确定性短答，不进 LLM / 不全量摘要 */
       if (taskContextSlice?.directAnswerZh) {
         const duration = Math.max(0, Date.now() - startTime);
+        const tripQueryRuntime = runSystem1TripQueryFromSlice({
+          message: request.message ?? '',
+          tripId: effectiveTripId,
+          contract: taskContract,
+          slice: taskContextSlice,
+          acquisition: tripQueryAcquisition,
+          cre: tripQueryCre,
+        });
         host.logger.log(
-          `[LightweightQA] task_context_direct_answer key=${taskContextSlice.registryKey} trip_id=${effectiveTripId} ms=${duration}`,
+          `[LightweightQA] task_context_direct_answer key=${taskContextSlice.registryKey} trip_id=${effectiveTripId} sufficiency=${tripQueryRuntime.sufficiency?.status ?? 'n/a'} ms=${duration}`,
         );
         const lodgingShadow = buildDecisionStateShadow({
           message: request.message ?? '',
@@ -275,6 +393,7 @@ export async function runLightweightKnowledgeQueryPath(
               : undefined,
             decisionStateShadow: serializeActivityDecisionShadow(lodgingShadow),
             routingTaskType: context.routingTaskType,
+            system1_runtime: projectSystem1TurnTrace(tripQueryRuntime),
           },
           stepsExecuted: [
             {
@@ -1123,6 +1242,122 @@ export async function runLightweightKnowledgeQueryPath(
           })
         : null;
 
+    let weatherRoadSystem1Runtime: Record<string, unknown> | undefined;
+    if (weatherRoadFocused || todayWeatherFocused) {
+      let ontologyAgg: string | null = null;
+      if (roadStatusByOntologyId && roadStatusByOntologyId.size > 0) {
+        for (const payload of roadStatusByOntologyId.values()) {
+          if (payload?.aggregateAccessState) {
+            ontologyAgg = String(payload.aggregateAccessState);
+            break;
+          }
+        }
+      }
+      const roadAlertZh =
+        stPack.out?.gate_recommendation ||
+        (stPack.out?.safetravel_alerts?.length
+          ? stPack.out.safetravel_alerts
+              .slice(0, 3)
+              .map((a) => {
+                const row = a as { title?: string; summary?: string; headline?: string; text?: string };
+                return row.title || row.headline || row.summary || row.text || '';
+              })
+              .filter(Boolean)
+              .join('；')
+          : null);
+      const wxRuntime = runSystem1WeatherRoadConsultFromSensors({
+        message: request.message ?? '',
+        tripId: effectiveTripId,
+        draftAnswer: finalAnswerText,
+        weatherBlock: wBranch.block,
+        roadAlertZh,
+        ontologyRoadAggregate: ontologyAgg,
+        alreadyFetched: [
+          ...(wBranch.block ? ['weather.wind'] : []),
+          ...(roadAlertZh || ontologyAgg ? ['route.status'] : []),
+        ],
+      });
+      finalAnswerText = wxRuntime.finalAnswer || finalAnswerText;
+      weatherRoadSystem1Runtime = projectSystem1TurnTrace(wxRuntime);
+    }
+
+    let inventorySystem1Runtime: Record<string, unknown> | undefined;
+    if (
+      !weatherRoadSystem1Runtime &&
+      (hotelInventoryLive ||
+        carRentalLive ||
+        diningLive ||
+        flightInventoryLive ||
+        xhsCommunityLive ||
+        activityBookingLive)
+    ) {
+      const hotelHits = Array.isArray(hBranch.hotelRouteRunUi?.accommodations)
+        ? hBranch.hotelRouteRunUi!.accommodations!.length
+        : hBranch.block
+          ? 1
+          : 0;
+      const carHits = Array.isArray(rBranch.carRentals)
+        ? rBranch.carRentals.length
+        : rBranch.block
+          ? 1
+          : 0;
+      const diningHits = dBranch.block ? 1 : 0;
+      const flightHits = fBranch.block ? 1 : 0;
+      const xhsHits = Array.isArray(xBranch.xhsRouteRunUi?.xhs_note_cards)
+        ? xBranch.xhsRouteRunUi!.xhs_note_cards!.length
+        : xBranch.block
+          ? 1
+          : 0;
+      const activityHits = aBranch.block ? 1 : 0;
+      const kind = hotelInventoryLive
+        ? 'hotel'
+        : carRentalLive
+          ? 'car_rental'
+          : diningLive
+            ? 'dining'
+            : flightInventoryLive
+              ? 'flight'
+              : xhsCommunityLive
+                ? 'xhs'
+                : 'activity';
+      const hitCount =
+        kind === 'hotel'
+          ? hotelHits
+          : kind === 'car_rental'
+            ? carHits
+            : kind === 'dining'
+              ? diningHits
+              : kind === 'flight'
+                ? flightHits
+                : kind === 'xhs'
+                  ? xhsHits
+                  : activityHits;
+      const previewZh =
+        kind === 'hotel'
+          ? hBranch.block
+          : kind === 'car_rental'
+            ? rBranch.block
+            : kind === 'dining'
+              ? dBranch.block
+              : kind === 'flight'
+                ? fBranch.block
+                : kind === 'xhs'
+                  ? xBranch.block
+                  : aBranch.block;
+      const invRuntime = runSystem1InventoryConsultFromHits({
+        message: request.message ?? '',
+        tripId: effectiveTripId,
+        draftAnswer: finalAnswerText,
+        kind,
+        hitCount,
+        previewZh,
+      });
+      finalAnswerText = invRuntime.finalAnswer || finalAnswerText;
+      inventorySystem1Runtime = projectSystem1TurnTrace(invRuntime);
+    }
+
+    const system1RuntimeObs = weatherRoadSystem1Runtime ?? inventorySystem1Runtime;
+
     return {
       success: true,
       answerText: finalAnswerText,
@@ -1137,6 +1372,7 @@ export async function runLightweightKnowledgeQueryPath(
         },
         lightweightKnowledgeQa: true,
         routingTaskType: context.routingTaskType,
+        ...(system1RuntimeObs ? { system1_runtime: system1RuntimeObs } : {}),
         ...(context.contextRequirementPlan
           ? {
               contextRequirementPlan: {

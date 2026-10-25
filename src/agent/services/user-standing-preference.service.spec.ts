@@ -57,6 +57,7 @@ describe('UserStandingPreferenceService.mergeFromRouteAndRunIfEligible', () => {
     };
     svc = new UserStandingPreferenceService(prisma as any, llm as any);
     delete process.env.TRIPNARA_USER_PREFERENCE_LLM_EXTRACT;
+    delete process.env.TRAVELER_MEMORY_WRITE_GATE;
   });
 
   function baseReq(message: string) {

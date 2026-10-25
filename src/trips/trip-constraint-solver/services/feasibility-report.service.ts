@@ -89,6 +89,7 @@ import {
 import { assertPlanMutationAllowedOrThrow } from '../../../decision-runtime/execution/effective-plan-write-chain-blocked.util';
 import { buildMcpoiBenchmarkFeasibilityIssues } from '../../benchmarks/multi-constraint-poi/mcpoi-benchmark-runtime.util';
 import { TripPrerequisiteService } from '../../prerequisites/services/trip-prerequisite.service';
+import { buildFeasibilityIssuesFromBoundRisks } from '../../execution-risk-center/knowledge/risk-constraint-binding-runtime.util';
 
 @Injectable()
 export class FeasibilityReportService {
@@ -248,6 +249,7 @@ export class FeasibilityReportService {
     tripId: string,
     opts?: {
       locale?: string;
+      userId?: string;
       preloadedConflicts?: ConflictsResponseDto;
       /** 与外部共享同一 getConflicts promise，避免重复计算且可与 coverage 并行 */
       preloadedConflictsPromise?: Promise<ConflictsResponseDto>;
@@ -292,6 +294,10 @@ export class FeasibilityReportService {
       tripId,
       trip.tripDays,
     );
+    const riskConstraintBindingIssues = await this.buildRiskConstraintBindingIssues(
+      tripId,
+      opts?.userId,
+    );
     return assembleFeasibilityReport({
       trip,
       tripDays: trip.tripDays,
@@ -302,6 +308,7 @@ export class FeasibilityReportService {
       projectedScheduleIssues: conflictAssembly.projectedScheduleIssues,
       projectedGuardianIssues,
       productCatalogIssues,
+      riskConstraintBindingIssues,
       gatewayDomainCoverage: this.resolveGatewayDomainCoverage({
         p0ProjectionApplied,
         scheduleProjectionApplied: conflictAssembly.scheduleProjectionApplied,
@@ -342,6 +349,7 @@ export class FeasibilityReportService {
   async getReportFast(
     tripId: string,
     opts?: {
+      userId?: string;
       preloadedConflicts?: ConflictsResponseDto;
       preloadedConflictsPromise?: Promise<ConflictsResponseDto>;
       conflictsQuery?: TripConflictsQueryOpts;
@@ -373,6 +381,8 @@ export class FeasibilityReportService {
       tripId,
       trip.tripDays,
     );
+    // 快路径不拉 ERC→listProblems，避免 getReportFast ↔ decision-problems 循环挂死
+    const riskConstraintBindingIssues: FeasibilityIssueDto[] = [];
     return assembleFeasibilityReport({
       trip,
       tripDays: trip.tripDays,
@@ -381,6 +391,7 @@ export class FeasibilityReportService {
       projectedScheduleIssues: conflictAssembly.projectedScheduleIssues,
       projectedGuardianIssues,
       productCatalogIssues,
+      riskConstraintBindingIssues,
       gatewayDomainCoverage: this.resolveGatewayDomainCoverage({
         p0ProjectionApplied: false,
         scheduleProjectionApplied: conflictAssembly.scheduleProjectionApplied,
@@ -409,6 +420,7 @@ export class FeasibilityReportService {
   async validate(
     tripId: string,
     opts?: {
+      userId?: string;
       forceRefreshEvidence?: boolean | AccessEvidenceRefreshScope[];
       lang?: string;
       runMonteCarlo?: boolean;
@@ -499,6 +511,10 @@ export class FeasibilityReportService {
       tripId,
       ctx.tripDays,
     );
+    const riskConstraintBindingIssues = await this.buildRiskConstraintBindingIssues(
+      tripId,
+      opts?.userId,
+    );
     return assembleFeasibilityReport({
       trip: ctx,
       tripDays: ctx.tripDays,
@@ -509,6 +525,7 @@ export class FeasibilityReportService {
       projectedScheduleIssues: conflictAssembly.projectedScheduleIssues,
       projectedGuardianIssues,
       productCatalogIssues,
+      riskConstraintBindingIssues,
       gatewayDomainCoverage: this.resolveGatewayDomainCoverage({
         p0ProjectionApplied,
         scheduleProjectionApplied: conflictAssembly.scheduleProjectionApplied,
@@ -543,7 +560,11 @@ export class FeasibilityReportService {
     issueId: string,
     opts?: { preloadedReport?: TripFeasibilityReportDto },
   ): Promise<RepairOptionsResponse> {
-    const report = opts?.preloadedReport ?? (await this.getReport(tripId));
+    const report =
+      opts?.preloadedReport ??
+      (await this.getReportFast(tripId, {
+        conflictsQuery: { useRouteApi: false },
+      }));
     const issue = report.issues.find((i) => matchesIssueId(i.id, issueId));
     const canonicalIssueId = issue?.id ?? normalizeIssueIdAlias(issueId);
 
@@ -1082,6 +1103,28 @@ export class FeasibilityReportService {
     const mcpoiIssues = await buildMcpoiBenchmarkFeasibilityIssues(this.prisma, tripId);
     if (!mcpoiIssues.length) return guardianIssues;
     return [...mcpoiIssues, ...guardianIssues];
+  }
+
+  /** P1.3 — 活跃风险的约束绑定 → Feasibility issues（可选；ERC 未加载时静默跳过） */
+  private async buildRiskConstraintBindingIssues(
+    tripId: string,
+    userId?: string,
+  ): Promise<FeasibilityIssueDto[]> {
+    try {
+      const { ActiveRiskAggregationService } = require('../../execution-risk-center/services/active-risk-aggregation.service');
+      const aggregation = this.moduleRef.get(ActiveRiskAggregationService, { strict: false });
+      if (!aggregation) return [];
+      const memberId = userId ?? 'anonymous-dev-user';
+      // 预算内拉取；超时 fail-open，切断 getReport ↔ listRisks ↔ attention 环
+      const risks = await Promise.race([
+        aggregation.listRisks(tripId, memberId),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_500)),
+      ]);
+      if (!risks) return [];
+      return buildFeasibilityIssuesFromBoundRisks(risks) as unknown as FeasibilityIssueDto[];
+    } catch {
+      return [];
+    }
   }
 
   private async buildProductCatalogIssuesForReport(

@@ -177,5 +177,8 @@ export interface System1Result {
   /** 答案文本（System 1不再返回文本回答，保留用于兼容） */
   answerText: string | null;
   /** 卡片类型 */
-  cardType?: 'INFO_CARD' | 'API_RESULT' | 'RAG_RESULT';
+  cardType?: 'INFO_CARD' | 'API_RESULT' | 'RAG_RESULT' | 'AUTHORITY_ESCALATION';
+  /** System1 不得写行程；恒为 false */
+  appliedToItinerary?: false;
+  system1Runtime?: Record<string, unknown>;
 }

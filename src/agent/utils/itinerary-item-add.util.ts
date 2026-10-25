@@ -61,6 +61,12 @@ export function parseTripDayNumber(text: string): number | undefined {
   }
   const cn = String(text ?? '').match(/第\s*([一二三四五六七八九十]{1,2})\s*天/);
   if (cn) return parseCnDayToken(cn[1]);
+  // iOS/日程锚点常见：Day4、Day 4（须在裸 D\d 之前，避免误切）
+  const dayWord = String(text ?? '').match(/\bDay\s*(\d+)\b/i);
+  if (dayWord) {
+    const n = Number(dayWord[1]);
+    return n > 0 ? n : undefined;
+  }
   const d = String(text ?? '').match(/\bD\s*(\d+)\b/i);
   if (d) {
     const n = Number(d[1]);

@@ -52,6 +52,7 @@ import {
   RECAPTURE_NEW_ID_TIME_MS,
 } from './observation.types';
 import { isFrozenSemanticKey } from './semantic-keys';
+import { LookRoadAuthorityDecisionTickService } from '../decision/world-consistency/look-road-authority-decision-tick.service';
 
 function newId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
@@ -95,6 +96,8 @@ export class ObservationService {
     private readonly feedbackStore?: LookFeedbackStore,
     @Optional()
     private readonly lookMedia?: LookMediaStore,
+    @Optional()
+    private readonly lookRoadAuthorityTick?: LookRoadAuthorityDecisionTickService,
   ) {}
 
   list(
@@ -661,6 +664,17 @@ export class ObservationService {
         },
       });
       worldStateSnapshotId = projected.snapshotId;
+    }
+
+    // P0-1: Look suspected closed → authority re-observe → same-tick binding
+    if (this.lookRoadAuthorityTick) {
+      await this.lookRoadAuthorityTick.maybeTriggerFromLookObservation({
+        tripId: assessing.tripId,
+        observationId,
+        facts: assessing.observations,
+        segmentId: assessing.spatialContext?.routeSegmentId,
+        suspectedAt: assessing.capturedAt,
+      });
     }
 
     const { assessment } = await this.assessmentBridge.attachDecisionProblem({

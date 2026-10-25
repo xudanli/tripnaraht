@@ -6,6 +6,7 @@ import {
   NotFoundException,
   forwardRef,
 } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { TripWishService } from '../../wishlist/services/trip-wish.service';
 import { TripBudgetIntentService } from '../../budget-os/services/trip-budget-intent.service';
@@ -85,6 +86,7 @@ import {
 } from '../utils/travel-decision-contract.builder';
 import { TRIP_CONSTRAINT_LEGACY_IDS } from '../types/trip-constraint.types';
 import { TripConstraintPreviewService } from './trip-constraint-preview.service';
+import { collectConstraintTemplateIdsFromRisks } from '../../execution-risk-center/knowledge/risk-constraint-binding-runtime.util';
 
 @Injectable()
 export class TripConstraintRegistryService {
@@ -98,6 +100,7 @@ export class TripConstraintRegistryService {
     private readonly budgetIntent: TripBudgetIntentService,
     private readonly wishService: TripWishService,
     private readonly preview: TripConstraintPreviewService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   async list(
@@ -105,8 +108,39 @@ export class TripConstraintRegistryService {
     userId: string,
     query: ListTripConstraintsQueryDto,
   ): Promise<TripConstraintsListResponse> {
-    const { items, meta, contract } = await this.buildList(tripId, userId);
-    let filtered = items;
+    const wantFullConflicts =
+      query.includeConflicts === 'full' || query.includeConflicts === '1';
+    const { items, meta, contract } = await this.buildList(
+      tripId,
+      userId,
+      wantFullConflicts
+        ? undefined
+        : { preferFastPlanningConflicts: true, skipRiskActivation: true },
+    );
+    return this.applyListQuery({ items, meta, contract }, query);
+  }
+
+  /**
+   * Admin / 观测用轻量读：跳过 planning-conflicts 与风险聚合（避免可行性重算拖死请求）。
+   * 合同主体（目标/策略/自动化/约束卡片）仍完整；冲突高亮可能降级为空。
+   */
+  async listLightweight(
+    tripId: string,
+    userId: string,
+    query: ListTripConstraintsQueryDto = {},
+  ): Promise<TripConstraintsListResponse> {
+    const { items, meta, contract } = await this.buildList(tripId, userId, {
+      skipPlanningConflicts: true,
+      skipRiskActivation: true,
+    });
+    return this.applyListQuery({ items, meta, contract }, query);
+  }
+
+  private applyListQuery(
+    data: TripConstraintsListResponse,
+    query: ListTripConstraintsQueryDto,
+  ): TripConstraintsListResponse {
+    let filtered = data.items;
 
     if (query.type) filtered = filtered.filter((c) => c.type === query.type);
     if (query.category) filtered = filtered.filter((c) => c.category === query.category);
@@ -116,9 +150,9 @@ export class TripConstraintRegistryService {
     }
 
     return {
-      meta: { ...meta, total: filtered.length },
+      meta: { ...data.meta, total: filtered.length },
       items: filtered,
-      contract,
+      contract: data.contract,
     };
   }
 
@@ -135,7 +169,11 @@ export class TripConstraintRegistryService {
     tripId: string,
     userId: string,
   ): Promise<import('../types/planning-conflicts.types').PlanningConflictItem[]> {
-    const { items, scheduleCtx } = await this.buildList(tripId, userId);
+    // 必须跳过 planning-conflicts：否则 getPlanningConflicts → mergeSoft → 此处 → buildList → 再进 planning-conflicts 形成递归拖死
+    const { items, scheduleCtx } = await this.buildList(tripId, userId, {
+      skipPlanningConflicts: true,
+      skipRiskActivation: true,
+    });
     return buildSoftConstraintCheckConflicts(items, scheduleCtx);
   }
 
@@ -170,7 +208,10 @@ export class TripConstraintRegistryService {
       data: { metadata: toInputJsonValue(metadata) },
     });
 
-    const { contract } = await this.buildList(tripId, userId);
+    const { contract } = await this.buildList(tripId, userId, {
+      preferFastPlanningConflicts: true,
+      skipRiskActivation: true,
+    });
     return {
       contract,
       constraints: snapshotConstraintsMeta(metadata),
@@ -290,7 +331,10 @@ export class TripConstraintRegistryService {
         data: { metadata: toInputJsonValue(metadata) },
       });
 
-      const { items } = await this.buildList(tripId, userId);
+      const { items } = await this.buildList(tripId, userId, {
+        preferFastPlanningConflicts: true,
+        skipRiskActivation: true,
+      });
       const created = items.find((c) => c.id === stored.id);
       if (!created) throw new NotFoundException('约束创建后读模型未找到');
 
@@ -315,7 +359,10 @@ export class TripConstraintRegistryService {
         visibility: 'private',
         inputMode: 'free_text',
       });
-      const { items } = await this.buildList(tripId, userId);
+      const { items } = await this.buildList(tripId, userId, {
+        preferFastPlanningConflicts: true,
+        skipRiskActivation: true,
+      });
       const created = items.find((c) => c.backing?.wishId === wish.id);
       return {
         constraint: created ?? items[items.length - 1],
@@ -362,7 +409,10 @@ export class TripConstraintRegistryService {
       data: { metadata: toInputJsonValue(metadata) },
     });
 
-    const { items } = await this.buildList(tripId, userId);
+    const { items } = await this.buildList(tripId, userId, {
+      preferFastPlanningConflicts: true,
+      skipRiskActivation: true,
+    });
     const created = items.find((c) => c.id === stored.id);
     if (!created) throw new NotFoundException('约束创建后读模型未找到');
 
@@ -410,7 +460,10 @@ export class TripConstraintRegistryService {
       await this.patchUnifiedStore(tripId, trip, constraintId, dto, userId);
     }
 
-    const { items } = await this.buildList(tripId, userId);
+    const { items } = await this.buildList(tripId, userId, {
+      preferFastPlanningConflicts: true,
+      skipRiskActivation: true,
+    });
     const updated = items.find((c) => c.id === constraintId);
     if (!updated) throw new NotFoundException(`约束 ${constraintId} 不存在`);
 
@@ -700,8 +753,11 @@ export class TripConstraintRegistryService {
   }
 
   async check(tripId: string, userId: string): Promise<TripConstraintCheckResponse> {
-    const data = await this.planningConflicts.getPlanningConflicts(tripId);
-    const { items, contract, scheduleCtx } = await this.buildList(tripId, userId);
+    const data = await this.planningConflicts.getPlanningConflictsLite(tripId);
+    const { items, contract, scheduleCtx } = await this.buildList(tripId, userId, {
+      preferFastPlanningConflicts: true,
+      skipRiskActivation: true,
+    });
     const hardConflicts = enrichPlanningConflictsWithRelatedConstraintIds(data.conflicts);
     const softAdvisories = buildSoftConstraintCheckConflicts(items, scheduleCtx);
     const conflicts = [...hardConflicts, ...softAdvisories];
@@ -747,7 +803,15 @@ export class TripConstraintRegistryService {
     };
   }
 
-  private async buildList(tripId: string, userId: string) {
+  private async buildList(
+    tripId: string,
+    userId: string,
+    opts?: {
+      skipPlanningConflicts?: boolean;
+      skipRiskActivation?: boolean;
+      preferFastPlanningConflicts?: boolean;
+    },
+  ) {
     const trip = await this.prisma.trip.findUnique({
       where: { id: tripId },
       include: {
@@ -779,10 +843,24 @@ export class TripConstraintRegistryService {
     });
     if (!trip) throw new NotFoundException(`行程 ${tripId} 不存在`);
 
-    const [summary, planning, teamWishes] = await Promise.all([
+    const skipPlanning = opts?.skipPlanningConflicts === true;
+    const skipRisks = opts?.skipRiskActivation === true;
+    const preferFast = opts?.preferFastPlanningConflicts === true;
+
+    const [summary, planning, teamWishes, riskActivatedConstraintIds] = await Promise.all([
       this.constraintsSummary.getSummary(tripId),
-      this.planningConflicts.getPlanningConflicts(tripId),
+      skipPlanning
+        ? Promise.resolve({ conflicts: [], isStale: true as boolean | undefined })
+        : preferFast
+          ? this.planningConflicts.getPlanningConflictsLite(tripId).then((r) => ({
+              conflicts: r.conflicts,
+              isStale: r.isStale ?? true,
+            }))
+          : this.planningConflicts.getPlanningConflicts(tripId),
       this.wishService.listTeam(tripId, userId),
+      skipRisks
+        ? Promise.resolve([] as string[])
+        : this.loadRiskActivatedConstraintIds(tripId, userId),
     ]);
 
     return {
@@ -791,11 +869,27 @@ export class TripConstraintRegistryService {
         summary,
         teamWishes,
         conflicts: planning.conflicts,
-        isFeasibilityStale: planning.isStale,
+        isFeasibilityStale: planning.isStale ?? (skipPlanning || preferFast),
         userId,
+        riskActivatedConstraintIds,
       }),
       scheduleCtx: buildSoftScheduleEvalContext(trip),
     };
+  }
+
+  private async loadRiskActivatedConstraintIds(
+    tripId: string,
+    userId: string,
+  ): Promise<string[]> {
+    try {
+      const { ActiveRiskAggregationService } = require('../../execution-risk-center/services/active-risk-aggregation.service');
+      const aggregation = this.moduleRef.get(ActiveRiskAggregationService, { strict: false });
+      if (!aggregation) return [];
+      const risks = await aggregation.listRisks(tripId, userId);
+      return collectConstraintTemplateIdsFromRisks(risks);
+    } catch {
+      return [];
+    }
   }
 
   private async requireTrip(tripId: string) {
@@ -967,12 +1061,39 @@ export class TripConstraintRegistryService {
             teamGovernance: metadata.travelDecisionContract,
           });
           this.throwScopePatchErrors(scopePatch.errors);
-          Object.assign(
-            metadata,
-            writeConstraintExtendedValue(metadata, constraintId, scopePatch.value),
-          );
-          if (applyMaxDailyDrivingHoursConstraintPatch(c5, scopePatch.value)) {
+          // 标量 value（如 5）优先于 scopePatch 合并后仍残留的旧 maxHours
+          const drivePatchValue =
+            typeof dto.value === 'number' || typeof dto.value === 'string'
+              ? dto.value
+              : scopePatch.value;
+          if (applyMaxDailyDrivingHoursConstraintPatch(c5, drivePatchValue)) {
             metadata.constraints = c5;
+            const hours = Number(c5.maxDailyDrivingHours);
+            const prevExt =
+              scopePatch.value && typeof scopePatch.value === 'object'
+                ? (scopePatch.value as Record<string, unknown>)
+                : {};
+            const syncedExt = {
+              ...prevExt,
+              ...(Number.isFinite(hours)
+                ? {
+                    hours,
+                    maxHours: hours,
+                    raw: typeof dto.value === 'number' ? dto.value : prevExt.raw,
+                    judgmentRule: `单日驾驶时长不超过 ${hours} 小时`,
+                    rule: `单日驾驶时长不超过 ${hours} 小时`,
+                  }
+                : {}),
+            };
+            Object.assign(
+              metadata,
+              writeConstraintExtendedValue(metadata, constraintId, syncedExt),
+            );
+          } else {
+            Object.assign(
+              metadata,
+              writeConstraintExtendedValue(metadata, constraintId, scopePatch.value),
+            );
           }
           bumpMeta = true;
         }

@@ -75,13 +75,40 @@ export class ExecutionAdjustmentQueueProjectionService {
   ): Promise<ExecutionAdjustmentQueueDto> {
     await this.access.assertTripMember(tripId, userId);
 
-    const [queue, listView, risks] = await Promise.all([
-      this.decisionQueue.getQueue(tripId, { hydrateRecommendations: true }),
+    const settle = <T>(promise: Promise<T>, ms: number): Promise<T | null> =>
+      new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(null), ms);
+        promise
+          .then((v) => {
+            clearTimeout(timer);
+            resolve(v);
+          })
+          .catch(() => {
+            clearTimeout(timer);
+            resolve(null);
+          });
+      });
+
+    const [queueRaw, listView, envRisks, risksRaw] = await Promise.all([
+      settle(this.decisionQueue.getQueue(tripId, { hydrateRecommendations: false }), 2_000),
       isDecisionGatewayUnifiedEnabled() && this.decisionReadModel
-        ? this.decisionReadModel.listProblems(tripId, { queueOnly: true }).catch(() => null)
+        ? settle(
+            this.decisionReadModel.listProblems(tripId, {
+              queueOnly: true,
+              skipCausalEnrich: true,
+              projectionOnly: true,
+            }),
+            1_500,
+          )
         : Promise.resolve(null),
-      this.aggregation.listRisks(tripId, userId),
+      settle(this.aggregation.listEnvironmentOnlyRisks(tripId, userId, { lite: true }), 1_500),
+      settle(this.aggregation.listRisks(tripId, userId), 2_000),
     ]);
+    const queue = queueRaw ?? { items: [] as NonNullable<typeof queueRaw>['items'] };
+    const risks =
+      (risksRaw && risksRaw.length > 0 ? risksRaw : null) ??
+      (envRisks && envRisks.length > 0 ? envRisks : null) ??
+      [];
 
     const listById = new Map<string, UnifiedDecisionProblemListItem>(
       (listView?.items ?? []).map((item) => [item.problemId, item as UnifiedDecisionProblemListItem]),

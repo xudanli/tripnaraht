@@ -53,7 +53,7 @@ export class FeasibilityReportController {
     try {
       const userId = this.access.resolveUserId(user);
       await this.access.assertTripMember(tripId, userId);
-      const data = await this.feasibility.getReport(tripId);
+      const data = await this.feasibility.getReport(tripId, { userId });
       return successResponse(data);
     } catch (e) {
       return this.handleError(e);
@@ -72,6 +72,7 @@ export class FeasibilityReportController {
       const userId = this.access.resolveUserId(user);
       await this.access.assertTripMember(tripId, userId);
       const data = await this.feasibility.validate(tripId, {
+        userId,
         forceRefreshEvidence: body?.forceRefreshEvidence,
         lang: body?.lang,
         runMonteCarlo: body?.runMonteCarlo,

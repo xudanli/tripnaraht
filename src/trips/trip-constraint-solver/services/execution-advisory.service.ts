@@ -4,6 +4,7 @@ import {
   Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { DateTime } from 'luxon';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CoverageMapService } from '../../readiness/services/coverage-map.service';
@@ -15,12 +16,14 @@ import { TripStatus, normalizeTripStatus } from '../../dto/trip-status.dto';
 import type { TripExecutionAdvisoryDto } from '../types/trip-constraint-solver.types';
 import { buildExecutionAdvisory } from '../utils/execution-advisory-assembler.util';
 import { ExecutionCausalInsightService } from './execution-causal-insight.service';
+import { maxExecutionGateFromBindings } from '../../execution-risk-center/knowledge/risk-constraint-binding-runtime.util';
 
 @Injectable()
 export class ExecutionAdvisoryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly access: InTripAccessService,
+    private readonly moduleRef: ModuleRef,
     @Optional() private readonly anchorHandoff?: AnchorHandoffService,
     @Optional() private readonly environmentRadar?: EnvironmentRadarService,
     @Optional() private readonly coverageMap?: CoverageMapService,
@@ -88,6 +91,8 @@ export class ExecutionAdvisoryService {
           .catch(() => undefined)
       : undefined;
 
+    const riskBindingGate = await this.resolveRiskBindingGate(tripId, userId);
+
     const dto = buildExecutionAdvisory({
       tripId,
       tripDayId: tripDay?.id ?? `day-${dayNumber}`,
@@ -99,8 +104,33 @@ export class ExecutionAdvisoryService {
       delayMinutes,
       timezone: typeof meta.timezone === 'string' ? meta.timezone : 'Atlantic/Reykjavik',
       causalInsight,
+      riskBindingGate,
     });
     return this.applyVerdictExpiry(dto);
+  }
+
+  private async resolveRiskBindingGate(
+    tripId: string,
+    userId: string,
+  ): Promise<'ALLOW' | 'AT_RISK' | 'REPLAN_REQUIRED' | 'STOP' | undefined> {
+    try {
+      // Lazy require avoids TS/Nest cycle with ActiveRiskAggregationService ↔ Advisory
+      const { ActiveRiskAggregationService } = require('../../execution-risk-center/services/active-risk-aggregation.service');
+      const aggregation = this.moduleRef.get(ActiveRiskAggregationService, { strict: false });
+      if (!aggregation) return undefined;
+      const risks = await aggregation.listRisks(tripId, userId);
+      if (!risks.length) return undefined;
+      const fromBindings = maxExecutionGateFromBindings(risks.map((r: { constraintBinding?: unknown }) => r.constraintBinding));
+      const order = { ALLOW: 0, AT_RISK: 1, REPLAN_REQUIRED: 2, STOP: 3 } as const;
+      let max: keyof typeof order = fromBindings;
+      for (const r of risks as Array<{ executionGate?: keyof typeof order }>) {
+        const g = r.executionGate ?? 'ALLOW';
+        if ((order[g] ?? 0) > order[max]) max = g in order ? g : max;
+      }
+      return max;
+    } catch {
+      return undefined;
+    }
   }
 
   /** When validUntil has passed, keep 200 but prompt re-evaluation (RECOMMENDATION_EXPIRED semantics on GET). */

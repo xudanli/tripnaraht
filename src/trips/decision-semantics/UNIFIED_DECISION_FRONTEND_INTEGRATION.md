@@ -17,7 +17,7 @@
 
 ### 0.1 后端准备（本仓库）
 
-1. **写入环境变量** — 复制 [`.env.unified-decision-frontend.example`](../../../.env.unified-decision-frontend.example) 到 `.env` 并重启服务。
+1. **写入环境变量** — 复制 [`config/env/.env.unified-decision-frontend.example`](../../../config/env/.env.unified-decision-frontend.example) 到 `.env` 并重启服务。
 2. **跑门禁** — `npm run rfc002:fe-readiness`（pack 认证 + gateway 单测 + L2 状态机契约）。
 3. **环境自检** — 写入 `.env` 后 `npm run decision-center:unified-env-check`（7 项开关应全绿）。
 4. **API smoke**（需 `npm run dev` 已启动）：

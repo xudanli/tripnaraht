@@ -32,6 +32,42 @@ export class QueryRouteTemplateDto {
   @IsBoolean()
   isActive?: boolean;
 
+  @ApiPropertyOptional({
+    description: '是否附带打包清单摘要（packingChecklistId / hasPackingChecklist / packingChecklistSummary）',
+    type: Boolean,
+  })
+  @IsOptional()
+  @Transform(({ value }) => parseBooleanQuery(value))
+  @IsBoolean()
+  includePackingSummary?: boolean;
+
+  @ApiPropertyOptional({
+    description: '筛选：是否已绑定打包清单',
+    type: Boolean,
+  })
+  @IsOptional()
+  @Transform(({ value }) => parseBooleanQuery(value))
+  @IsBoolean()
+  hasPackingChecklist?: boolean;
+
+  @ApiPropertyOptional({
+    description: '是否附带预算摘要（budgetEstimateId / hasBudgetEstimate / budgetEstimateSummary）',
+    type: Boolean,
+  })
+  @IsOptional()
+  @Transform(({ value }) => parseBooleanQuery(value))
+  @IsBoolean()
+  includeBudgetSummary?: boolean;
+
+  @ApiPropertyOptional({
+    description: '筛选：是否已绑定预算估算',
+    type: Boolean,
+  })
+  @IsOptional()
+  @Transform(({ value }) => parseBooleanQuery(value))
+  @IsBoolean()
+  hasBudgetEstimate?: boolean;
+
   @ApiPropertyOptional({ description: '返回数量限制', type: Number })
   @IsOptional()
   @Type(() => Number)

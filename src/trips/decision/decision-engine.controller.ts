@@ -386,7 +386,9 @@ export class DecisionEngineController {
   @Public()
   @ApiOperation({
     summary: '生效营运策略（P-OPS-3）',
-    description: '默认策略合并环境变量 OPS_OPERATIONAL_POLICY_JSON 后的版本化配置（warn/degrade/block/reroute 语义）。',
+    description:
+      '默认策略合并环境变量 OPS_OPERATIONAL_POLICY_JSON 后的版本化配置（warn/degrade/block/reroute 语义）。' +
+      ' Admin 请调用 /api/decision-engine/v1/operational-policy（勿用 /admin/decision-engine 前缀）。',
   })
   @ApiResponse({ status: 200, description: '策略 JSON' })
   operationalPolicyEffective() {
@@ -1037,7 +1039,8 @@ export class DecisionEngineController {
   @ApiOperation({
     summary: 'P-OPS-2：回填实况 outcome（与预测快照 join）',
     description:
-      '对 append-only 预测行首次写入 outcome（幂等：仅 outcome 为空时可更新）。需启用 OPS_REALITY_AUDIT=1。',
+      '对 append-only 预测行首次写入 outcome（幂等：仅 outcome 为空时可更新）。需启用 OPS_REALITY_AUDIT=1。' +
+      ' 路径前缀 /api/decision-engine/v1（勿用 /admin/decision-engine）。',
   })
   async recordRealityOutcome(
     @Param('snapshotId') snapshotId: string,
@@ -1212,6 +1215,9 @@ export class DecisionEngineController {
   @Public()
   @ApiOperation({
     summary: 'P-OPS-2：按 trip 列出近期预测快照（含是否已填 outcome）',
+    description:
+      '需 OPS_REALITY_AUDIT=1 才会落库。当前环境可能无快照（空列表属正常，非接口废弃）。' +
+      ' 路径前缀：/api/decision-engine/v1（无 /admin 前缀）。',
   })
   async listRealityAuditByTrip(@Param('tripId') tripId: string) {
     const snapshots = (await this.opsRealityAudit?.listRecentForTrip(tripId)) ?? [];
@@ -1223,7 +1229,8 @@ export class DecisionEngineController {
   @ApiOperation({
     summary: 'P-OPS-2：离线 replay 比对（可比指纹）',
     description:
-      '需 outcome.extensions.observation_export（p-ops-2-obs-export/v1）。比对 prediction 与观测导出在 legs+weather+planDigest 上的可比指纹（忽略 capturedAtIso）。',
+      '需 outcome.extensions.observation_export（p-ops-2-obs-export/v1）。比对 prediction 与观测导出在 legs+weather+planDigest 上的可比指纹（忽略 capturedAtIso）。' +
+      ' 无快照时返回校验错误；路径前缀 /api/decision-engine/v1。',
   })
   async replayCompareSnapshot(@Param('snapshotId') snapshotId: string) {
     if (!this.opsRealityAudit) {

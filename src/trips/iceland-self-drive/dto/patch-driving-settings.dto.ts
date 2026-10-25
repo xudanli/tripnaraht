@@ -14,7 +14,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ICELAND_SELF_DRIVE_ARRIVAL_DAY_DRIVING,
   ICELAND_SELF_DRIVE_DRIVER_ROLES,
@@ -205,6 +205,11 @@ export class PatchDrivingSettingsDriversDto {
 
   @ApiPropertyOptional({ nullable: true, minimum: 1, maximum: 12 })
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value == null || value === '') return value;
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) ? Math.round(n) : value;
+  })
   @IsInt()
   @Min(1)
   @Max(12)
@@ -248,6 +253,11 @@ export class PatchDrivingSettingsRoutePreferenceDto {
 
   @ApiPropertyOptional({ nullable: true, minimum: 1, maximum: 12 })
   @IsOptional()
+  @Transform(({ value }) => {
+    if (value == null || value === '') return value;
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) ? Math.round(n) : value;
+  })
   @IsInt()
   @Min(1)
   @Max(12)

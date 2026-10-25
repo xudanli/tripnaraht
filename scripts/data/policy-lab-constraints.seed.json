@@ -1,0 +1,508 @@
+[
+  {
+    "ruleId": "cn_extreme_low_visibility_block",
+    "enabled": true,
+    "description": "能见度低于50米时，不继续按原长距离自驾计划执行",
+    "threshold": 50,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "HARD_BLOCK",
+      "priority": 100,
+      "conditions": [
+        "weather.visibilityMeters < 50",
+        "weather.confidenceScore >= 0.7"
+      ]
+    }
+  },
+  {
+    "ruleId": "cn_heavy_rain_low_visibility_reroute",
+    "enabled": true,
+    "description": "强降雨与低能见度叠加，建议调整驾驶路线或时间",
+    "threshold": 10,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "RE_ROUTE",
+      "priority": 91,
+      "conditions": [
+        "weather.precipitationMm > 10",
+        "weather.visibilityMeters < 200",
+        "weather.confidenceScore >= 0.7"
+      ]
+    }
+  },
+  {
+    "ruleId": "cn_heavy_rain_warning",
+    "enabled": true,
+    "description": "明显降雨情况下提示道路安全与时间风险",
+    "threshold": 10,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "WARNING",
+      "priority": 70,
+      "conditions": [
+        "weather.precipitationMm > 10",
+        "weather.confidenceScore >= 0.7"
+      ]
+    }
+  },
+  {
+    "ruleId": "cn_high_wind_small_car_warning",
+    "enabled": true,
+    "description": "强风条件下小型车辆驾驶稳定性风险增加（V1 仅 WARNING，不作 HARD_BLOCK）",
+    "threshold": 60,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "WARNING",
+      "priority": 75,
+      "conditions": [
+        "weather.windSpeedKph > 60",
+        "user.vehicle_type in (SEDAN, COMPACT)"
+      ]
+    }
+  },
+  {
+    "ruleId": "cn_low_visibility_speed_down",
+    "enabled": true,
+    "description": "雨雪雾等导致能见度低于200米时降低预计驾驶速度",
+    "threshold": 200,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "SPEED_FACTOR_DOWN",
+      "priority": 80,
+      "conditions": [
+        "weather.visibilityMeters < 200"
+      ],
+      "speedFactor": 0.6
+    }
+  },
+  {
+    "ruleId": "cn_snow_low_visibility_reroute",
+    "enabled": true,
+    "description": "积雪与低能见度同时发生，优先改线或延迟驾驶",
+    "threshold": 5,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "RE_ROUTE",
+      "priority": 94,
+      "conditions": [
+        "weather.snowDepthCm > 5",
+        "weather.visibilityMeters < 100"
+      ]
+    }
+  },
+  {
+    "ruleId": "cn_snow_small_car_warning",
+    "enabled": true,
+    "description": "明显积雪情况下小型两驱车风险提高",
+    "threshold": 8,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "WARNING",
+      "priority": 87,
+      "conditions": [
+        "weather.snowDepthCm > 8",
+        "user.vehicle_type in (SEDAN, COMPACT)"
+      ]
+    }
+  },
+  {
+    "ruleId": "cn_snow_speed_down",
+    "enabled": true,
+    "description": "积雪条件下降低预计道路行驶速度",
+    "threshold": 3,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "SPEED_FACTOR_DOWN",
+      "priority": 82,
+      "conditions": [
+        "weather.snowDepthCm > 3"
+      ],
+      "speedFactor": 0.7
+    }
+  },
+  {
+    "ruleId": "cn_very_low_visibility_speed_down",
+    "enabled": true,
+    "description": "能见度低于100米，显著降低预计行驶速度",
+    "threshold": 100,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "SPEED_FACTOR_DOWN",
+      "priority": 90,
+      "conditions": [
+        "weather.visibilityMeters < 100"
+      ],
+      "speedFactor": 0.4
+    }
+  },
+  {
+    "ruleId": "drive_safety_v1",
+    "enabled": true,
+    "description": "Drive safety wind/gust thresholds (m/s); high-profile 18, default 20",
+    "threshold": 18,
+    "params": {
+      "kind": "DRIVE_SAFETY",
+      "unit": "mps",
+      "default_mps": 20,
+      "thresholds_mps": {
+        "default": 20,
+        "high_profile": 18
+      },
+      "high_profile_mps": 18
+    }
+  },
+  {
+    "ruleId": "froad_low_visibility_hard_block_v1",
+    "enabled": true,
+    "description": "Shared fallback: F-road + low visibility",
+    "threshold": null,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "HARD_BLOCK",
+      "priority": 100,
+      "conditions": [
+        "segment.type = F_ROAD",
+        "weather.visibilityMeters < 100"
+      ]
+    }
+  },
+  {
+    "ruleId": "iceland_froad_low_visibility_block",
+    "enabled": true,
+    "description": "F-road + low visibility hard block",
+    "threshold": null,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "HARD_BLOCK",
+      "priority": 105,
+      "conditions": [
+        "segment.type = F_ROAD",
+        "weather.visibilityMeters < 100"
+      ]
+    }
+  },
+  {
+    "ruleId": "iceland_froad_snow_block",
+    "enabled": false,
+    "description": "只要 F-Road 路段积雪超过 10cm，AI 就不允许生成该路径，并提示“受强降雪影响，内陆路段暂时封锁”。",
+    "threshold": 10,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "HARD_BLOCK",
+      "priority": 95,
+      "conditions": [
+        "segment.type = F_ROAD",
+        "weather.snowDepthCm > 10"
+      ]
+    }
+  },
+  {
+    "ruleId": "iceland_froad_snow_depth_block",
+    "enabled": true,
+    "description": "F-road + deep snow hard block",
+    "threshold": null,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "HARD_BLOCK",
+      "priority": 98,
+      "conditions": [
+        "segment.type = F_ROAD",
+        "weather.snowDepthCm > 10"
+      ]
+    }
+  },
+  {
+    "ruleId": "iceland_froad_vehicle_block",
+    "enabled": true,
+    "description": "2WD / small car on F-road is hard-blocked",
+    "threshold": null,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "HARD_BLOCK",
+      "priority": 110,
+      "conditions": [
+        "segment.type = F_ROAD",
+        "vehicle.type = SMALL_CAR"
+      ]
+    }
+  },
+  {
+    "ruleId": "iceland_heavy_rain_reroute",
+    "enabled": true,
+    "description": "Heavy rain with high confidence → recommend re-route",
+    "threshold": null,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "RE_ROUTE",
+      "priority": 80,
+      "conditions": [
+        "weather.precipitationMm > 10",
+        "weather.confidenceScore > 0.85"
+      ]
+    }
+  },
+  {
+    "ruleId": "iceland_high_wind_warning",
+    "enabled": true,
+    "description": "High wind / gust warning for all vehicles (≈50 km/h)",
+    "threshold": 50,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "WARNING",
+      "priority": 90,
+      "conditions": [
+        "weather.windSpeedKph > 50"
+      ]
+    }
+  },
+  {
+    "ruleId": "iceland_hiking_sunset_block",
+    "enabled": false,
+    "description": "如果用户计划在距离日落不足 1 小时时进入徒步起点（POI），系统强制阻断并提示“剩余光照不足，无法确保徒步安全”。",
+    "threshold": 60,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "HARD_BLOCK",
+      "priority": 92,
+      "conditions": [
+        "solar.minutesToSunset < 60"
+      ]
+    }
+  },
+  {
+    "ruleId": "iceland_visibility_speed_down",
+    "enabled": false,
+    "description": "当能见度低于 500 米，系统自动将该路段的预计行驶时间延长 2.5 倍，确保用户行程时间预估准确。",
+    "threshold": 500,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "SPEED_FACTOR_DOWN",
+      "priority": 85,
+      "conditions": [
+        "weather.visibilityMeters < 500"
+      ],
+      "speedFactor": 0.4
+    }
+  },
+  {
+    "ruleId": "iceland_wind_small_car_block",
+    "enabled": true,
+    "description": "High wind + small car hard block",
+    "threshold": null,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "HARD_BLOCK",
+      "priority": 100,
+      "conditions": [
+        "weather.windSpeedKph > 50",
+        "vehicle.type = SMALL_CAR"
+      ]
+    }
+  },
+  {
+    "ruleId": "is_extreme_low_visibility_block",
+    "enabled": true,
+    "description": "极低能见度条件下阻止继续执行长距离驾驶计划",
+    "threshold": 50,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "HARD_BLOCK",
+      "priority": 96,
+      "conditions": [
+        "weather.visibilityMeters < 50",
+        "weather.confidenceScore >= 0.7"
+      ]
+    }
+  },
+  {
+    "ruleId": "is_froad_heavy_rain_reroute",
+    "enabled": true,
+    "description": "F-road 强降水增加路况和涉水不确定性（产品风险阈值，非官方法规）",
+    "threshold": 10,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "RE_ROUTE",
+      "priority": 93,
+      "conditions": [
+        "segment.type = F_ROAD",
+        "weather.precipitationMm > 10",
+        "weather.confidenceScore >= 0.7"
+      ]
+    }
+  },
+  {
+    "ruleId": "is_froad_high_wind_reroute",
+    "enabled": true,
+    "description": "F-road 遭遇强风时优先寻找替代路线",
+    "threshold": 60,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "RE_ROUTE",
+      "priority": 94,
+      "conditions": [
+        "segment.type = F_ROAD",
+        "weather.windSpeedKph > 60"
+      ]
+    }
+  },
+  {
+    "ruleId": "is_froad_small_car_block",
+    "enabled": true,
+    "description": "F-road 不允许普通小型两驱车按计划通行",
+    "threshold": null,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "HARD_BLOCK",
+      "priority": 100,
+      "conditions": [
+        "segment.type = F_ROAD",
+        "user.vehicle_type in (SEDAN, COMPACT)"
+      ]
+    }
+  },
+  {
+    "ruleId": "is_froad_very_low_visibility_block",
+    "enabled": true,
+    "description": "F-road 且能见度低于100米，阻止继续按原路线执行",
+    "threshold": 100,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "HARD_BLOCK",
+      "priority": 98,
+      "conditions": [
+        "segment.type = F_ROAD",
+        "weather.visibilityMeters < 100"
+      ]
+    }
+  },
+  {
+    "ruleId": "is_low_visibility_speed_down",
+    "enabled": true,
+    "description": "低能见度降低驾驶速度预期",
+    "threshold": 200,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "SPEED_FACTOR_DOWN",
+      "priority": 81,
+      "conditions": [
+        "weather.visibilityMeters < 200"
+      ],
+      "speedFactor": 0.5
+    }
+  },
+  {
+    "ruleId": "is_rain_visibility_reroute",
+    "enabled": true,
+    "description": "强降雨并伴随较差能见度，建议改变路线或时间",
+    "threshold": 10,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "RE_ROUTE",
+      "priority": 88,
+      "conditions": [
+        "weather.precipitationMm > 10",
+        "weather.visibilityMeters < 300",
+        "weather.confidenceScore >= 0.7"
+      ]
+    }
+  },
+  {
+    "ruleId": "is_small_car_extreme_wind_block",
+    "enabled": true,
+    "description": "小型车辆遭遇极强风时阻止继续按原计划驾驶",
+    "threshold": 80,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "HARD_BLOCK",
+      "priority": 97,
+      "conditions": [
+        "weather.windSpeedKph > 80",
+        "user.vehicle_type in (SEDAN, COMPACT)"
+      ]
+    }
+  },
+  {
+    "ruleId": "is_small_car_high_wind_warning",
+    "enabled": true,
+    "description": "小型车辆遇较强风，进入驾驶风险状态（>50 仅 WARNING，避免误杀行程）",
+    "threshold": 50,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "WARNING",
+      "priority": 80,
+      "conditions": [
+        "weather.windSpeedKph > 50",
+        "user.vehicle_type in (SEDAN, COMPACT)"
+      ]
+    }
+  },
+  {
+    "ruleId": "is_small_car_severe_wind_reroute",
+    "enabled": true,
+    "description": "小型车辆遭遇严重强风，建议改变路线或延迟",
+    "threshold": 70,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "RE_ROUTE",
+      "priority": 91,
+      "conditions": [
+        "weather.windSpeedKph > 70",
+        "user.vehicle_type in (SEDAN, COMPACT)"
+      ]
+    }
+  },
+  {
+    "ruleId": "is_snow_low_visibility_block",
+    "enabled": true,
+    "description": "积雪与极低能见度同时出现时停止原驾驶计划",
+    "threshold": 100,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "HARD_BLOCK",
+      "priority": 99,
+      "conditions": [
+        "weather.snowDepthCm > 5",
+        "weather.visibilityMeters < 100"
+      ]
+    }
+  },
+  {
+    "ruleId": "is_snow_small_car_reroute",
+    "enabled": true,
+    "description": "明显积雪环境下小型车辆建议改线或延迟",
+    "threshold": 10,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "RE_ROUTE",
+      "priority": 90,
+      "conditions": [
+        "weather.snowDepthCm > 10",
+        "user.vehicle_type in (SEDAN, COMPACT)"
+      ]
+    }
+  },
+  {
+    "ruleId": "wind_small_car_hard_block_v1",
+    "enabled": true,
+    "description": "Shared fallback: wind > 50 kph + small car",
+    "threshold": null,
+    "params": {
+      "kind": "CONFLICT_MATRIX",
+      "effect": "HARD_BLOCK",
+      "priority": 95,
+      "conditions": [
+        "weather.windSpeedKph > 50",
+        "vehicle.type = SMALL_CAR"
+      ]
+    }
+  },
+  {
+    "ruleId": "wind_speed_drive_limit_v1",
+    "enabled": true,
+    "description": "",
+    "threshold": 50,
+    "params": {
+      "unit": "kph"
+    }
+  }
+]

@@ -42,6 +42,18 @@ import {
   type EvidenceFactV1,
 } from '../harness/hardening/evidence.contract';
 import {
+  adaptLiveEvidenceFactV1,
+  buildLiveFeasibilityClaims,
+  compileSystem1AcquisitionPlan,
+  createLiveFeasibilityFetcher,
+  ensureSystem1CrePlan,
+  executeEvidenceAcquisition,
+  mergeSystem1Evidence,
+  projectSystem1TurnTrace,
+  runSystem1DecisionRuntime,
+} from '../system1-runtime';
+import { evaluateClaimGroundingForHarness } from '../harness/hardening/claim-grounding-eval.util';
+import {
   projectTravelWorldStateForTurn,
   echoTravelWorldStateObservability,
   readTravelWorldStateSeedFromOptions,
@@ -167,7 +179,7 @@ export async function tryBuildLiveExecutionFastPath(
   const host = bindLiveExecutionSensorHostFromAgent(agent);
   const message = resolveRouteAndRunUserMessage(request);
   const tripId = request.trip_id?.trim();
-  const evidence: LiveEvidenceFactV1[] = [];
+  const liveFacts: LiveEvidenceFactV1[] = [];
   const sensorAudit: Array<{ source: string; ok: boolean; detail?: string }> = [];
 
   /** 请求侧可注入（测试 / 上游已采） */
@@ -182,7 +194,7 @@ export async function tryBuildLiveExecutionFastPath(
       }
     | undefined;
   if (injected) {
-    evidence.push(
+    liveFacts.push(
       ...collectLiveEvidenceFromSensorBlocks({
         weatherBlock: injected.weather_block,
         roadBlock: injected.road_block,
@@ -191,58 +203,87 @@ export async function tryBuildLiveExecutionFastPath(
         ontologyRoadAggregate: injected.road_aggregate,
       }),
     );
-    sensorAudit.push({ source: 'injected', ok: evidence.length > 0 });
+    sensorAudit.push({ source: 'injected', ok: liveFacts.length > 0 });
   }
 
   const skipHost = injected?.skip_host_fetch === true;
+  let system1Evidence = adaptLiveEvidenceFactV1(liveFacts);
+  const crePlan = ensureSystem1CrePlan({
+    family: 'LIVE_FEASIBILITY',
+    message,
+    tripId,
+    hints: {
+      message,
+      tripId: tripId ?? null,
+      travelMode: 'SELF_DRIVE',
+      destinationKnown: Boolean(tripId),
+      hasWeather: liveFacts.some((f) => f.key === 'weather'),
+      hasRoadStatus: liveFacts.some((f) => f.key === 'road'),
+    },
+  });
+  const compiled = compileSystem1AcquisitionPlan({
+    family: 'LIVE_FEASIBILITY',
+    evidence: system1Evidence,
+    tripId,
+    skipExternalFetch: skipHost,
+    crePlan,
+  });
+  const required = compiled.required;
+  const acquisitionPlan = compiled.plan;
 
-  if (!skipHost && host.fetchLiveWeatherBlock) {
-    try {
-      const w = await host.fetchLiveWeatherBlock({ request, tripId });
-      if (w) {
-        evidence.push(
-          ...collectLiveEvidenceFromSensorBlocks({
-            weatherBlock: w.block,
-            weatherRiskZh: w.riskZh,
-          }),
-        );
-        sensorAudit.push({ source: 'weather_mcp', ok: true });
-      } else {
-        sensorAudit.push({ source: 'weather_mcp', ok: false, detail: 'empty' });
-      }
-    } catch (e: any) {
-      host.logger?.warn?.(
-        `[LiveExecutionFastPath] weather fetch failed: ${e?.message ?? e}`,
-      );
-      sensorAudit.push({ source: 'weather_mcp', ok: false, detail: String(e?.message ?? e) });
-    }
-  }
-  if (!skipHost && host.fetchLiveRoadBlock) {
-    try {
-      const r = await host.fetchLiveRoadBlock({ request, tripId });
-      if (r) {
-        evidence.push(
-          ...collectLiveEvidenceFromSensorBlocks({
-            roadBlock: r.block,
-            roadAlertZh: r.alertZh,
-            ontologyRoadAggregate: r.aggregate,
-          }),
-        );
-        sensorAudit.push({ source: 'safetravel_or_road', ok: true });
-      } else {
-        sensorAudit.push({ source: 'safetravel_or_road', ok: false, detail: 'empty' });
-      }
-    } catch (e: any) {
-      host.logger?.warn?.(
-        `[LiveExecutionFastPath] road fetch failed: ${e?.message ?? e}`,
-      );
+  if (!skipHost && acquisitionPlan.fetchKeys.length > 0) {
+    const acquired = await executeEvidenceAcquisition({
+      plan: acquisitionPlan,
+      fetch: createLiveFeasibilityFetcher({ host, request, tripId }),
+    });
+    system1Evidence = mergeSystem1Evidence([system1Evidence, acquired.evidence]);
+    for (const row of acquired.plan.fetchLog ?? []) {
       sensorAudit.push({
-        source: 'safetravel_or_road',
-        ok: false,
-        detail: String(e?.message ?? e),
+        source: `acquisition:${row.key}`,
+        ok: row.ok,
+        detail: row.detail,
       });
     }
+    Object.assign(acquisitionPlan, {
+      fetchedKeys: acquired.plan.fetchedKeys,
+      fetchLog: acquired.plan.fetchLog,
+    });
+    for (const e of acquired.evidence) {
+      if (e.status === 'UNAVAILABLE') continue;
+      if (e.key === 'weather.wind') {
+        liveFacts.push({
+          key: 'weather',
+          valueZh: typeof e.value === 'string' ? e.value : String(e.value ?? ''),
+          freshness: e.status === 'VERIFIED' ? 'LIVE' : e.status === 'STALE' ? 'STALE' : 'ASSUMED',
+          source: e.sourceRef ?? e.provenance?.provider,
+        });
+      }
+      if (e.key === 'route.status') {
+        liveFacts.push({
+          key: 'road',
+          valueZh: typeof e.value === 'string' ? e.value : String(e.value ?? ''),
+          freshness: e.status === 'VERIFIED' ? 'LIVE' : e.status === 'STALE' ? 'STALE' : 'ASSUMED',
+          source: e.sourceRef ?? e.provenance?.provider,
+        });
+      }
+    }
   }
+
+  const evidence: LiveEvidenceFactV1[] = liveFacts;
+
+  const postCompiled = compileSystem1AcquisitionPlan({
+    family: 'LIVE_FEASIBILITY',
+    evidence: system1Evidence,
+    tripId,
+    skipExternalFetch: skipHost,
+    alreadyFetched: acquisitionPlan.fetchedKeys ?? acquisitionPlan.fetchKeys,
+    crePlan,
+  });
+  const acquisition = {
+    ...postCompiled.plan,
+    fetchedKeys: acquisitionPlan.fetchedKeys ?? [],
+    fetchLog: acquisitionPlan.fetchLog ?? [],
+  };
 
   const pipe = runLiveExecutionPipeline({
     contract,
@@ -254,7 +295,51 @@ export async function tryBuildLiveExecutionFastPath(
         : null,
   });
 
-  const answerText = buildLiveExecutionAnswerZh(pipe.conclusion);
+  const adapted = mergeSystem1Evidence([
+    system1Evidence,
+    adaptLiveEvidenceFactV1(pipe.conclusion.evidence),
+  ]);
+  const runtime = runSystem1DecisionRuntime({
+    message,
+    tripId,
+    lifecycle: contract.lifecycle,
+    contract,
+    family: 'LIVE_FEASIBILITY',
+    creOperation: crePlan.operation,
+    evidence: adapted,
+    acquisition,
+    requiredEvidence: required,
+    cre: compiled.cre,
+    claims: buildLiveFeasibilityClaims({
+      conclusionZh: pipe.conclusion.conclusionZh,
+      verdict: pipe.conclusion.verdict,
+      hasEta: pipe.conclusion.evidence.some((e) => e.key === 'remaining_drive_hours'),
+      etaText: pipe.conclusion.evidence.find((e) => e.key === 'remaining_drive_hours')?.valueZh,
+      hasWeather: adapted.some((e) => e.key === 'weather.wind' && e.status !== 'UNAVAILABLE'),
+      weatherText: adapted.find((e) => e.key === 'weather.wind')
+        ? String(adapted.find((e) => e.key === 'weather.wind')?.value ?? '')
+        : undefined,
+    }),
+    draftAnswer: pipe.conclusion.conclusionZh,
+  });
+
+  if (
+    pipe.conclusion.verdict === 'YES' &&
+    runtime.routeDecision.answerMode !== 'STRONG'
+  ) {
+    pipe.conclusion.verdict = 'CONDITIONAL';
+    pipe.conclusion.conclusionZh +=
+      '（关键证据不足或过期，已降为有条件判断，不会自动改行程。）';
+  } else if (
+    runtime.sufficiency?.status === 'CONFLICTED' &&
+    pipe.conclusion.verdict !== 'NO'
+  ) {
+    pipe.conclusion.verdict = 'CONDITIONAL';
+    pipe.conclusion.conclusionZh += '（证据冲突，System1 不仲裁，建议升级 System2。）';
+  }
+  runtime.finalAnswer = buildLiveExecutionAnswerZh(pipe.conclusion);
+
+  const answerText = runtime.finalAnswer;
   const travelingProjection = buildTravelingExecutionConclusion({
     answer_text: pipe.conclusion.conclusionZh,
     weather_risk_zh: evidence.find((e) => e.key === 'weather')?.valueZh,
@@ -268,7 +353,7 @@ export async function tryBuildLiveExecutionFastPath(
   });
 
   host.logger?.log?.(
-    `[LiveExecutionFastPath] verdict=${pipe.conclusion.verdict} evidence=${evidence.length} request_id=${request.request_id}`,
+    `[LiveExecutionFastPath] verdict=${pipe.conclusion.verdict} evidence=${evidence.length} cre=${crePlan.operation}/${crePlan.nextAction} fetch=${(acquisition.fetchedKeys ?? []).join(',') || '-'} request_id=${request.request_id}`,
   );
 
   const evidenceContract: EvidenceFactV1[] = pipe.conclusion.evidence.map((e) => ({
@@ -296,6 +381,7 @@ export async function tryBuildLiveExecutionFastPath(
       transitionOk: transition.ok,
       transitionReason: transition.ok ? transition.rule : (transition as any).reason,
       evidence: evidenceContract,
+      claimGrounding: evaluateClaimGroundingForHarness(runtime),
       attemptedCapabilities: ['ANSWER', 'QUERY_RISK'],
       resultStatus: 'OK',
       conclusionStrength: liveVerdictToStrength(pipe.conclusion.verdict),
@@ -364,6 +450,8 @@ export async function tryBuildLiveExecutionFastPath(
   if (response.result?.payload) {
     (response.result.payload as any).live_sensor_audit = sensorAudit;
     (response.result.payload as any).travel_world_state = worldStateEcho;
+    (response.result.payload as any).system1_runtime = projectSystem1TurnTrace(runtime);
   }
+  (response.observability as any).system1_runtime = projectSystem1TurnTrace(runtime);
   return response;
 }

@@ -5,6 +5,7 @@ import { TripConstraintSolverModule } from '../../trips/trip-constraint-solver/t
 import { DecisionSemanticsModule } from '../../trips/decision-semantics/decision-semantics.module';
 import { PoiAccessCapacityModule } from '../../poi-access-capacity/poi-access-capacity.module';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { PolicyLabModule } from '../../domain/policy-lab/policy-lab.module';
 import { ConstraintEvaluationGatewayService } from './constraint-evaluation.gateway.service';
 import { ConstraintFailurePolicyService } from './failure-policy.service';
 import { ConstraintShadowMetricsService } from './constraint-shadow-metrics.service';
@@ -16,6 +17,7 @@ import { PoiAccessConstraintProvider } from './providers/poi-access-constraint.p
 import { ScheduleConstraintProvider } from './providers/schedule-constraint.provider';
 import { PlanObjectConstraintProvider } from './providers/plan-object-constraint.provider';
 import { OntologyConstraintProvider } from './providers/ontology-constraint.provider';
+import { PolicyLabConstraintProvider } from './providers/policy-lab-constraint.provider';
 import { ConstraintAssessmentTraceService } from './services/constraint-assessment-trace.service';
 import { ConstraintAssessmentTraceController } from './controllers/constraint-assessment-trace.controller';
 import { CandidateConstraintFacade } from './services/candidate-constraint-facade.service';
@@ -24,17 +26,20 @@ import { GuardianFeasibilityCollectorService } from './services/guardian-feasibi
 import { TripOntologyGatewayBridgeService } from './services/trip-ontology-gateway-bridge.service';
 import { PlanObjectsModule } from '../plan-objects/plan-objects.module';
 import { WorldStateSnapshotModule } from '../snapshot/world-state-snapshot.module';
+import { WorldConsistencyModule } from '../../trips/decision/world-consistency/world-consistency.module';
 
 @Module({
   imports: [
     ConfigModule,
     PrismaModule,
+    PolicyLabModule,
     PoiAccessCapacityModule,
     PlanObjectsModule,
     forwardRef(() => DecisionModule),
     forwardRef(() => TripConstraintSolverModule),
     forwardRef(() => DecisionSemanticsModule),
     forwardRef(() => WorldStateSnapshotModule),
+    forwardRef(() => WorldConsistencyModule),
   ],
   controllers: [ConstraintAssessmentTraceController],
   providers: [
@@ -47,6 +52,7 @@ import { WorldStateSnapshotModule } from '../snapshot/world-state-snapshot.modul
     ScheduleConstraintProvider,
     PlanObjectConstraintProvider,
     OntologyConstraintProvider,
+    PolicyLabConstraintProvider,
     ConstraintEvaluationGatewayService,
     ConstraintShadowMetricsService,
     ConstraintAssessmentTraceService,

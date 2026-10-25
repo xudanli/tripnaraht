@@ -47,6 +47,8 @@ export class AmapHotelService {
   }
 
   isServiceAvailable(): boolean {
+    const all = this.configService?.get<string>('AMAP_ENABLED') ?? process.env.AMAP_ENABLED;
+    if (all != null && /^(0|false|off|no)$/i.test(String(all).trim())) return false;
     return Boolean(this.apiKey);
   }
 

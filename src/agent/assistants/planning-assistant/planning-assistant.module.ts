@@ -37,6 +37,7 @@ import { GoogleMapsDirectModule } from '../../../mcp/google-maps-direct.module';
 import { AirbnbModule } from '../../../mcp/airbnb.module';
 import { RestaurantDirectModule } from '../../../mcp/restaurant-direct.module';
 import { WeatherDirectModule } from '../../../mcp/weather-direct.module';
+import { QWeatherModule } from '../../../mcp/qweather.module';
 import { ExaModule } from '../../../mcp/exa.module';
 import { AmadeusModule } from '../../../mcp/amadeus.module';
 import { AmadeusDirectModule } from '../../../mcp/amadeus-direct.module';
@@ -86,6 +87,7 @@ const throttlerConfig = disableThrottler
     AirbnbModule, // Airbnb/民宿搜索服务
     RestaurantDirectModule, // 餐厅搜索服务
     WeatherDirectModule, // 天气查询服务
+    QWeatherModule, // 和风天气（国内）
     ExaModule, // Web搜索服务（Exa MCP）
     AmadeusModule, // 航班搜索服务（MCP）
     AmadeusDirectModule, // 航班搜索 Direct API（无需 MCP）

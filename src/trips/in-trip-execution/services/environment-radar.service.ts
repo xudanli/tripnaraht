@@ -77,6 +77,21 @@ export class EnvironmentRadarService {
     return rows.map((r) => this.toSummary(r));
   }
 
+  /**
+   * 一次查出 open 事件详情（含 affectedItems / alternativePlans），
+   * 供 ERC 投影 recommendationIds，避免 listOpenEvents + N 次 getEvent。
+   */
+  async listOpenEventDetails(tripId: string, userId: string): Promise<EnvironmentEventDetail[]> {
+    await this.access.assertInTripPhase(tripId);
+    await this.access.assertTripMember(tripId, userId);
+
+    const rows = await this.prisma.tripEnvironmentEvent.findMany({
+      where: { tripId, status: { in: ['open', 'voting'] } },
+      orderBy: [{ severity: 'desc' }, { detectedAt: 'desc' }],
+    });
+    return rows.map((r) => this.toDetail(r));
+  }
+
   async getEvent(tripId: string, eventId: string, userId: string): Promise<EnvironmentEventDetail> {
     await this.access.assertInTripPhase(tripId);
     await this.access.assertTripMember(tripId, userId);

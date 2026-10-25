@@ -6,9 +6,11 @@ import { TripsService } from '../../trips.service';
 import { EnvironmentRadarService } from '../../in-trip-execution/services/environment-radar.service';
 import { ExecutionAdvisoryService } from '../../trip-constraint-solver/services/execution-advisory.service';
 import { ConstraintSolverAccessService } from '../../trip-constraint-solver/services/constraint-solver-access.service';
-import { projectAttentionItemToRisk } from '../adapters/attention-queue-risk.adapter';
 import { projectDecisionProblemToRisk } from '../adapters/decision-problem-risk.adapter';
-import { projectEnvironmentEventToRisk } from '../adapters/environment-event-risk.adapter';
+import {
+  attachRiskId,
+  projectEnvironmentEventToRisk,
+} from '../adapters/environment-event-risk.adapter';
 import type {
   ActiveRisk,
   AffectedRef,
@@ -22,6 +24,7 @@ import {
   overlayUserState,
   resolveRiskById,
 } from '../utils/risk-merge.util';
+import { deriveRiskId } from '../utils/risk-key.util';
 import { ExecutionRiskUserStateService } from './execution-risk-user-state.service';
 import { ExecutionAdjustmentQueueContextService } from './execution-adjustment-queue-context.service';
 import {
@@ -68,11 +71,200 @@ export class ActiveRiskAggregationService {
   }
 
   async getRisk(tripId: string, riskId: string, userId: string): Promise<ActiveRisk | null> {
-    const risks = await this.listRisks(tripId, userId);
-    const risk = resolveRiskById(risks, riskId);
+    await this.access.assertTripMember(tripId, userId);
+    if (!riskId?.trim()) return null;
+
+    // 详情页优先环境快路径（秒级）；勿先等全量 buildMergedRisks（曾 15s+ 导致 App 详情一直转圈）
+    const envLite = await this.listEnvironmentOnlyRisks(tripId, userId, { lite: true });
+    let risk =
+      resolveRiskById(envLite, riskId) ??
+      (await this.resolveEnvironmentRiskAlias(tripId, userId, riskId, envLite, { lite: true }));
+
+    if (!risk) {
+      // 全量合并在高负载下可达 15s+；详情壳必须有上限，超时则 404 而不是无限转圈
+      const risks = await Promise.race([
+        this.buildMergedRisks(tripId, userId),
+        new Promise<ActiveRisk[]>((resolve) => setTimeout(() => resolve([]), 2_500)),
+      ]);
+      if (risks.length > 0) {
+        risk =
+          resolveRiskById(risks, riskId) ??
+          (await this.resolveEnvironmentRiskAlias(tripId, userId, riskId, risks, { lite: true }));
+      }
+    }
+
     if (!risk) return null;
+
+    if (this.knowledgeEnrichment && risk.knowledgeCode == null) {
+      try {
+        const [enriched] = await this.knowledgeEnrichment.enrichRisks([risk]);
+        if (enriched) risk = enriched;
+      } catch {
+        // enrichment optional for detail shell
+      }
+    }
+
     await this.userState.markViewed(tripId, risk.riskKey, userId);
     return risk;
+  }
+
+  /**
+   * 仅环境事件投影（与 collectSourceProjections 同源 hydrate），供 alerts 快路径与详情 ID 对齐。
+   * lite=true：跳过 getEvent hydrate + knowledge enrich，保证高负载下仍能秒级返回稳定 ID。
+   */
+  async listEnvironmentOnlyRisks(
+    tripId: string,
+    userId: string,
+    opts?: { lite?: boolean },
+  ): Promise<ActiveRisk[]> {
+    await this.access.assertTripMember(tripId, userId);
+    const projections = await this.collectEnvironmentProjections(tripId, userId, {
+      lite: opts?.lite === true,
+    });
+    if (opts?.lite || !this.knowledgeEnrichment) {
+      return filterActiveRisks(mergeRiskProjections(projections));
+    }
+    const enrichedProjections = await this.knowledgeEnrichment.enrichProjections(projections);
+    const merged = filterActiveRisks(mergeRiskProjections(enrichedProjections));
+    const enriched = await this.knowledgeEnrichment.enrichRisks(merged);
+    return filterKnowledgeNoiseForExecutionAlerts(enriched);
+  }
+
+  /**
+   * 将 summary-only 或 hydrated 环境风险 ID 解析到 canonical ActiveRisk（优先 list 结果）。
+   */
+  private async resolveEnvironmentRiskAlias(
+    tripId: string,
+    userId: string,
+    riskId: string,
+    canonicalRisks: ActiveRisk[],
+    aliasOpts?: { lite?: boolean },
+  ): Promise<ActiveRisk | null> {
+    if (!this.environmentRadar) return null;
+    try {
+      const events = await this.environmentRadar.listOpenEvents(tripId, userId);
+      const evaluatedAt = new Date().toISOString();
+      const opts = {
+        validUntil: DateTime.now().plus({ hours: 6 }).toISO(),
+        referenceDate: DateTime.now().toISODate() ?? undefined,
+        evaluatedAt,
+      };
+      for (const summary of events) {
+        const summaryProj = projectEnvironmentEventToRisk(summary, opts);
+        const summaryId = deriveRiskId(tripId, summaryProj.riskKey);
+
+        // lite：只用 summary ID；仍把「仅 summary 命中」的 canonical 风险返回（与 alerts 快路径对齐）
+        if (aliasOpts?.lite) {
+          if (riskId === summaryId) {
+            return (
+              resolveRiskById(canonicalRisks, summaryId) ??
+              canonicalRisks.find((r) => r.rootEventId === summary.id) ??
+              null
+            );
+          }
+          // 旧 hydrated ID：短超时尝试 getEvent，失败则按 rootEvent 回退到 summary 风险
+          let detailId: string | null = null;
+          if (summary.affectedItemCount > 0 || summary.alternativePlanCount > 0) {
+            try {
+              const detail = await Promise.race([
+                this.environmentRadar.getEvent(tripId, summary.id, userId),
+                new Promise<null>((resolve) => setTimeout(() => resolve(null), 400)),
+              ]);
+              if (detail) {
+                detailId = deriveRiskId(
+                  tripId,
+                  projectEnvironmentEventToRisk(detail, opts).riskKey,
+                );
+              }
+            } catch {
+              detailId = null;
+            }
+          }
+          if (detailId && riskId === detailId) {
+            return (
+              resolveRiskById(canonicalRisks, summaryId) ??
+              canonicalRisks.find((r) => r.rootEventId === summary.id) ??
+              null
+            );
+          }
+          continue;
+        }
+
+        let detail = summary as Parameters<typeof projectEnvironmentEventToRisk>[0];
+        if (summary.affectedItemCount > 0 || summary.alternativePlanCount > 0) {
+          try {
+            detail = await this.environmentRadar.getEvent(tripId, summary.id, userId);
+          } catch {
+            detail = summary;
+          }
+        }
+        const detailId = deriveRiskId(tripId, projectEnvironmentEventToRisk(detail, opts).riskKey);
+        if (riskId !== summaryId && riskId !== detailId) continue;
+
+        const byDetail = resolveRiskById(canonicalRisks, detailId);
+        if (byDetail) return byDetail;
+
+        const envOnly = await this.listEnvironmentOnlyRisks(tripId, userId);
+        return (
+          resolveRiskById(envOnly, detailId) ??
+          resolveRiskById(envOnly, summaryId) ??
+          envOnly.find((r) => r.rootEventId === summary.id) ??
+          null
+        );
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  private async collectEnvironmentProjections(
+    tripId: string,
+    userId: string,
+    opts?: { lite?: boolean },
+  ): Promise<RiskSourceProjection[]> {
+    const projections: RiskSourceProjection[] = [];
+    if (!this.environmentRadar) return projections;
+    try {
+      // 一次拉详情（含 alternativePlans），lite 也保留方案 ID，避免卡片建议空泛、recommendations 对不上
+      const events =
+        typeof this.environmentRadar.listOpenEventDetails === 'function'
+          ? await this.environmentRadar.listOpenEventDetails(tripId, userId)
+          : await this.environmentRadar.listOpenEvents(tripId, userId).then(async (summaries) => {
+              const details = [];
+              for (const summary of summaries) {
+                if (opts?.lite) {
+                  details.push(summary);
+                  continue;
+                }
+                if (summary.affectedItemCount > 0 || summary.alternativePlanCount > 0) {
+                  try {
+                    details.push(
+                      await this.environmentRadar!.getEvent(tripId, summary.id, userId),
+                    );
+                  } catch {
+                    details.push(summary);
+                  }
+                } else {
+                  details.push(summary);
+                }
+              }
+              return details;
+            });
+      const evaluatedAt = new Date().toISOString();
+      for (const event of events) {
+        projections.push(
+          projectEnvironmentEventToRisk(event, {
+            validUntil: DateTime.now().plus({ hours: 6 }).toISO(),
+            referenceDate: DateTime.now().toISODate() ?? undefined,
+            evaluatedAt,
+          }),
+        );
+      }
+    } catch {
+      // in-trip phase gate
+    }
+    return projections;
   }
 
   async buildSummaryRecommendation(
@@ -116,58 +308,35 @@ export class ActiveRiskAggregationService {
 
   /** Collect raw projections — exposed for harness */
   async collectSourceProjections(tripId: string, userId: string): Promise<RiskSourceProjection[]> {
-    const projections: RiskSourceProjection[] = [];
-
-    if (this.environmentRadar) {
-      try {
-        const events = await this.environmentRadar.listOpenEvents(tripId, userId);
-        const evaluatedAt = new Date().toISOString();
-        for (const summary of events) {
-          let eventForProjection = summary;
-          if (summary.affectedItemCount > 0 || summary.alternativePlanCount > 0) {
-            try {
-              eventForProjection = await this.environmentRadar.getEvent(tripId, summary.id, userId);
-            } catch {
-              eventForProjection = summary;
-            }
-          }
-          projections.push(
-            projectEnvironmentEventToRisk(eventForProjection, {
-              validUntil: DateTime.now().plus({ hours: 6 }).toISO(),
-              referenceDate: DateTime.now().toISODate() ?? undefined,
-              evaluatedAt,
-            }),
-          );
-        }
-      } catch {
-        // in-trip phase gate
-      }
-    }
+    const projections: RiskSourceProjection[] = [
+      ...(await this.collectEnvironmentProjections(tripId, userId)),
+    ];
 
     if (this.decisionReadModel && isDecisionGatewayUnifiedEnabled()) {
       try {
-        const list = await this.decisionReadModel.listProblems(tripId, { queueOnly: true });
-        for (const item of list.items) {
-          if (['RESOLVED', 'DISMISSED'].includes(item.workflowStatus)) continue;
-          if (item.enforcement !== 'BLOCK' && item.enforcement !== 'REQUIRE_ADJUSTMENT') continue;
-          projections.push(projectDecisionProblemToRisk(item));
+        // 仅读投影，禁止 refresh/collect，避免 listRisks ↔ listProblems ↔ getReportFast 环
+        const list = await Promise.race([
+          this.decisionReadModel.listProblems(tripId, {
+            queueOnly: true,
+            skipCausalEnrich: true,
+            projectionOnly: true,
+          }),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 2_000)),
+        ]);
+        if (list) {
+          for (const item of list.items) {
+            if (['RESOLVED', 'DISMISSED'].includes(item.workflowStatus)) continue;
+            if (item.enforcement !== 'BLOCK' && item.enforcement !== 'REQUIRE_ADJUSTMENT') continue;
+            projections.push(projectDecisionProblemToRisk(item));
+          }
         }
       } catch {
         // gateway optional
       }
     }
 
-    if (this.tripsService) {
-      try {
-        const attention = await this.tripsService.getAttentionQueue({ tripId, limit: 50, offset: 0 });
-        for (const item of attention.items) {
-          if (item.severity !== 'critical' && item.severity !== 'high') continue;
-          projections.push(projectAttentionItemToRisk(item));
-        }
-      } catch {
-        // optional
-      }
-    }
+    // Attention 会触发 feasibility/conflicts；ERC 读路径跳过，环境事件 + decision 足够投影活跃风险
+    // （避免 listRisks → attention → SmartRoutes 再次拖死 execution-alerts）
 
     return projections;
   }
@@ -211,8 +380,11 @@ export class ActiveRiskAggregationService {
   ): Promise<string | undefined> {
     if (!this.executionAdvisory) return undefined;
     try {
-      const advisory = await this.executionAdvisory.getAdvisory(tripId, userId);
-      return advisory.causalInsight?.causalStory?.assessment ?? undefined;
+      const advisory = await Promise.race([
+        this.executionAdvisory.getAdvisory(tripId, userId),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1_500)),
+      ]);
+      return advisory?.causalInsight?.causalStory?.assessment ?? undefined;
     } catch {
       return undefined;
     }

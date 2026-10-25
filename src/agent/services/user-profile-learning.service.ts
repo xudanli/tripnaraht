@@ -1,10 +1,14 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable, Optional, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { GLOBAL_ROLLBACK_BIAS_EFFORT } from './user-preference-learning.service';
 import type { DecisionDnaEvolutionReason } from '../memory/governance/decision-dna-compliance.types';
 import { mapDecisionDnaToMemoryPatch } from '../memory/utils/decision-dna-memory.mapper';
 import type { MemoryStateV1 } from '../memory/schemas/memory-state.schema.v1';
 import { MEMORY_STATE_SCHEMA_VERSION } from '../memory/schemas/memory-state.schema.v1';
+import { TravelMemoryRuntimeService } from '../../travel-memory/runtime/travel-memory-runtime.service';
+import { resolveTravelerMemoryWriteGateMode } from '../../travel-memory/traveler-memory/resolve-write-gate-mode.util';
+import { buildDnaTraitTravelerWrites } from '../../travel-memory/traveler-memory/dirty-write-to-traveler-memory.util';
+import { bridgeWritesToTravelerMemory } from '../../travel-memory/traveler-memory/bridge-dirty-writes.util';
 
 export type DecisionDnaDto = {
   version: 1;
@@ -34,7 +38,12 @@ function toIso(d: Date): string {
 
 @Injectable()
 export class UserProfileLearningService {
-  constructor(@Optional() private readonly prisma?: PrismaService) {}
+  private readonly logger = new Logger(UserProfileLearningService.name);
+
+  constructor(
+    @Optional() private readonly prisma?: PrismaService,
+    @Optional() private readonly travelMemory?: TravelMemoryRuntimeService,
+  ) {}
 
   /**
    * Sync Decision DNA into `UserProfile.preferences.decision_dna`.
@@ -111,7 +120,29 @@ export class UserProfileLearningService {
     const prefs = (existing?.preferences as any) || {};
     prefs.decision_dna = dna;
 
-    if (params.reason) {
+    const gate = resolveTravelerMemoryWriteGateMode();
+    if (gate !== 'off') {
+      const drafts = buildDnaTraitTravelerWrites({
+        userId: uid,
+        costSensitivity: traits.cost_sensitivity,
+        timeSensitivity: traits.time_sensitivity,
+        dominantAlternative: dominant,
+        reason: params.reason,
+      });
+      const audit = bridgeWritesToTravelerMemory(
+        this.travelMemory,
+        gate,
+        'decision_dna',
+        drafts,
+        gate !== 'active',
+      );
+      this.logger.debug(
+        `[UserProfileLearning] write_gate=${gate} tm_written=${audit.written}/${audit.attempted}`,
+      );
+    }
+
+    // active：跳过 memory_state_v1 longTerm 污染；仍保留 decision_dna 兼容旧 Injector
+    if (params.reason && gate !== 'active') {
       const patch = mapDecisionDnaToMemoryPatch({
         userId: uid,
         dna,

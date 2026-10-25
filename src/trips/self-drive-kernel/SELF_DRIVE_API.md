@@ -18,14 +18,29 @@ Projection owns user experience.
 相对 `baseURL`（已含 `/api`）：
 
 ```
-GET trips/{tripId}/self-drive/context
-GET trips/{tripId}/self-drive/readiness
-GET trips/{tripId}/self-drive/daily-drive
-GET trips/{tripId}/self-drive/road-segments
-GET trips/{tripId}/self-drive/advisories
-GET trips/{tripId}/self-drive/evidence
-GET trips/{tripId}/self-drive/alternatives
+GET  trips/{tripId}/self-drive/context
+GET  trips/{tripId}/self-drive/readiness
+GET  trips/{tripId}/self-drive/daily-drive
+GET  trips/{tripId}/self-drive/road-segments
+GET  trips/{tripId}/self-drive/advisories
+GET  trips/{tripId}/self-drive/evidence
+GET  trips/{tripId}/self-drive/alternatives
+
+# 全球统一自驾设置（iOS 用 data.countryCode 分支）
+GET   trips/{tripId}/self-drive/driving-settings
+PATCH trips/{tripId}/self-drive/driving-settings
+POST  trips/{tripId}/self-drive/driving-settings/preview-impact
+POST  trips/{tripId}/self-drive/driving-settings/reevaluate
+
+# 国家能力包（免登录）
+GET   self-drive/capabilities?countryCode=IS
+
+# 管理端
+GET   trips/admin/{tripId}/self-drive/driving-settings
+PATCH trips/admin/{tripId}/self-drive/driving-settings
 ```
+
+旧路径 `/iceland-self-drive/trips/{tripId}/driving-settings*` 仍兼容；新产品请走本门面。
 
 ### Query
 
@@ -33,6 +48,19 @@ GET trips/{tripId}/self-drive/alternatives
 |------|------|
 | `dayIndex` | 1-based，可选 |
 | `date` | `YYYY-MM-DD`，可选，作 localDate |
+
+### driving-settings 响应要点
+
+```ts
+{
+  schemaId: 'tripnara.self_drive_driving_settings@v1'
+  countryCode: 'IS' | 'CN' | 'NZ' | string
+  destinationPackId: string
+  capabilities: DestinationSelfDriveCapabilities  // iOS 按此决定展示项
+  tripId, contextVersion, items: [...]            // 与旧 iceland 设置同形
+}
+```
+
 
 ## 主读：`daily-drive`
 

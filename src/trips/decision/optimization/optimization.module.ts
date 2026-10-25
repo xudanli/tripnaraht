@@ -20,7 +20,7 @@
  * - 公理验证确保系统一致性
  */
 
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 
 // Phase 1: 目标函数 + 显式优化器
 import { ObjectiveFunctionService } from './objective-function.service';
@@ -38,6 +38,7 @@ import { CGUSSearchService } from './cgus-search.service';
 import { MultiStepPlanningService } from './planning/multi-step-planning.service';
 import { DifferentiableDecisionService } from './differentiable/differentiable-decision.service';
 import { InformationGainService } from './exploration/information-gain.service';
+import { WorldConsistencyModule } from '../world-consistency/world-consistency.module';
 import { MetaPolicyService } from './meta/meta-policy.service';
 import { ExperienceRoutingPolicyService } from '../policies/experience-routing-policy.service';
 import { LagrangianConstraintService } from './theory/lagrangian-constraint.service';
@@ -117,6 +118,7 @@ import { CANDIDATE_SCORER } from './scoring/candidate-scorer.tokens';
 @Module({
   imports: [
     PrismaModule,
+    forwardRef(() => WorldConsistencyModule),
     // Provide typed config (DecisionOSConfigService) to optimization stack.
     DecisionOSModule.forFeature({
       enableAuth: false,

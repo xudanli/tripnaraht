@@ -520,6 +520,17 @@ export function parseExplicitHotelNightScopeIndices(message: string, totalNights
     }
   }
 
+  // iOS 日程条：「推荐酒店\n\n[日程] Day4 Day 4 · 八宿」——上文未命中「第N天」时仍应收窄到该晚
+  if (indices.size === 0 && HOTEL_RECOMMEND_RE.test(msg)) {
+    const scheduleDay =
+      msg.match(/\[日程\][^\n]*?\bDay\s*(\d+)\b/i) ||
+      msg.match(/\[日程\][^\n]*?第\s*(\d+)\s*天/);
+    if (scheduleDay) {
+      const n = parseInt(scheduleDay[1], 10);
+      if (n >= 1 && n <= totalNights) indices.add(n - 1);
+    }
+  }
+
   if (indices.size === 0) return null;
   return [...indices].sort((a, b) => a - b);
 }

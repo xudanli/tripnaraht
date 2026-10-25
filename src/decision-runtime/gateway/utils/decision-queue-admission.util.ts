@@ -40,6 +40,27 @@ export function isInformOnlyContent(input: Pick<DecisionQueueAdmissionInput, 'se
   return false;
 }
 
+/**
+ * 产品决策队列不再展示的噪声：午餐窗评估、租车保险必选壳等。
+ * （仍可在 readiness / 专项页出现，不进待决策主列表。）
+ */
+export function isConsumerSuppressedDecisionNoise(
+  input: Pick<DecisionQueueAdmissionInput, 'problemId' | 'semanticKey' | 'title' | 'summary'>,
+): boolean {
+  const blob = `${input.problemId ?? ''} ${input.semanticKey ?? ''} ${input.title ?? ''} ${input.summary ?? ''}`;
+  if (
+    /meal_late|meal_gap|meal_window|MEAL_WINDOW|午餐窗|用餐窗/i.test(blob)
+  ) {
+    return true;
+  }
+  if (
+    /RENTAL_INSURANCE|REQUIRED_CHOICE\.RENTAL_INSURANCE|租车保险|选择哪种租车保险/i.test(blob)
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export function inferEnforcementForQueue(
   enforcement: ConstraintEnforcement,
   input: Pick<DecisionQueueAdmissionInput, 'semanticKey' | 'title' | 'summary'>,
@@ -50,6 +71,8 @@ export function inferEnforcementForQueue(
 
 export function qualifiesForDecisionQueue(input: DecisionQueueAdmissionInput): boolean {
   if (TERMINAL_STATUSES.has(input.workflowStatus)) return false;
+
+  if (isConsumerSuppressedDecisionNoise(input)) return false;
 
   if (
     input.excludePlanObjectPlanning &&

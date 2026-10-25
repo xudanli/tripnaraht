@@ -11,21 +11,28 @@ import { PrismaTravelMemoryLedgerService } from './ledger/prisma-travel-memory-l
 import { MemoryAccountabilityService } from './runtime/memory-accountability.service';
 import { MemoryAccountabilityController } from './runtime/memory-accountability.controller';
 import { TravelContextAssemblerService } from './context-assembly/travel-context-assembler.service';
+import { TripOverrideService } from './traveler-memory/trip-override.service';
+import { TravelerMemoryController } from './traveler-memory/traveler-memory.controller';
+import { RegistrationSeedService } from './traveler-memory/registration-seed.service';
 
 @Module({
   imports: [SharedMemoryModule, PrismaModule],
-  controllers: [MemoryAccountabilityController],
+  controllers: [MemoryAccountabilityController, TravelerMemoryController],
   providers: [
     TravelMemoryRuntimeService,
     PrismaTravelMemoryLedgerService,
     MemoryAccountabilityService,
     TravelContextAssemblerService,
+    TripOverrideService,
+    RegistrationSeedService,
   ],
   exports: [
     TravelMemoryRuntimeService,
     PrismaTravelMemoryLedgerService,
     MemoryAccountabilityService,
     TravelContextAssemblerService,
+    TripOverrideService,
+    RegistrationSeedService,
   ],
 })
 export class TravelMemoryModule {}

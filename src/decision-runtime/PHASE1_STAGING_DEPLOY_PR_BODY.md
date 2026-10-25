@@ -1,7 +1,7 @@
 # PR: [Staging] Canonical Authority Phase 1 — `EFFECTIVE_PLAN_WRITE_GUARD=SHADOW`
 
 > **用法**：`gh pr create --title "..." --body-file src/decision-runtime/PHASE1_STAGING_DEPLOY_PR_BODY.md`  
-> **Playbook**：`CANONICAL_AUTHORITY_AUDIT.md` §13 · **Env**：`.env.canonical-authority-staging.example`
+> **Playbook**：`CANONICAL_AUTHORITY_AUDIT.md` §13 · **Env**：`config/env/.env.canonical-authority-staging.example`
 
 ## Summary
 
@@ -22,7 +22,7 @@
 ### Staging env block (copy-paste)
 
 ```bash
-# Canonical Authority — Phase 1 (see .env.canonical-authority-staging.example)
+# Canonical Authority — Phase 1 (see config/env/.env.canonical-authority-staging.example)
 LEGACY_MUTATION_WRITE_GUARD=ENFORCE
 ASYNC_MUTATION_WRITE_GUARD=ENFORCE
 AGENTIC_MUTATION_WRITE_GUARD=ENFORCE
@@ -119,5 +119,5 @@ EFFECTIVE_PLAN_WRITE_GUARD=OFF
 ## References
 
 - `src/decision-runtime/CANONICAL_AUTHORITY_AUDIT.md` §13 Rollout Playbook
-- `.env.canonical-authority-staging.example`
+- `config/env/.env.canonical-authority-staging.example`
 - `npm run harness:authority`

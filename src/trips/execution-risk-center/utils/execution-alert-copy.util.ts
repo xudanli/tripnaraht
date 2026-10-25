@@ -53,16 +53,36 @@ export function projectExecutionAlertCopy(
     splitAssessmentAndRecommendation(rawAssessment);
   const hazardWindMps = resolveAuthoritativeWindMps(risk, ctx);
 
+  const stopWeatherAction =
+    risk.executionGate === 'STOP' &&
+    (risk.type === 'ENVIRONMENT' || risk.code.startsWith('WEATHER_'))
+      ? /16:00|签到|不可达|check-?in/i.test(`${risk.title} ${risk.summary}`)
+        ? '立即改签/推迟 16:00 雷尼斯黑沙滩签到，或改室内低暴露备选（今日按时抵达已不可达）'
+        : '暂缓出发，等待风力回落后再上路；必要时推迟签到或改低暴露备选'
+      : undefined;
+
+  const stabilityAction =
+    !stopWeatherAction &&
+    (risk.type === 'ENVIRONMENT' || risk.code.startsWith('WEATHER_')) &&
+    /稳定性下降|阵风\s*18|18m\/s\+/i.test(`${risk.title} ${risk.summary}`)
+      ? '推荐方案 D：替换附近室内活动 → 加油 → 今晚酒店（原计划稳定性下降，缓冲仅 10 分钟）'
+      : undefined;
+
+  // STOP 强风下禁止把「提前 N 分钟出发」当作主建议（与硬安全门禁冲突）
   const recommendedAction =
     ctx.recommendedAction ??
-    (advanceMinutes != null ? buildAdvanceDepartureAction(risk, route, advanceMinutes) : undefined) ??
+    stopWeatherAction ??
+    stabilityAction ??
+    (advanceMinutes != null && risk.executionGate !== 'STOP'
+      ? buildAdvanceDepartureAction(risk, route, advanceMinutes)
+      : undefined) ??
     splitAction;
 
   if (isStructuredTravelAssessment(body)) {
     return {
       title: buildWeatherStopTitle(risk, route, hazardWindMps),
       reason: body,
-      recommendedAction,
+      recommendedAction: recommendedAction ?? stopWeatherAction ?? stabilityAction,
     };
   }
 
@@ -71,7 +91,7 @@ export function projectExecutionAlertCopy(
     return {
       title: buildWeatherStopTitle(risk, route, hazardWindMps),
       reason,
-      recommendedAction,
+      recommendedAction: recommendedAction ?? stopWeatherAction ?? stabilityAction,
     };
   }
 

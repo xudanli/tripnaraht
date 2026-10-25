@@ -58,6 +58,9 @@ describe('tryBuildItineraryDayViewFastPath', () => {
     expect(turn?.cards?.some((c: { kind: string }) => c.kind === 'trip_fact')).toBe(true);
     expect(turn?.cards?.some((c: { kind: string }) => c.kind === 'gate_risk')).toBe(false);
     expect((out!.result.payload as any).day_view?.body_zh).toBeTruthy();
+    expect((out!.observability as any).system1_runtime?.family).toBe('TRIP_QUERY_DAY');
+    expect((out!.observability as any).system1_runtime?.sufficiency).toBe('SUFFICIENT');
+    expect((out!.observability as any).system1_runtime?.answer_mode).toBe('STRONG');
   });
 
   it('returns null without tripsService', async () => {

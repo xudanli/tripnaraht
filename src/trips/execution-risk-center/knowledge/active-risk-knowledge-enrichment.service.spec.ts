@@ -39,6 +39,8 @@ describe('ActiveRiskKnowledgeEnrichmentService', () => {
     expect(enriched[0]?.matchedRuleId).toBe('SR-ENV-WIND-01-REPLAN-15');
     expect(enriched[0]?.isRootCause).toBe(true);
     expect(enriched[0]?.executionGate).toBe('REPLAN_REQUIRED');
+    expect(enriched[0]?.constraintBinding?.primaryTemplateId).toBe('c_world_feasibility');
+    expect(enriched[0]?.constraintBinding?.anyBlocked).toBe(true);
 
     const merged = filterActiveRisks(mergeRiskProjections(enriched));
     const risks = await enrichment.enrichRisks(merged);

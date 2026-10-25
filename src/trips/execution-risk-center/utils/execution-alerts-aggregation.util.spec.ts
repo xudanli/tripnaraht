@@ -236,7 +236,7 @@ describe('execution-alerts-aggregation.util', () => {
       advisoryDetail: primary.summary,
     });
     expect(rec?.detail).not.toBe(primary.summary);
-    expect(rec?.title).toBe('优先确认替代路线');
+    expect(rec?.title).toMatch(/改签 16:00 签到|暂缓出发/);
   });
 
   it('localizes English causal impact labels for derived schedule risks when primary is AT_RISK', () => {

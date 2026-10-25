@@ -48,6 +48,8 @@ export type WriteCandidateRequest = {
   turnId?: string;
   decisionId?: string;
   episodeId?: string;
+  /** 可选：显式证据链（Traveler Memory Contract） */
+  evidenceRefs?: import('../types/memory-evidence-ref.types').MemoryEvidenceRefV1[];
 };
 
 export type WriteCandidateResult =

@@ -759,10 +759,62 @@ model RouteTemplate {
   createdAt             DateTime       @default(now())
   updatedAt             DateTime       @updatedAt
   routeDirection        RouteDirection @relation(fields: [routeDirectionId], references: [id], onDelete: Cascade)
+  packingChecklist      RoutePackingChecklist?
+  budgetEstimate        RouteBudgetEstimate?
 
   @@index([routeDirectionId])
   @@index([routeDirectionId, durationDays])
   @@index([isActive])
+}
+
+/// 路线模板级打包清单（硬关联 RouteTemplate，1 模板 1 清单）
+model RoutePackingChecklist {
+  id               String        @id @default(uuid()) @db.Uuid
+  routeTemplateId  Int           @unique
+  countryCode      String
+  nameCN           String?
+  nameEN           String?
+  version          String        @default("1.0.0")
+  isActive         Boolean       @default(true)
+  templateData     Json
+  lastReviewedAt   DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  routeTemplate    RouteTemplate @relation(fields: [routeTemplateId], references: [id], onDelete: Cascade)
+
+  @@index([countryCode, isActive])
+  @@index([isActive])
+  @@map("route_packing_checklists")
+}
+
+/// 路线模板级预算估算（硬关联 RouteTemplate，1 模板 1 份；按天明细）
+model RouteBudgetEstimate {
+  id               String        @id @default(uuid()) @db.Uuid
+  routeTemplateId  Int           @unique
+  countryCode      String
+  currency         String        @default("CNY")
+  partySize        Int           @default(2)
+  vehicleType      String?
+  nameCN           String?
+  nameEN           String?
+  version          String        @default("1.0.0")
+  isActive         Boolean       @default(true)
+  assumptions      String?
+  /// 按天费用：[{ day, tickets?, fuel?, charging?, parking?, accommodation?, other?, dayTotal? }]
+  dayBudgets       Json
+  /// 分类合计（可由 dayBudgets 汇总）
+  categoryTotals   Json?
+  /// 整趟合计：{ min?, max?, amount?, perPerson? }
+  totals           Json
+  lastReviewedAt   DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  routeTemplate    RouteTemplate @relation(fields: [routeTemplateId], references: [id], onDelete: Cascade)
+
+  @@index([countryCode, isActive])
+  @@index([currency, isActive])
+  @@index([isActive])
+  @@map("route_budget_estimates")
 }
 
 model StarCityPriceDetail {
@@ -2023,6 +2075,7 @@ model ExecutionRiskKnowledgeVersion {
   causalChains    ExecutionRiskCausalChain[]
   actions         ExecutionRiskInterventionAction[]
   codeMappings    ExecutionRiskCodeMapping[]
+  constraintBindings ExecutionRiskConstraintBinding[]
 
   @@map("execution_risk_knowledge_versions")
 }
@@ -2111,6 +2164,42 @@ model ExecutionRiskCodeMapping {
   @@unique([knowledgeVersionId, knowledgeCode])
   @@index([canonicalCode])
   @@map("execution_risk_code_mappings")
+}
+
+/// 风险知识 ↔ 行程约束桥接（配置层）：severity 门禁命中后应对齐哪类约束 / 模板 / 可行维度
+model ExecutionRiskConstraintBinding {
+  id                   String   @id @db.VarChar(64)
+  /// null = 全局目录（不绑知识版本）；有值则随版本级联
+  knowledgeVersionId   String?  @map("knowledge_version_id") @db.VarChar(32)
+  knowledgeCode        String   @map("knowledge_code") @db.VarChar(64)
+  /// 可选：仅当门禁达到该级别时生效；null=任意级别
+  severityLevel        String?  @map("severity_level") @db.VarChar(32)
+  /// TripConstraintCategory: SAFETY / TIME / TRANSPORT / MEMBER / WORLD_STATE …
+  constraintCategory   String   @map("constraint_category") @db.VarChar(32)
+  /// HARD | SOFT | EXTERNAL
+  constraintType       String   @map("constraint_type") @db.VarChar(16)
+  /// 约束模板/合成 ID，如 c_official_is_wind_safety、c_no_night_drive
+  constraintTemplateId String   @map("constraint_template_id") @db.VarChar(64)
+  /// FeasibilityDimensionKey: environment / schedule / transport / team_fit …
+  feasibilityDimension String?  @map("feasibility_dimension") @db.VarChar(32)
+  /// 建议写入的执行门禁：AT_RISK / REPLAN_REQUIRED / STOP
+  executionGate        String?  @map("execution_gate") @db.VarChar(32)
+  /// HARD_SAFETY | HARD_TIME | HARD_BOOKING | HARD_MEMBER | SOFT
+  violationClass       String?  @map("violation_class") @db.VarChar(32)
+  /// true=违反则方案不可行
+  blocked              Boolean  @default(true)
+  notesZh              String?  @map("notes_zh") @db.Text
+  status               String   @default("ACTIVE") @db.VarChar(16)
+  priority             Int      @default(100)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  knowledgeVersion     ExecutionRiskKnowledgeVersion? @relation(fields: [knowledgeVersionId], references: [id], onDelete: Cascade)
+
+  @@index([knowledgeCode, severityLevel])
+  @@index([constraintTemplateId])
+  @@index([knowledgeVersionId])
+  @@map("execution_risk_constraint_bindings")
 }
 
 /// M11: 行中体验微调查
@@ -3285,6 +3374,43 @@ model spatial_ref_sys {
   auth_srid Int?
   srtext    String? @db.VarChar(2048)
   proj4text String? @db.VarChar(2048)
+}
+
+/// Unified Decision Problem 物化投影 — 产品/Admin 列表优先读此表，避免每次 collect+因果 enrich
+model DecisionProblemProjection {
+  id              String   @id @default(cuid())
+  tripId          String   @map("trip_id")
+  problemId       String   @map("problem_id") @db.VarChar(255)
+  title           String   @db.VarChar(500)
+  summary         String?  @db.Text
+  semanticKey     String?  @map("semantic_key") @db.VarChar(255)
+  issueKind       String?  @map("issue_kind") @db.VarChar(64)
+  type            String?  @db.VarChar(64)
+  dimension       String?  @db.VarChar(64)
+  workflowStatus  String?  @map("workflow_status") @db.VarChar(64)
+  phase           String?  @db.VarChar(64)
+  categoryLabel   String?  @map("category_label") @db.VarChar(128)
+  enforcement     String?  @db.VarChar(64)
+  isOpen          Boolean  @default(true) @map("is_open")
+  isSameDayTravel Boolean  @default(false) @map("is_same_day_travel")
+  /// buildPlanningConflictsCacheKey(trip) — 与行程 revision/constraintsVersion 对齐
+  tripRevision    String   @map("trip_revision") @db.VarChar(191)
+  tripName        String?  @map("trip_name") @db.VarChar(200)
+  tripDestination String?  @map("trip_destination") @db.VarChar(16)
+  tripStatus      String?  @map("trip_status") @db.VarChar(32)
+  /// 列表项精简 JSON（不含 causal enrich）
+  listItemJson    Json?    @map("list_item_json")
+  materializedAt  DateTime @map("materialized_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([tripId, problemId])
+  @@index([tripId, isOpen])
+  @@index([isSameDayTravel, isOpen, updatedAt])
+  @@index([semanticKey])
+  @@index([issueKind, isOpen])
+  @@index([tripId, tripRevision])
+  @@map("decision_problem_projections")
 }
 
 model DecisionLog {
@@ -7160,4 +7286,282 @@ model TravelMemoryEvidence {
   @@index([memoryEventId])
   @@index([evidenceType, evidenceId])
   @@map("travel_memory_evidence")
+}
+
+/// Knowledge System Phase 5+ — durable DecisionCase (Episode projection; not runtime queue)
+model KnowledgeDecisionCase {
+  id                  String   @id @db.VarChar(64)
+  episodeId           String   @unique @map("episode_id") @db.VarChar(128)
+  tripId              String   @map("trip_id") @db.VarChar(128)
+  country             String   @db.VarChar(8)
+  decisionType        String   @map("decision_type") @db.VarChar(128)
+  situationTags       String[] @map("situation_tags")
+  riskType            String?  @map("risk_type") @db.VarChar(64)
+  situationSnapshotId String?  @map("situation_snapshot_id") @db.VarChar(128)
+  userChoiceAction    String   @map("user_choice_action") @db.VarChar(32)
+  outcomeLabel        String   @map("outcome_label") @db.VarChar(32)
+  regret              String?  @db.VarChar(16)
+  confidence          Float    @default(0)
+  /// Full KnowledgeDecisionCase JSON
+  payload             Json
+  projectedAt         DateTime @map("projected_at") @db.Timestamptz(6)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([country, decisionType])
+  @@index([tripId, projectedAt])
+  @@index([riskType])
+  @@index([outcomeLabel])
+  @@index([regret])
+  @@index([userChoiceAction])
+  @@map("knowledge_decision_cases")
+}
+
+/// Knowledge System — durable Entity Identity (CPRE / Country Pack / Admin)
+model KnowledgeEntityIdentity {
+  canonicalEntityId String   @id @map("canonical_entity_id") @db.VarChar(191)
+  entityType        String   @map("entity_type") @db.VarChar(64)
+  domain            String   @db.VarChar(32)
+  displayName       String?  @map("display_name") @db.VarChar(500)
+  aliases           String[] @default([])
+  country           String?  @db.VarChar(8)
+  status            String   @default("ACTIVE") @db.VarChar(32)
+  description       String?
+  properties        Json     @default("{}")
+  sourceRefs        Json     @default("[]") @map("source_refs")
+  /// SEED | ADMIN | CPRE_SYNC | COUNTRY_PACK | PLACE_DB
+  origin            String   @default("ADMIN") @db.VarChar(32)
+  /// Full EntityIdentity JSON bag
+  payload           Json     @default("{}")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([entityType])
+  @@index([domain])
+  @@index([country])
+  @@index([status])
+  @@index([origin])
+  @@index([displayName])
+  @@map("knowledge_entity_identities")
+}
+
+/// Knowledge System — ontology catalog projection snapshots (durable)
+model KnowledgeOntologyCatalogSnapshot {
+  id              String   @id @db.VarChar(64)
+  catalogVersion  String   @map("catalog_version") @db.VarChar(128)
+  source          String   @default("boot_projection") @db.VarChar(64)
+  note            String?
+  typeCount       Int      @default(0) @map("type_count")
+  attributeCount  Int      @default(0) @map("attribute_count")
+  predicateCount  Int      @default(0) @map("predicate_count")
+  payload         Json
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([catalogVersion])
+  @@index([createdAt(sort: Desc)])
+  @@map("knowledge_ontology_catalog_snapshots")
+}
+
+/// Knowledge System — durable ontology type rows (Admin 属性/类型管理读表)
+model KnowledgeOntologyType {
+  typeId          String   @id @map("type_id") @db.VarChar(64)
+  nameEn          String   @map("name_en") @db.VarChar(128)
+  displayName     String   @map("display_name") @db.VarChar(200)
+  kind            String   @db.VarChar(32)
+  domain          String   @db.VarChar(32)
+  description     String   @default("")
+  schemaRef       String   @default("") @map("schema_ref") @db.VarChar(255)
+  attributeIds    String[] @default([]) @map("attribute_ids")
+  status          String   @default("ACTIVE") @db.VarChar(32)
+  source          String   @default("travel-ontology-contract") @db.VarChar(64)
+  /// PROJECTION | ADMIN
+  origin          String   @default("PROJECTION") @db.VarChar(32)
+  catalogVersion  String   @map("catalog_version") @db.VarChar(128)
+  payload         Json     @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([domain])
+  @@index([kind])
+  @@index([status])
+  @@map("knowledge_ontology_types")
+}
+
+/// Knowledge System — durable ontology attribute rows（属性管理列表 SSOT）
+model KnowledgeOntologyAttribute {
+  attributeId     String   @id @map("attribute_id") @db.VarChar(191)
+  name            String   @db.VarChar(128)
+  displayName     String   @map("display_name") @db.VarChar(200)
+  label           String   @db.VarChar(200)
+  ownerTypeId     String   @map("owner_type_id") @db.VarChar(64)
+  domain          String   @db.VarChar(32)
+  valueKind       String   @map("value_kind") @db.VarChar(32)
+  enumValues      Json     @default("[]") @map("enum_values")
+  required        Boolean  @default(false)
+  description     String   @default("")
+  status          String   @default("ACTIVE") @db.VarChar(32)
+  /// PROJECTION | ADMIN
+  origin          String   @default("PROJECTION") @db.VarChar(32)
+  catalogVersion  String   @map("catalog_version") @db.VarChar(128)
+  payload         Json     @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([ownerTypeId])
+  @@index([domain])
+  @@index([valueKind])
+  @@index([status])
+  @@index([displayName])
+  @@map("knowledge_ontology_attributes")
+}
+
+/// Knowledge System — durable ontology predicate rows
+model KnowledgeOntologyPredicate {
+  predicateId     String   @id @map("predicate_id") @db.VarChar(128)
+  predicate       String   @db.VarChar(128)
+  domain          String   @db.VarChar(32)
+  description     String   @default("")
+  origin          String   @default("PROJECTION") @db.VarChar(32)
+  catalogVersion  String   @map("catalog_version") @db.VarChar(128)
+  payload         Json     @default("{}")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([domain])
+  @@map("knowledge_ontology_predicates")
+}
+
+/// Knowledge System — durable KnowledgeRelation (adapter projection + manual)
+model KnowledgeRelation {
+  relationId String   @id @map("relation_id") @db.VarChar(255)
+  type       String   @db.VarChar(64)
+  fromId     String   @map("from_id") @db.VarChar(191)
+  toId       String   @map("to_id") @db.VarChar(191)
+  confidence Float    @default(0.7)
+  source     String   @db.VarChar(32)
+  sourceRef  String?  @map("source_ref") @db.VarChar(255)
+  country    String?  @db.VarChar(8)
+  validFrom  DateTime? @map("valid_from") @db.Timestamptz(6)
+  validTo    DateTime? @map("valid_to") @db.Timestamptz(6)
+  metadata   Json     @default("{}")
+  condition  Json     @default("{}")
+  payload    Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([type])
+  @@index([fromId])
+  @@index([toId])
+  @@index([source])
+  @@index([country])
+  @@index([fromId, toId])
+  @@map("knowledge_relations")
+}
+
+/// Knowledge System — Identity sync run audit (CPRE / Country Pack)
+model KnowledgeIdentitySyncRun {
+  id           String    @id @db.VarChar(64)
+  sources      String[]  @default([])
+  status       String    @db.VarChar(32)
+  stats        Json      @default("{}")
+  errorMessage String?   @map("error_message")
+  startedAt    DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  finishedAt   DateTime? @map("finished_at") @db.Timestamptz(6)
+
+  @@index([startedAt(sort: Desc)])
+  @@map("knowledge_identity_sync_runs")
+}
+
+/// System1 Runtime Console — Decision Artifact Run（后台可查）
+model System1ConsoleRun {
+  runId              String   @id @map("run_id") @db.VarChar(64)
+  utterance          String
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  durationMs         Int      @map("duration_ms")
+  lifecycle          String   @db.VarChar(32)
+  taskType           String?  @map("task_type") @db.VarChar(64)
+  family             String?  @db.VarChar(64)
+  recommendedRoute   String   @map("recommended_route") @db.VarChar(64)
+  answerMode         String   @map("answer_mode") @db.VarChar(32)
+  sufficiency        String?  @db.VarChar(32)
+  groundingPassed    Boolean? @map("grounding_passed")
+  finalAnswer        String   @map("final_answer") @db.Text
+  /// System1TurnTrace JSON
+  trace              Json
+  projected          Json     @default("{}")
+  claimGroundingEval Json     @map("claim_grounding_eval")
+  upstream           Json     @default("{}")
+  labels             Json     @default("[]")
+  sufficiencyLabel   Json?    @map("sufficiency_label")
+
+  @@index([createdAt(sort: Desc)])
+  @@index([family])
+  @@index([answerMode])
+  @@index([taskType])
+  @@map("system1_console_runs")
+}
+
+model System1ConsoleFeedback {
+  feedbackId String   @id @map("feedback_id") @db.VarChar(64)
+  runId      String   @map("run_id") @db.VarChar(64)
+  rating     Int?
+  thumbs     String?  @db.VarChar(8)
+  category   String?  @db.VarChar(64)
+  commentZh  String?  @map("comment_zh") @db.Text
+  status     String   @default("NEW") @db.VarChar(32)
+  issueCode  String?  @map("issue_code") @db.VarChar(64)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([runId])
+  @@index([createdAt(sort: Desc)])
+  @@index([status])
+  @@map("system1_console_feedback")
+}
+
+model System1ConsoleGap {
+  gapId               String   @id @map("gap_id") @db.VarChar(64)
+  kind                String   @db.VarChar(64)
+  titleZh             String   @map("title_zh") @db.VarChar(512)
+  missingEvidenceKeys Json     @default("[]") @map("missing_evidence_keys")
+  affectedClaimTypes  Json     @default("[]") @map("affected_claim_types")
+  occurrenceCount     Int      @default(0) @map("occurrence_count")
+  priority            String   @default("MEDIUM") @db.VarChar(16)
+  status              String   @default("OPEN") @db.VarChar(32)
+  lastSeenAt          DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status])
+  @@index([priority])
+  @@index([kind])
+  @@map("system1_console_gaps")
+}
+
+model System1ConsoleToolMatrix {
+  toolId               String   @id @map("tool_id") @db.VarChar(64)
+  toolName             String   @map("tool_name") @db.VarChar(191)
+  provider             String?  @db.VarChar(128)
+  allowedClaimTypes    Json     @default("[]") @map("allowed_claim_types")
+  allowedEvidenceKeys  Json     @default("[]") @map("allowed_evidence_keys")
+  forbiddenClaimTypes  Json     @default("[]") @map("forbidden_claim_types")
+  notesZh              String?  @map("notes_zh") @db.Text
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("system1_console_tool_matrix")
+}
+
+model System1ConsoleAuthorityViolation {
+  violationId     String   @id @map("violation_id") @db.VarChar(64)
+  runId           String?  @map("run_id") @db.VarChar(64)
+  source          String   @db.VarChar(191)
+  attemptedAction String   @map("attempted_action") @db.VarChar(64)
+  reason          String   @db.VarChar(255)
+  status          String   @default("OPEN") @db.VarChar(32)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@map("system1_console_authority_violations")
 }

@@ -154,6 +154,8 @@ export class DecisionEngineGatewayService {
     return this.readModel.listProblems(tripId, {
       includeDebug: opts?.includeDebug,
       queueOnly: true,
+      // 列表默认跳过因果 enrich；includeDebug 时由 read model 打开
+      skipCausalEnrich: opts?.includeDebug !== true,
     });
   }
 

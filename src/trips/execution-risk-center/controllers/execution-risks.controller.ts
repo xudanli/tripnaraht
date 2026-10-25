@@ -179,6 +179,9 @@ export class ExecutionRisksController {
     @CurrentUser() user?: CurrentUserPayload,
   ) {
     try {
+      if (!riskId?.trim()) {
+        throw new NotFoundException('风险 id 缺失');
+      }
       const userId = this.access.resolveUserId(user);
       const risk = await this.aggregation.getRisk(tripId, riskId, userId);
       if (!risk) {
@@ -231,6 +234,9 @@ export class ExecutionRisksController {
     @CurrentUser() user?: CurrentUserPayload,
   ) {
     try {
+      if (!riskId?.trim()) {
+        throw new NotFoundException('风险 id 缺失');
+      }
       const userId = this.access.resolveUserId(user);
       const items = await this.recommendations.listForRisk(tripId, riskId, userId);
       return successResponse({ riskId, items, count: items.length });

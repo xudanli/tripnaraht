@@ -44,6 +44,26 @@ describe('destination-timezone.util', () => {
     expect(enriched.startTime).toBe('2026-08-22T09:00:00.000+08:00');
     expect(enriched.startTimeLocal).toBe('09:00');
     expect(enriched.endTimeLocal).toBe('10:00');
+    expect(enriched.startAtLocal).toBe('2026-08-22T09:00:00');
+    expect(enriched.endAtLocal).toBe('2026-08-22T10:00:00');
+    expect(enriched.startDateLocal).toBe('2026-08-22');
+    expect(enriched.endDateLocal).toBe('2026-08-22');
     expect(enriched.timezone).toBe('Asia/Shanghai');
+  });
+
+  it('keeps Iceland evening on same calendar day for device-TZ footguns', () => {
+    const enriched = withDestinationDisplayTimes(
+      {
+        id: 'glacier',
+        startTime: new Date('2026-08-29T19:04:00.000Z'),
+        endTime: new Date('2026-08-29T20:00:00.000Z'),
+      },
+      'Atlantic/Reykjavik',
+    );
+    expect(enriched.startTimeLocal).toBe('19:04');
+    expect(enriched.endTimeLocal).toBe('20:00');
+    expect(enriched.startAtLocal).toBe('2026-08-29T19:04:00');
+    expect(enriched.startDateLocal).toBe('2026-08-29');
+    expect(enriched.timezone).toBe('Atlantic/Reykjavik');
   });
 });

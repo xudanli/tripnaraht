@@ -36,11 +36,16 @@ import { DecisionRecordStoreService } from '../persistence/decision-record.store
 import { applyProblemResolutions } from '../read/apply-problem-resolution.util';
 import { buildPlanningConflictsCacheKey } from '../../trip-constraint-solver/utils/planning-conflicts-cache-key.util';
 import type { TripFeasibilityReportDto } from '../../trip-constraint-solver/types/trip-constraint-solver.types';
-import { DecisionProblemCollectorCacheStore } from './decision-problem-collector-cache.store';
+import {
+  DecisionProblemCollectorCacheStore,
+  type DecisionProblemCollectMode,
+} from './decision-problem-collector-cache.store';
 import { isDecisionProblemSsotStoreEnabled } from '../../../decision-runtime/decision-problems/decision-problem-ssot.config';
 import { DecisionProblemSynthesizerService } from '../../../decision-runtime/decision-problems/synthesizers/decision-problem-synthesizer.service';
 import { DecisionProblemSsotStoreService } from '../../../decision-runtime/decision-problems/persistence/decision-problem-ssot.store';
 import { resolveEvaluationContextVersion } from '../../../decision-runtime/constraints/utils/evaluation-context-version.util';
+
+export type { DecisionProblemCollectMode };
 
 const METADATA_DSO_KEY = 'dso';
 const SEMANTICS_SYSTEM_USER = 'decision-semantics';
@@ -72,7 +77,15 @@ export class DecisionProblemCollectorService {
     this.cache.clear(tripId);
   }
 
-  async collect(tripId: string): Promise<CollectedDecisionProblems> {
+  /**
+   * @param opts.mode `fast` — getReportFast + useRouteApi:false（列表/物化首包）；
+   *   `full` — 完整 feasibility（详情/校验）。两者 inflight/cache 分离，避免慢 full 堵住 fast。
+   */
+  async collect(
+    tripId: string,
+    opts?: { mode?: DecisionProblemCollectMode },
+  ): Promise<CollectedDecisionProblems> {
+    const mode: DecisionProblemCollectMode = opts?.mode === 'fast' ? 'fast' : 'full';
     const tripRow = await this.prisma.trip.findUnique({
       where: { id: tripId },
       select: { metadata: true, updatedAt: true },
@@ -81,24 +94,30 @@ export class DecisionProblemCollectorService {
       ? buildPlanningConflictsCacheKey(tripRow)
       : `missing:${Date.now()}`;
 
-    const cached = this.cache.get(tripId, revisionKey);
+    const cached = this.cache.get(tripId, revisionKey, mode);
     if (cached) return cached;
 
-    const inflight = this.cache.getInflight(tripId);
+    const inflight = this.cache.getInflight(tripId, mode);
     if (inflight) return inflight;
 
-    const promise = this.collectUncached(tripId, tripRow);
-    this.cache.setInflight(tripId, promise);
+    const promise = this.collectUncached(tripId, tripRow, mode);
+    this.cache.setInflight(tripId, promise, mode);
     const payload = await promise;
-    this.cache.put(tripId, revisionKey, payload);
+    this.cache.put(tripId, revisionKey, payload, mode);
     return payload;
   }
 
   private async collectUncached(
     tripId: string,
     trip: { metadata: unknown; updatedAt: Date } | null,
+    mode: DecisionProblemCollectMode,
   ): Promise<CollectedDecisionProblems> {
-    const report = await this.feasibility.getReport(tripId);
+    const report =
+      mode === 'fast'
+        ? await this.feasibility.getReportFast(tripId, {
+            conflictsQuery: { useRouteApi: false },
+          })
+        : await this.feasibility.getReport(tripId);
 
     const detectedAt = report.verifiedAt ?? new Date().toISOString();
     const tripVersion = report.currentTripVersion;

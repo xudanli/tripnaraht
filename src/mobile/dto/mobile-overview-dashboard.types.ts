@@ -263,6 +263,11 @@ export interface OverviewDashboardDto {
    */
   advisories?: OverviewDriveAdvisoryDto[];
   selfDriveKernel?: OverviewSelfDriveKernelShadowDto;
+  /**
+   * Phase 4 P2 — L1 Passive（执行首页条带）。
+   * SHADOW/L2 下通常为 null；L1 时展示「Nara 发现…」入口。
+   */
+  proactiveL1Passive?: import('./mobile-proactive-decision.types').MobileProactiveDecisionSurfaceDto['l1PassiveBanner'];
 }
 
 export const DRIVE_SESSION_SCHEMA_ID = 'tripnara.execution_drive_session@v1' as const;

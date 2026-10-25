@@ -15,6 +15,8 @@ describe('build-xhs-note-chat-cards.util', () => {
       ),
     ).toBe(true);
     expect(isXhsCommunityEvidenceConsultQuery('G318 值不值得')).toBe(true);
+    expect(isXhsCommunityEvidenceConsultQuery('八宿种草安利一下')).toBe(true);
+    expect(isXhsCommunityEvidenceConsultQuery('然乌湖口碑怎么样')).toBe(true);
     expect(isXhsCommunityEvidenceConsultQuery('推荐酒店')).toBe(false);
   });
 
@@ -23,9 +25,18 @@ describe('build-xhs-note-chat-cards.util', () => {
       '这趟行程需要注意什么值不值得，然后看看小红书怎么做',
       'G318',
     );
-    expect(k).toContain('值不值得');
     expect(k).toContain('G318');
     expect(k).not.toMatch(/小红书怎么/);
+    expect(k).not.toMatch(/值不值得/);
+  });
+
+  it('converges noisy consult asks to destination travel keyword', () => {
+    const k = buildXhsSearchKeywordFromMessage(
+      '八宿口碑怎么样，看看小红书怎么说',
+      'G318',
+    );
+    expect(k).toMatch(/G318/);
+    expect(k).not.toMatch(/口碑|小红书|怎么说/);
   });
 
   const bundle: XhsExperienceBundle = {

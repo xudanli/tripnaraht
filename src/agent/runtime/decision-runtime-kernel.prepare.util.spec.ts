@@ -321,4 +321,294 @@ describe('prepareDecisionRuntimeTick', () => {
     );
     expect(result.bundle.memory.snapshotId).toBe('snap-k');
   });
+
+  it('always shadow-resolves EffectiveTravelerContext without changing DecisionHints path', async () => {
+    const memory = minimalMemory();
+    memory.userProfile = {
+      userId: 'user-1',
+      pacePreference: 'MODERATE',
+      riskTolerance: 'MEDIUM',
+      confidence: 0.7,
+      source: 'explicit',
+      updatedAt: new Date(),
+    };
+    memory.userBasics = {
+      dietaryRestrictions: ['vegetarian'],
+    };
+
+    const result = await prepareDecisionRuntimeTick(
+      {
+        memoryContextAssembler: {
+          loadForRouteAndRun: async () => memory,
+          buildObservability: () => ({ revision: 'v1', loaded: true }),
+        },
+        hydrateRequestFitnessIfNeeded: async () => undefined,
+        agentExecutionContextFactory: {
+          createFromFrozenMemory: (m) => ({
+            requestId: m.requestId,
+            snapshotId: m.snapshotId,
+            snapshotVersion: m.snapshotVersion,
+            executionBinding: {
+              snapshot_id: m.snapshotId,
+              snapshot_version: m.snapshotVersion,
+              request_id: m.requestId,
+            },
+          }),
+        },
+        getEntryResponses: () => ({
+          createReplayMemoryPersistenceUnavailableResponse: () => ({}) as any,
+          createReplayMemorySnapshotNotFoundResponse: () => ({}) as any,
+        }),
+      },
+      {
+        request_id: 'req-etc-shadow',
+        user_id: 'user-1',
+        message: 'hello',
+        trip_id: 'trip-1',
+      } as RouteAndRunRequestDto,
+      Date.now(),
+    );
+
+    expect(result.bundle.effectiveTravelerContext?.consumptionMode).toBe(
+      'SHADOW',
+    );
+    expect(result.bundle.effectiveTravelerContext?.effective.pace?.value).toBe(
+      'MODERATE',
+    );
+    expect(
+      result.bundle.effectiveTravelerContext?.effective.dietaryConstraints
+        ?.value,
+    ).toEqual(['vegetarian']);
+    expect(result.bundle.tickObs.effective_traveler_context).toEqual(
+      expect.objectContaining({
+        consumptionMode: 'SHADOW',
+        itemCount: expect.any(Number),
+      }),
+    );
+    expect(result.bundle.memory.observability.layers).toContain(
+      'effective_traveler_context_shadow',
+    );
+    expect(result.bundle.execCtx.effectiveTravelerContext?.consumptionMode).toBe(
+      'SHADOW',
+    );
+    // M1：未接 TMR consume 时不应注入 decision hints
+    expect(result.bundle.execCtx.travelMemoryDecisionHints).toBeUndefined();
+  });
+
+  it('marks ETC ACTIVE when EFFECTIVE_TRAVELER_CONTEXT_CONSUME=active', async () => {
+    const prev = process.env.EFFECTIVE_TRAVELER_CONTEXT_CONSUME;
+    process.env.EFFECTIVE_TRAVELER_CONTEXT_CONSUME = 'active';
+    const memory = minimalMemory();
+    memory.userProfile = {
+      userId: 'user-1',
+      pacePreference: 'MODERATE',
+      confidence: 0.7,
+      source: 'explicit',
+      updatedAt: new Date(),
+    };
+
+    try {
+      const result = await prepareDecisionRuntimeTick(
+        {
+          memoryContextAssembler: {
+            loadForRouteAndRun: async () => memory,
+            buildObservability: () => ({ revision: 'v1', loaded: true }),
+          },
+          hydrateRequestFitnessIfNeeded: async () => undefined,
+          agentExecutionContextFactory: {
+            createFromFrozenMemory: (m) => ({
+              requestId: m.requestId,
+              snapshotId: m.snapshotId,
+              snapshotVersion: m.snapshotVersion,
+              executionBinding: {
+                snapshot_id: m.snapshotId,
+                snapshot_version: m.snapshotVersion,
+                request_id: m.requestId,
+              },
+            }),
+          },
+          getEntryResponses: () => ({
+            createReplayMemoryPersistenceUnavailableResponse: () => ({}) as any,
+            createReplayMemorySnapshotNotFoundResponse: () => ({}) as any,
+          }),
+        },
+        {
+          request_id: 'req-etc-active',
+          user_id: 'user-1',
+          message: 'hello',
+          trip_id: 'trip-1',
+        } as RouteAndRunRequestDto,
+        Date.now(),
+      );
+
+      expect(result.bundle.effectiveTravelerContext?.consumptionMode).toBe(
+        'ACTIVE',
+      );
+      expect(result.bundle.tickObs.effective_traveler_context?.consumeMode).toBe(
+        'active',
+      );
+      expect(result.bundle.memory.observability.layers).toContain(
+        'effective_traveler_context_active',
+      );
+      // M3：active 时即使无 TMR CONSUME，也从 ETC 注入 soft hints
+      expect(result.bundle.execCtx.travelMemoryDecisionHints).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            key: 'travel.pace',
+            value: 'MODERATE',
+            advisoryOnly: true,
+          }),
+        ]),
+      );
+      expect(
+        result.bundle.tickObs.effective_traveler_context?.softHintsAudit,
+      ).toEqual(
+        expect.objectContaining({
+          softSource: 'etc',
+          applied: true,
+        }),
+      );
+      expect(result.bundle.memory.observability.layers).toContain(
+        'effective_traveler_context_soft_active',
+      );
+    } finally {
+      if (prev === undefined) delete process.env.EFFECTIVE_TRAVELER_CONTEXT_CONSUME;
+      else process.env.EFFECTIVE_TRAVELER_CONTEXT_CONSUME = prev;
+    }
+  });
+
+  it('shadow soft: keeps TMR hints injection and records etc vs tmr audit', async () => {
+    const prev = process.env.EFFECTIVE_TRAVELER_CONTEXT_CONSUME;
+    process.env.EFFECTIVE_TRAVELER_CONTEXT_CONSUME = 'shadow';
+    const memory = minimalMemory();
+
+    try {
+      const result = await prepareDecisionRuntimeTick(
+        {
+          memoryContextAssembler: {
+            loadForRouteAndRun: async () => memory,
+            buildObservability: () => ({ revision: 'v1', loaded: true }),
+          },
+          hydrateRequestFitnessIfNeeded: async () => undefined,
+          agentExecutionContextFactory: {
+            createFromFrozenMemory: (m) => ({
+              requestId: m.requestId,
+              snapshotId: m.snapshotId,
+              snapshotVersion: m.snapshotVersion,
+              executionBinding: {
+                snapshot_id: m.snapshotId,
+                snapshot_version: m.snapshotVersion,
+                request_id: m.requestId,
+              },
+            }),
+          },
+          getEntryResponses: () => ({
+            createReplayMemoryPersistenceUnavailableResponse: () => ({}) as any,
+            createReplayMemorySnapshotNotFoundResponse: () => ({}) as any,
+          }),
+          travelContextAssembler: {
+            isEnabled: () => true,
+            assemble: () =>
+              ({
+                schemaId: 'tripnara.assembled_decision_context@v1',
+                version: 1,
+                task: 'SHOULD_WE_DO_GLACIER_HIKE Iceland',
+                assembledAt: new Date().toISOString(),
+                slices: [],
+                memoryDecisionSafe: true,
+                contract: {
+                  schemaId: 'tripnara.context_assembly_contract@v1',
+                  version: 1,
+                  task: 'SHOULD_WE_DO_GLACIER_HIKE Iceland',
+                  providers: ['MEMORY'],
+                  deny: [],
+                },
+                memory: {
+                  schemaId: 'tripnara.memory_context_package@v1',
+                  task: 'SHOULD_WE_DO_GLACIER_HIKE Iceland',
+                  builtAt: new Date().toISOString(),
+                  structured: {
+                    pace: {
+                      key: 'travel.pace',
+                      value: 'RELAXED',
+                      confidence: 0.9,
+                      scope: 'GLOBAL_USER',
+                      status: 'ACTIVE',
+                      sourceType: 'USER_EXPLICIT',
+                      evidenceEventIds: ['M-PACE-1'],
+                      validFrom: new Date().toISOString(),
+                      validTo: null,
+                      lastConfirmedAt: null,
+                    },
+                  },
+                  tripMemory: null,
+                  relevantEpisodes: [],
+                  semanticEvidence: [],
+                  conflicts: [],
+                  missingMemory: [],
+                  contract: {
+                    schemaId: 'tripnara.memory_contract@v1',
+                    version: 1,
+                    task: 'x',
+                    allow: ['PACE_PREFERENCE'],
+                    deny: [],
+                    includeUserProfileFields: ['pace'],
+                    includeTripMemory: false,
+                    includeWorking: false,
+                    maxEpisodes: 0,
+                    includeSemantic: false,
+                    needs: [],
+                    reason: 'test',
+                  },
+                  memoryContext: {
+                    facts: [],
+                    preferences: [],
+                    episodes: [],
+                    confidence: [],
+                    evidence: [],
+                    conflicts: [],
+                  },
+                  decisionSafe: true,
+                  designPrinciple: 'test',
+                },
+                decisionContract: null,
+                selfDriveWorld: null,
+                booking: null,
+                team: null,
+                shadowBaseline: { memoryOmitted: true, providersWithoutMemory: [] },
+                mode: 'CONSUME',
+              }) as any,
+            toObservability: () => ({ mode: 'CONSUME' }),
+          },
+        },
+        {
+          request_id: 'req-etc-soft-shadow',
+          user_id: 'user-1',
+          message: 'SHOULD_WE_DO_GLACIER_HIKE Iceland',
+          trip_id: 'trip-1',
+        } as RouteAndRunRequestDto,
+        Date.now(),
+      );
+
+      expect(result.bundle.travelMemoryConsume?.gate.allowed).toBe(true);
+      expect(result.bundle.execCtx.travelMemoryDecisionHints?.[0]?.key).toBe(
+        'travel.pace',
+      );
+      expect(
+        result.bundle.tickObs.effective_traveler_context?.softHintsAudit,
+      ).toEqual(
+        expect.objectContaining({
+          mode: 'shadow',
+          softSource: 'tmr',
+          applied: false,
+        }),
+      );
+      expect(result.bundle.memory.observability.layers).toContain(
+        'effective_traveler_context_soft_shadow',
+      );
+    } finally {
+      if (prev === undefined) delete process.env.EFFECTIVE_TRAVELER_CONTEXT_CONSUME;
+      else process.env.EFFECTIVE_TRAVELER_CONTEXT_CONSUME = prev;
+    }
+  });
 });

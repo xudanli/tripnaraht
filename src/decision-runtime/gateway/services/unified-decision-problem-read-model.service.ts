@@ -67,12 +67,54 @@ import {
   isTripInExecutionPhase,
 } from '../utils/plan-object-execution-admission.util';
 import { DecisionWorkspaceService } from '../../../trips/guardian-decision-core/workspace/decision-workspace.service';
+import { DecisionProblemMaterializerService } from './decision-problem-materializer.service';
+import { isDecisionProblemProjectionEnabled } from '../config/decision-problem-projection.config';
 
 const COLLECT_ROWS_CACHE_TTL_MS = 10_000;
+/** Projection miss 时同步 refresh 上限；超时 fail-open，避免列表挂死 */
+const LIST_REFRESH_TIMEOUT_MS = 8_000;
 
 export interface UnifiedPlanningConflictsProjection {
   conflicts: PlanningConflictItem[];
   summary: ReturnType<typeof buildPlanningConflictsSummaryFromItems>;
+}
+
+function emptyProblemListView(tripId: string): UnifiedDecisionProblemListView {
+  return {
+    schemaId: 'tripnara.unified_decision_problems@v2',
+    tripId,
+    generatedAt: new Date().toISOString(),
+    meta: {
+      total: 0,
+      openCount: 0,
+      actionableCount: 0,
+      occurrenceCount: 0,
+      byEnforcement: {},
+    },
+    items: [],
+  };
+}
+
+async function raceWithTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+): Promise<{ value: T | null; timedOut: boolean }> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timedOut = false;
+  try {
+    const value = await Promise.race([
+      promise.then((v) => v as T | null),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => {
+          timedOut = true;
+          resolve(null);
+        }, ms);
+      }),
+    ]);
+    return { value, timedOut };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 @Injectable()
@@ -94,6 +136,7 @@ export class UnifiedDecisionProblemReadModelService {
     private readonly causalTrace: CanonicalCausalTraceService,
     private readonly workspaceService: DecisionWorkspaceService,
     @Optional() private readonly decisionCases?: DecisionCaseService,
+    @Optional() private readonly materializer?: DecisionProblemMaterializerService,
   ) {}
 
   /** Published DecisionCase rows merged into the SSOT queue (IS self-drive). */
@@ -101,17 +144,21 @@ export class UnifiedDecisionProblemReadModelService {
 
   invalidateCache(tripId: string): void {
     this.collectRowsCache.delete(tripId);
+    this.collectRowsCache.delete(`${tripId}:full`);
+    this.collectRowsCache.delete(`${tripId}:fast`);
     this.collector.invalidateCache(tripId);
+    this.materializer?.scheduleRefresh(tripId);
   }
 
   private async collectRowsCached(
     tripId: string,
-    opts?: { recordLineage?: boolean },
+    opts?: { recordLineage?: boolean; collectMode?: 'full' | 'fast' },
   ): Promise<InternalUnifiedProblemRow[]> {
     if (opts?.recordLineage) {
       return this.collectRows(tripId, opts);
     }
 
+    const mode = opts?.collectMode === 'fast' ? 'fast' : 'full';
     const tripRow = await this.prisma.trip.findUnique({
       where: { id: tripId },
       select: { metadata: true, updatedAt: true },
@@ -119,13 +166,14 @@ export class UnifiedDecisionProblemReadModelService {
     const revisionKey = tripRow
       ? buildPlanningConflictsCacheKey(tripRow)
       : `missing:${Date.now()}`;
-    const cached = this.collectRowsCache.get(tripId);
+    const cacheKey = `${tripId}:${mode}`;
+    const cached = this.collectRowsCache.get(cacheKey);
     if (cached && cached.revisionKey === revisionKey && cached.expiresAt > Date.now()) {
       return cached.rows;
     }
 
-    const rows = await this.collectRows(tripId, { recordLineage: false });
-    this.collectRowsCache.set(tripId, {
+    const rows = await this.collectRows(tripId, { recordLineage: false, collectMode: mode });
+    this.collectRowsCache.set(cacheKey, {
       revisionKey,
       expiresAt: Date.now() + COLLECT_ROWS_CACHE_TTL_MS,
       rows,
@@ -133,11 +181,15 @@ export class UnifiedDecisionProblemReadModelService {
     return rows;
   }
 
-  async collectRows(tripId: string, opts?: { recordLineage?: boolean }): Promise<InternalUnifiedProblemRow[]> {
+  async collectRows(
+    tripId: string,
+    opts?: { recordLineage?: boolean; collectMode?: 'full' | 'fast' },
+  ): Promise<InternalUnifiedProblemRow[]> {
     const ctx = await this.buildRouteContext(tripId);
     const rows: InternalUnifiedProblemRow[] = [];
     const canonicalIds = new Set<string>();
     const recordLineage = opts?.recordLineage === true;
+    const collectMode = opts?.collectMode === 'fast' ? 'fast' : 'full';
     const lineageBatch: Array<{
       problemId?: string;
       semanticKey?: string;
@@ -146,7 +198,7 @@ export class UnifiedDecisionProblemReadModelService {
 
     let collected: Awaited<ReturnType<DecisionProblemCollectorService['collect']>> | undefined;
     try {
-      collected = await this.collector.collect(tripId);
+      collected = await this.collector.collect(tripId, { mode: collectMode });
     } catch {
       collected = undefined;
     }
@@ -250,12 +302,77 @@ export class UnifiedDecisionProblemReadModelService {
 
   async listProblems(
     tripId: string,
-    opts?: { includeDebug?: boolean; queueOnly?: boolean },
+    opts?: {
+      includeDebug?: boolean;
+      queueOnly?: boolean;
+      /** 跳过列表因果 enrich（物化写入 / 快速队列）；默认 true（includeDebug 除外） */
+      skipCausalEnrich?: boolean;
+      /** 强制现算，不读投影（物化器自用，防递归） */
+      bypassProjection?: boolean;
+      /** 仅读投影，miss 时立刻空队列（供 ERC 等防环调用方） */
+      projectionOnly?: boolean;
+    },
+  ): Promise<UnifiedDecisionProblemListView> {
+    const skipCausalEnrich =
+      opts?.includeDebug === true
+        ? opts?.skipCausalEnrich === true
+        : opts?.skipCausalEnrich !== false;
+
+    const preferProjection =
+      isDecisionProblemProjectionEnabled() &&
+      !opts?.bypassProjection &&
+      !opts?.includeDebug;
+
+    if (preferProjection && this.materializer) {
+      const cached = await this.materializer.tryReadList(tripId, {
+        queueOnly: opts?.queueOnly,
+      });
+      if (cached) return cached;
+
+      if (opts?.projectionOnly) {
+        return emptyProblemListView(tripId);
+      }
+
+      // miss/stale：限时快路径物化；超时 fail-open，避免挂死
+      const { value: refreshed, timedOut } = await raceWithTimeout(
+        this.materializer.refreshTrip(tripId),
+        LIST_REFRESH_TIMEOUT_MS,
+      );
+      if (refreshed) return refreshed;
+
+      this.materializer.scheduleRefresh(tripId);
+      if (timedOut) {
+        this.logger.warn(
+          `listProblems projection refresh timeout trip=${tripId}; fail-open empty queue`,
+        );
+        return emptyProblemListView(tripId);
+      }
+      // refresh 快速失败：回退现算快路径
+    }
+
+    if (opts?.projectionOnly) {
+      return emptyProblemListView(tripId);
+    }
+
+    return this.listProblemsCompute(tripId, {
+      ...opts,
+      skipCausalEnrich,
+    });
+  }
+
+  private async listProblemsCompute(
+    tripId: string,
+    opts?: {
+      includeDebug?: boolean;
+      queueOnly?: boolean;
+      skipCausalEnrich?: boolean;
+      bypassProjection?: boolean;
+    },
   ): Promise<UnifiedDecisionProblemListView> {
     const [rows, resolutions, collected, tripStatus] = await Promise.all([
-      this.collectRowsCached(tripId),
+      this.collectRowsCached(tripId, { collectMode: 'fast' }),
       this.resolutionStore.listForTrip(tripId),
-      this.collector.collect(tripId).catch(() => undefined),
+      this.collector.collect(tripId, { mode: 'fast' }).catch(() => undefined),
       this.loadTripStatus(tripId),
     ]);
     const diagnosisOccurrenceCount = collected
@@ -273,7 +390,10 @@ export class UnifiedDecisionProblemReadModelService {
       overlayStoredResolutionOnListItem(item, resolutions[item.problemId]),
     );
     const withCaseFields = baseItems.map((item) => this.attachDecisionCaseFields(tripId, item));
-    const enriched = await this.enrichListItemsWithCausalNarrative(tripId, withCaseFields, rows);
+    const enriched =
+      opts?.skipCausalEnrich === true
+        ? withCaseFields
+        : await this.enrichListItemsWithCausalNarrative(tripId, withCaseFields, rows);
     // Resolution overlay may flip WAITING → DECIDED; drop terminals from queue-only lists.
     const items =
       opts?.queueOnly === false
@@ -306,7 +426,10 @@ export class UnifiedDecisionProblemReadModelService {
   }
 
   async projectPlanningConflicts(tripId: string): Promise<UnifiedPlanningConflictsProjection> {
-    const list = await this.listProblems(tripId, { queueOnly: true });
+    const list = await this.listProblems(tripId, {
+      queueOnly: true,
+      skipCausalEnrich: true,
+    });
     const conflicts = projectListItemsToPlanningConflicts(list.items);
     return {
       conflicts,
@@ -463,10 +586,15 @@ export class UnifiedDecisionProblemReadModelService {
   }
 
   async getCausalTraceReplay(tripId: string, problemId: string) {
+    // 拍摄种子等：trace 已在 metadata/store，但 collector 里没有对应 decision problem。
+    // 先直接按 problemId 取回放，避免先 findRow（collect 可达 10s+）再 NOT_FOUND。
+    let replay = await this.causalTrace.getTraceReplay(tripId, problemId);
+    if (replay) return replay;
+
     const row = await this.findRow(tripId, problemId);
     if (!row) throw new NotFoundException(`DECISION_PROBLEM_NOT_FOUND: ${problemId}`);
 
-    let replay = await this.causalTrace.getTraceReplay(tripId, row.problemId);
+    replay = await this.causalTrace.getTraceReplay(tripId, row.problemId);
     if (!replay) {
       const worldStateVersion = await this.resolveWorldStateVersionForTrip(tripId);
       await this.causalTrace.ensureProblemTrace({

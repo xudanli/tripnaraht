@@ -11,6 +11,7 @@ import type {
 } from './unified-intent.types';
 import { parseTripDayNumber } from '../utils/itinerary-item-add.util';
 import { stripPlanningModeWrapper } from '../utils/strip-planning-mode-wrapper.util';
+import { isLiveFeasibilityUtterance } from '../utils/live-feasibility-utterance.util';
 
 function stripScheduleAnchor(message: string): string {
   return stripPlanningModeWrapper(String(message ?? ''))
@@ -40,7 +41,12 @@ export function extractIntentTopic(message: string): IntentTopic {
   const raw = String(message ?? '');
   const m = stripScheduleAnchor(message);
   if (/天气|气象|下雨|降雨|刮风|风暴|预报|\bweather\b/i.test(m)) return 'WEATHER';
-  if (/路况|封路|道路|通行|\broad\b/i.test(m)) return 'ROAD';
+  if (
+    /路况|封路|道路|通行|F208|F-road|F路|\broad\b/i.test(m) ||
+    isLiveFeasibilityUtterance(m)
+  ) {
+    return 'ROAD';
+  }
   if (/租车|自驾|车型|四驱|订车|预订车|预定车|\brental\b/i.test(m)) return 'VEHICLE';
   if (/午餐|晚饭|晚餐|早饭|早餐|餐厅|美食|用餐|吃饭|正餐|\blunch\b|\bdining\b/i.test(m)) {
     return 'MEAL';
@@ -53,8 +59,13 @@ export function extractIntentTopic(message: string): IntentTopic {
     return 'LODGING';
   }
   if (/太赶|太累|节奏|疲劳|\bpace\b/i.test(m)) return 'PACE';
-  if (/路线|车程|F-road|驾驶|\broute\b/i.test(m)) return 'ROUTE';
-  if (/活动|景点|徒步|替换|\bpoi\b|\bactivity\b/i.test(m)) return 'ACTIVITY';
+  if (/路线|车程|驾驶|\broute\b/i.test(m)) return 'ROUTE';
+  if (
+    /活动|景点|徒步|替换|\bpoi\b|\bactivity\b/i.test(m) ||
+    /哪个更值得|哪个更好|哪个更推荐|更值得去/i.test(m)
+  ) {
+    return 'ACTIVITY';
+  }
   return 'GENERAL';
 }
 
@@ -104,6 +115,7 @@ export function hasConsultAct(message: string): boolean {
 export function hasAssessAct(message: string): boolean {
   const m = stripScheduleAnchor(message);
   return (
+    isLiveFeasibilityUtterance(m) ||
     /会不会影响|会影响|影响.{0,10}(?:行程|安排|活动|计划)|赶不上|来得及|还能不能|还能去吗|有什么后果|会发生什么|如果.{0,16}会怎样|风险是什么|是否可行/i.test(
       m,
     ) ||

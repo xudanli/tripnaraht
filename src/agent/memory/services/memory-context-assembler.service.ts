@@ -7,6 +7,7 @@ import type { AgentMemoryContext, TripFeedbackSnapshot } from '../interfaces/age
 import type { RouteAndRunRequestDto } from '../../dto/route-and-run.dto';
 import type { RouteRunPartyProfileSnapshot } from '../interfaces/agent-memory-context.interface';
 import { resolveRouteRunPartyProfileSnapshot } from '../../utils/route-and-run-party-profile.util';
+import { isInventoryCardSyncQuery } from '../../chat/inventory-card-sync-query.util';
 import { TripTaskMemoryService } from '../../context-engine/services/trip-task-memory.service';
 import { PrometheusMetricsService } from '../../../monitoring/prometheus-metrics.service';
 import { AgentMemoryContextStore } from '../context/agent-memory-context.store';
@@ -86,15 +87,72 @@ export class MemoryContextAssemblerService {
   async loadForRouteAndRun(request: RouteAndRunRequestDto): Promise<AgentMemoryContext> {
     const snapshotId = randomUUID();
     const snapshotVersion = 1;
+    const MEMORY_LOAD_BUDGET_MS = Number(process.env.MEMORY_CONTEXT_LOAD_TIMEOUT_MS ?? 8000);
 
     try {
-      const ctx = await this.loadPayload(request, snapshotId, snapshotVersion);
+      const loadPromise = this.loadPayload(request, snapshotId, snapshotVersion);
+      const ctx =
+        Number.isFinite(MEMORY_LOAD_BUDGET_MS) && MEMORY_LOAD_BUDGET_MS > 0
+          ? await Promise.race([
+              loadPromise,
+              new Promise<AgentMemoryContext>((_, reject) =>
+                setTimeout(
+                  () =>
+                    reject(
+                      new Error(
+                        `MemoryContextAssembler load timed out after ${MEMORY_LOAD_BUDGET_MS}ms`,
+                      ),
+                    ),
+                  MEMORY_LOAD_BUDGET_MS,
+                ),
+              ),
+            ])
+          : await loadPromise;
       this.prom?.recordMemoryContextLoadSuccess();
       return ctx;
     } catch (e: any) {
       this.prom?.recordMemoryContextLoadFailure();
       this.logger.error(`MemoryContextAssembler: load failed: ${e?.message ?? e}`);
-      throw e;
+      // fail-open：返回空快照，避免 Redis/DB 抖动拖死整个 route_and_run（聊天带 user_id 时尤甚）
+      const userId =
+        request.user_id && String(request.user_id).trim() !== ''
+          ? String(request.user_id).trim()
+          : null;
+      const tripId =
+        request.trip_id && String(request.trip_id).trim() !== ''
+          ? String(request.trip_id).trim()
+          : null;
+      return {
+        snapshotId,
+        snapshotVersion,
+        requestId: request.request_id,
+        userId,
+        tripId,
+        userProfile: null,
+        userBasics: null,
+        travelPreference: null,
+        routePartyProfile: null,
+        recentDecisions: [],
+        decisionLedger: null,
+        ledgerRecomputePlan: null,
+        recentWorldDecisions: [],
+        activeTripState: null,
+        recoveryHistory: [],
+        failurePatterns: [],
+        activeRouteHealthSnapshot: null,
+        routeHealthByKey: {},
+        recentTripFeedbacks: [],
+        domainInfluenceDigest: null,
+        wishConstraintDigest: null,
+        privateWishDigest: null,
+        decisionProfilingDigest: null,
+        negotiationDigest: null,
+        loadedAt: new Date().toISOString(),
+        observability: {
+          layers: ['memory_load_fail_open'],
+          metadata: { error: String(e?.message ?? e) },
+        },
+      };
     }
   }
 
@@ -230,8 +288,9 @@ export class MemoryContextAssemblerService {
       travelPreference,
       loadedAt,
     });
+    const hotelCardFastMemory = isInventoryCardSyncQuery(String(request.message ?? ''));
     const l4Promise =
-      userId && userId !== 'anonymous'
+      !hotelCardFastMemory && userId && userId !== 'anonymous'
         ? this.loadL4TripFeedback(userId)
         : Promise.resolve({
             recentTripFeedbacks: [] as TripFeedbackSnapshot[],
@@ -244,7 +303,7 @@ export class MemoryContextAssemblerService {
     let decisionProfilingDigest: AgentMemoryContext['decisionProfilingDigest'] = null;
     let negotiationDigest: AgentMemoryContext['negotiationDigest'] = null;
     const digestPromise =
-      tripId && this.tripIntentDigest
+      !hotelCardFastMemory && tripId && this.tripIntentDigest
         ? this.tripIntentDigest.loadForMemoryContext(tripId, userId).catch((e: any) => {
             this.logger.warn(`MemoryContextAssembler: trip intent digest failed: ${e?.message ?? e}`);
             return null;

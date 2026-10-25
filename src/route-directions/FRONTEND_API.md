@@ -50,8 +50,16 @@
 | routeDirectionId | number | 否 | 按路线方向ID筛选 |
 | durationDays | number | 否 | 按行程天数筛选 |
 | isActive | boolean | 否 | 按激活状态筛选（true/false） |
+| includePackingSummary | boolean | 否 | 附带打包清单摘要 |
+| hasPackingChecklist | boolean | 否 | 筛有/无打包 |
+| includeBudgetSummary | boolean | 否 | 附带预算摘要 |
+| hasBudgetEstimate | boolean | 否 | 筛有/无预算 |
 | limit | number | 否 | 返回数量限制（默认不限制） |
 | offset | number | 否 | 偏移量（用于分页） |
+
+> 打包清单 / 按天预算管理端与 iOS 改动详见：  
+> - [ADMIN_PACKING_AND_BUDGET_API.md](./ADMIN_PACKING_AND_BUDGET_API.md)  
+> - [IOS_ROUTE_TEMPLATE_PACKING_BUDGET_HANDOFF.md](./IOS_ROUTE_TEMPLATE_PACKING_BUDGET_HANDOFF.md)
 
 **请求示例**:
 

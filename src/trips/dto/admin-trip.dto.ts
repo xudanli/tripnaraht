@@ -52,6 +52,14 @@ export class AdminTripListQueryDto {
   @IsString()
   destination?: string;
 
+  @ApiPropertyOptional({
+    description: '目的地国家代码（与 destination 等价，兼容管理台文档参数名）',
+    example: 'IS',
+  })
+  @IsOptional()
+  @IsString()
+  countryCode?: string;
+
   @ApiPropertyOptional({ description: '开始日期范围（ISO 8601日期）', example: '2024-01-01' })
   @IsOptional()
   @IsDateString()
@@ -87,7 +95,10 @@ export class AdminTripListQueryDto {
   @IsEnum(SortOrder)
   sortOrder?: SortOrder = SortOrder.DESC;
 
-  @ApiPropertyOptional({ description: '搜索关键词（目的地、用户邮箱、用户名称）', example: 'Tokyo' })
+  @ApiPropertyOptional({
+    description: '搜索关键词（行程名、目的地、行程ID、创建者邮箱/昵称）',
+    example: 'Tokyo',
+  })
   @IsOptional()
   @IsString()
   search?: string;

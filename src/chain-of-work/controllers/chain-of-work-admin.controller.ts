@@ -2,8 +2,9 @@
 
 /**
  * Chain-of-Work 引擎管理端控制器
- * 
- * 提供管理端接口：统计、监控、配置等
+ *
+ * @deprecated 2026-08：工作链 Admin 已废弃。`decision_drafts` 写路径停更；智能体运行请看
+ * `/api/agent/admin/runs`。HTTP 暂保留兼容，勿新对接；后续将移除本 Controller。
  */
 
 import { Controller, Get, Post, Put, Body, Param, Query, Logger, Optional } from '@nestjs/common';
@@ -17,7 +18,8 @@ import { EditDecisionStepDto } from '../../decision-draft/dto/decision-draft.dto
 import { Public } from '../../auth/decorators/public.decorator';
 import { TripNARAWorkflowDraft, ExecutionResult } from '../interfaces/chain-of-work.interface';
 
-@ApiTags('Chain-of-Work Admin')
+/** @deprecated 见类注释；Swagger tag 标明 deprecated */
+@ApiTags('Chain-of-Work Admin (deprecated)')
 @Controller('chain-of-work/admin')
 @Public() // 临时开放测试，生产环境应移除并添加认证
 export class ChainOfWorkAdminController {
@@ -32,7 +34,7 @@ export class ChainOfWorkAdminController {
   ) {}
 
   @Get('stats')
-  @ApiOperation({ summary: '获取统计信息', description: '获取 Chain-of-Work 引擎的整体统计信息' })
+  @ApiOperation({ deprecated: true, summary: '获取统计信息', description: '获取 Chain-of-Work 引擎的整体统计信息' })
   @ApiBearerAuth()
   @ApiQuery({ name: 'start_date', required: false, description: '开始日期 (ISO 8601)' })
   @ApiQuery({ name: 'end_date', required: false, description: '结束日期 (ISO 8601)' })
@@ -57,7 +59,7 @@ export class ChainOfWorkAdminController {
   }
 
   @Get('draft')
-  @ApiOperation({ summary: '查询所有草案列表', description: '查询所有用户的步骤草案列表（分页、筛选、搜索）' })
+  @ApiOperation({ deprecated: true, summary: '查询所有草案列表', description: '查询所有用户的步骤草案列表（分页、筛选、搜索）' })
   @ApiBearerAuth()
   @ApiQuery({ name: 'page', required: false, description: '页码，默认 1' })
   @ApiQuery({ name: 'page_size', required: false, description: '每页数量，默认 20' })
@@ -110,7 +112,7 @@ export class ChainOfWorkAdminController {
   }
 
   @Get('draft/:draftId')
-  @ApiOperation({ summary: '查询草案详情', description: '查询指定步骤草案的详细信息（包含用户信息、执行历史等）' })
+  @ApiOperation({ deprecated: true, summary: '查询草案详情', description: '查询指定步骤草案的详细信息（包含用户信息、执行历史等）' })
   @ApiBearerAuth()
   @ApiResponse({ status: 200, description: '草案详情查询成功' })
   @ApiResponse({ status: 403, description: '禁止访问（需要管理员权限）' })
@@ -142,7 +144,7 @@ export class ChainOfWorkAdminController {
   }
 
   @Post('draft/:draftId/validate')
-  @ApiOperation({ summary: '验证单个草案', description: '验证指定草案的完整性（步骤是否存在等）' })
+  @ApiOperation({ deprecated: true, summary: '验证单个草案', description: '验证指定草案的完整性（步骤是否存在等）' })
   @ApiBearerAuth()
   @ApiResponse({ status: 200, description: '验证成功' })
   @ApiResponse({ status: 404, description: '草案不存在' })
@@ -162,7 +164,7 @@ export class ChainOfWorkAdminController {
   }
 
   @Put('draft/:draftId/step/:stepId')
-  @ApiOperation({ summary: '编辑草案步骤', description: '编辑指定草案的单个决策步骤（approve/reject/modify）' })
+  @ApiOperation({ deprecated: true, summary: '编辑草案步骤', description: '编辑指定草案的单个决策步骤（approve/reject/modify）' })
   @ApiBearerAuth()
   @ApiParam({ name: 'draftId', description: '草案 ID' })
   @ApiParam({ name: 'stepId', description: '步骤 ID（如 step-intake）' })
@@ -196,7 +198,7 @@ export class ChainOfWorkAdminController {
   }
 
   @Post('draft/:draftId/execute')
-  @ApiOperation({ summary: '执行草案', description: '执行指定的步骤草案（管理员可触发执行）' })
+  @ApiOperation({ deprecated: true, summary: '执行草案', description: '执行指定的步骤草案（管理员可触发执行）' })
   @ApiBearerAuth()
   @ApiResponse({ status: 200, description: '执行成功' })
   @ApiResponse({ status: 403, description: '禁止访问（需要管理员权限）' })
@@ -378,7 +380,7 @@ export class ChainOfWorkAdminController {
   }
 
   @Post('draft/batch')
-  @ApiOperation({ summary: '批量操作', description: '批量操作步骤草案（delete/export/validate/archive）' })
+  @ApiOperation({ deprecated: true, summary: '批量操作', description: '批量操作步骤草案（delete/export/validate/archive）' })
   @ApiBearerAuth()
   @ApiResponse({ status: 200, description: '批量操作成功' })
   @ApiResponse({ status: 403, description: '禁止访问（需要管理员权限）' })
@@ -409,7 +411,7 @@ export class ChainOfWorkAdminController {
   }
 
   @Get('execution')
-  @ApiOperation({ summary: '查询执行历史', description: '查询所有执行历史记录（分页、筛选）' })
+  @ApiOperation({ deprecated: true, summary: '查询执行历史', description: '查询所有执行历史记录（分页、筛选）' })
   @ApiBearerAuth()
   @ApiQuery({ name: 'page', required: false, description: '页码，默认 1' })
   @ApiQuery({ name: 'page_size', required: false, description: '每页数量，默认 20' })
@@ -454,7 +456,7 @@ export class ChainOfWorkAdminController {
   }
 
   @Get('execution/:executionId')
-  @ApiOperation({ summary: '查询执行详情', description: '查询指定执行的详细信息（包含 Trace 信息、错误日志等）' })
+  @ApiOperation({ deprecated: true, summary: '查询执行详情', description: '查询指定执行的详细信息（包含 Trace 信息、错误日志等）' })
   @ApiBearerAuth()
   @ApiResponse({ status: 200, description: '执行详情查询成功' })
   @ApiResponse({ status: 403, description: '禁止访问（需要管理员权限）' })
@@ -491,7 +493,7 @@ export class ChainOfWorkAdminController {
   }
 
   @Get('config')
-  @ApiOperation({ summary: '获取配置', description: '获取 Chain-of-Work 引擎的配置信息' })
+  @ApiOperation({ deprecated: true, summary: '获取配置', description: '获取 Chain-of-Work 引擎的配置信息' })
   @ApiBearerAuth()
   @ApiResponse({ status: 200, description: '配置查询成功' })
   @ApiResponse({ status: 403, description: '禁止访问（需要管理员权限）' })
@@ -525,7 +527,7 @@ export class ChainOfWorkAdminController {
   }
 
   @Put('config')
-  @ApiOperation({ summary: '更新配置', description: '更新 Chain-of-Work 引擎的配置信息' })
+  @ApiOperation({ deprecated: true, summary: '更新配置', description: '更新 Chain-of-Work 引擎的配置信息' })
   @ApiBearerAuth()
   @ApiResponse({ status: 200, description: '配置更新成功' })
   @ApiResponse({ status: 403, description: '禁止访问（需要管理员权限）' })

@@ -13,17 +13,18 @@
       "nameEN": "G318 Sichuan–Tibet Southern Route",
       "tier": "classic",
       "regions": ["sichuan", "xizang"],
-      "typicalDays": [12, 20],
-      "distanceKmHint": 2100,
+      "typicalDays": [8, 10, 14],
+      "distanceKmHint": 2140,
       "severity": "high",
-      "summaryCN": "成都→拉萨经典长线：高反、垭口、补给稀疏、检查站与雨季塌方风险并存；须预留适应日与缓冲日。",
-      "summaryEN": "Classic Chengdu→Lhasa long haul: altitude, passes, sparse fuel, checkpoints; plan acclimatization and buffer days.",
+      "summaryCN": "成都至拉萨段（中国最美景观大道）：国道主体不收费；高反、垭口、雨季塌方与检查站风险并存。核心原则「住低不住高」——夜间尽量选海拔低于3000米的县城（雅江/巴塘/如美/波密/林芝），勿在新都桥、理塘等高海拔过夜。",
+      "summaryEN": "Chengdu→Lhasa G318 southern corridor: scenic national road (mostly toll-free); altitude, passes, rainy-season slides. Core rule: sleep low (<3000m) — overnight Yajiang/Batang/Rumei/Bomi/Nyingchi, not Xinduqiao/Litang.",
       "mustHintsCN": [
-        "前段川西急升勿一日冲高原；拉萨段再叠加高反适应",
-        "雨季关注滑坡塌方；冬季关注垭口结冰封路",
-        "油料/氧气/离线地图按无人区段备齐"
+        "住低不住高：勿在新都桥（~3460m）、理塘（~4014m）过夜，赶往雅江/巴塘等低海拔县城",
+        "东达山垭口（~5130m）风大缺氧，车外勿久留；怒江72拐长下坡降档控速、少踩刹车",
+        "雨季关注滑坡塌方与交通管制；冬季关注垭口结冰封路；油料/氧气/离线地图备齐",
+        "寺庙内禁止拍照，转经顺时针；布达拉宫需提前预约"
       ],
-      "anchorPlaces": ["成都", "康定", "理塘", "芒康", "林芝", "拉萨"],
+      "anchorPlaces": ["成都", "雅江", "巴塘", "如美镇", "八宿", "波密", "林芝", "拉萨"],
       "taxonomySubScopeId": "g318_chuan_zang"
     },
     {

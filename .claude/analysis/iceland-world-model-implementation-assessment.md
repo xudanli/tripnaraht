@@ -249,7 +249,7 @@ async loadRoadStatus(countryCode: string): Promise<RoadState[]> {
 - ✅ 文件结构合理
 
 **5.2 文档**
-- ✅ 有架构文档（`WORLD_MODEL_ARCHITECTURE.md`）
+- ✅ 有架构文档（`internal-docs/architecture/WORLD_MODEL_ARCHITECTURE.md`）
 - ✅ 有测试报告（`ICELAND_FROAD_WORLD_MODEL_TEST_REPORT.md`）
 - ✅ 代码注释清晰
 

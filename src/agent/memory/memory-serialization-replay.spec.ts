@@ -72,6 +72,8 @@ describe('Memory OS Replay Hydrate Verification', () => {
       {} as any,
       {} as any,
       { diff: jest.fn() } as any,
+      undefined,
+      undefined,
       { get: jest.fn().mockReturnValue(ctx) } as any,
     );
 

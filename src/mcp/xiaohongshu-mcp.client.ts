@@ -25,7 +25,24 @@ export class XiaohongshuMcpClient {
       name: 'tripnara-xiaohongshu-client',
       version: '1.0.0',
     });
-    await this.client.connect(this.transport);
+    const connectMs = Math.max(
+      800,
+      Number(process.env.XHS_MCP_CONNECT_MS ?? 3500) || 3500,
+    );
+    await Promise.race([
+      this.client.connect(this.transport),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                `Xiaohongshu MCP connect timeout ${connectMs}ms（检查 sidecar: ${this.serverUrl}）`,
+              ),
+            ),
+          connectMs,
+        );
+      }),
+    ]);
     this.isConnected = true;
   }
 

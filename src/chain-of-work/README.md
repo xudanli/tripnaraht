@@ -1,6 +1,8 @@
 # Chain-of-Work 引擎模块
 
-**状态**：🚧 **技术预研阶段**
+**状态**：⚠️ **HTTP API 已废弃（2026-08）** — `/api/chain-of-work/**` 与 Admin `/admin/chain-of-work` 勿新对接；智能体运行观测请用 `/api/agent/admin/runs`。模块内部服务（如编排恢复）仍可能被 Agent 引用，勿整包删除。
+
+**历史状态**：🚧 技术预研阶段（步骤草案显性化）
 
 ## 概述
 

@@ -28,6 +28,7 @@ import {
 } from '../utils/execution-quick-actions.projection.util';
 import { MobileDailyDriveService } from './mobile-daily-drive.service';
 import { MobileExecutionService } from './mobile-execution.service';
+import { assembleMobileProactiveDecisionSurface } from '../../trips/proactive-decision/surface/assemble-mobile-proactive-decision-surface.util';
 import type { MobileNavigationSessionDto } from '../dto/mobile-execution.types';
 import {
   buildSelfDriveContext,
@@ -65,6 +66,20 @@ export class MobileOverviewDashboardService {
     const lite = opts?.lite !== false;
     const trip = await this.access.assertTripMember(tripId, userId);
 
+    const settleOrNull = <T>(promise: Promise<T>, ms: number): Promise<T | null> =>
+      new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(null), ms);
+        promise
+          .then((v) => {
+            clearTimeout(timer);
+            resolve(v);
+          })
+          .catch(() => {
+            clearTimeout(timer);
+            resolve(null);
+          });
+      });
+
     const [dailyStatus, confirmDraft, teamLight, alerts, nextEnrich, adjustCount, nextStopLight] =
       await Promise.all([
         this.dailyDrive
@@ -72,7 +87,9 @@ export class MobileOverviewDashboardService {
           .catch(() => null),
         this.dailyDrive.getConfirmDraft(tripId, userId).catch(() => null),
         this.loadTeamReadinessLight(tripId),
-        this.mobileRead.getExecutionAlerts(tripId, userId).catch(() => null),
+        // alerts/listRisks 曾因 attention→SmartRoutes 挂死；预算内 fail-open 保首屏
+        // 放宽至 5s：内部已有 env 快路径，应能返回真实 riskCount
+        settleOrNull(this.mobileRead.getExecutionAlerts(tripId, userId), lite ? 5_000 : 6_000),
         this.resolveNextEnrichment(tripId, trip, opts?.dayIndex, lite),
         this.loadPendingAdjustmentCountLight(tripId, trip.metadata),
         this.loadNextStopLight(tripId),
@@ -87,9 +104,17 @@ export class MobileOverviewDashboardService {
     const confirmPayload =
       confirmDraft?.lastSubmission ?? confirmDraft?.defaults ?? null;
 
-    const alertCount =
+    const alertCountFromAlerts =
       (alerts?.primaryRisk?.requiresImmediateAttention ? 1 : 0) +
       (alerts?.alerts?.filter((a) => a.requiresImmediateAttention).length ?? 0);
+    // alerts 超时 fail-open 时勿把风险标成 0：门禁 BLOCKED / 有 primaryRiskId 至少计 1
+    const alertCount =
+      alertCountFromAlerts > 0
+        ? alertCountFromAlerts
+        : dailyStatus?.gate === 'BLOCKED' ||
+            (alerts == null && dailyStatus?.dimensions?.some((d) => d.status === 'BLOCKED'))
+          ? 1
+          : 0;
 
     const primaryRiskId =
       alerts?.primaryRisk?.riskId ?? alerts?.primaryRisk?.id ?? undefined;
@@ -153,7 +178,8 @@ export class MobileOverviewDashboardService {
       nextEnrich.nowStop ??
       (driveSession.phase === 'ARRIVED' ? nextEnrich.next : undefined);
 
-    return projectOverviewDashboard({
+    return {
+      ...projectOverviewDashboard({
       lite,
       contextVersion,
       serverTime: new Date().toISOString(),
@@ -185,7 +211,12 @@ export class MobileOverviewDashboardService {
       offlineMapAvailable: false,
       advisories: kernelShadow.advisories,
       selfDriveKernel: kernelShadow.selfDriveKernel,
-    });
+    }),
+      proactiveL1Passive: assembleMobileProactiveDecisionSurface({
+        tripId,
+        metadata: trip.metadata,
+      }).l1PassiveBanner,
+    };
   }
   async getDriveSession(tripId: string, userId: string): Promise<DriveSessionDto> {
     const trip = await this.access.assertTripMember(tripId, userId);

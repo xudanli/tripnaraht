@@ -27,8 +27,12 @@ import { DecisionCasesModule } from '../decision-cases/decision-cases.module';
 import { UnifiedDecisionController } from './controllers/unified-decision.controller';
 import { CausalDecisionController } from './controllers/causal-decision.controller';
 import { IcelandSelfDriveSituationController } from './controllers/iceland-self-drive-situation.controller';
+import { DecisionProblemsAdminController } from './controllers/decision-problems-admin.controller';
 import { CausalDecisionProductService } from './services/causal-decision-product.service';
 import { IcelandSelfDriveSituationProductService } from './services/iceland-self-drive-situation-product.service';
+import { DecisionProblemsAdminService } from './services/decision-problems-admin.service';
+import { DecisionProblemMaterializerService } from './services/decision-problem-materializer.service';
+import { DecisionProblemProjectionStoreService } from './persistence/decision-problem-projection.store';
 
 @Module({
   imports: [
@@ -51,6 +55,7 @@ import { IcelandSelfDriveSituationProductService } from './services/iceland-self
     UnifiedDecisionController,
     CausalDecisionController,
     IcelandSelfDriveSituationController,
+    DecisionProblemsAdminController,
   ],
   providers: [
     DecisionEngineRegistryService,
@@ -66,6 +71,9 @@ import { IcelandSelfDriveSituationProductService } from './services/iceland-self
     DecisionCollaborativeSubTaskStoreService,
     CausalDecisionProductService,
     IcelandSelfDriveSituationProductService,
+    DecisionProblemsAdminService,
+    DecisionProblemProjectionStoreService,
+    DecisionProblemMaterializerService,
   ],
   exports: [
     DecisionEngineGatewayService,
@@ -77,6 +85,9 @@ import { IcelandSelfDriveSituationProductService } from './services/iceland-self
     DecisionEngineRegistryService,
     CausalDecisionProductService,
     IcelandSelfDriveSituationProductService,
+    DecisionProblemsAdminService,
+    DecisionProblemProjectionStoreService,
+    DecisionProblemMaterializerService,
     forwardRef(() => ConstraintEvaluationModule),
     forwardRef(() => CanonicalPlanSelectionModule),
     forwardRef(() => DecisionTriggerModule),

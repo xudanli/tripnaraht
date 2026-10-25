@@ -3,21 +3,41 @@
 ## Status
 
 **Accepted**（2026-08-10）— **架构讨论停止。**  
-**就绪标记（冻结）：** ✅ **Evidence Ingestion Ready** / ❌ **Decision Consumption Not Ready**  
-→ Memory 在学习过去，**尚未**参与未来。详见 `src/travel-memory/TMR_READINESS.md`。  
+**修订**（2026-08-12）— Traveler Memory V1 读取闭环已接线（实现反写，非新开讨论）。  
+**修订**（2026-08-12）— 冻结 ETC 四纪律 + 旧 Memory OS 过渡定位（防 ETC 变模糊层）。  
+
+**就绪标记：**  
+- ✅ **Evidence Ingestion Ready**  
+- ⚠️ **Selective Soft Consume**（CGUS `scoringHints`，可证明）  
+- ⚠️ **EffectiveTravelerContext Shadow/Active**（硬面 Injector + 软面 hints；默认 off/shadow）  
+- ❌ **Full Decision Consumption Not Ready**（尚未默认取代旧 Memory OS）  
+
+→ Memory 已能学习过去，并可经开关**选择性**参与未来决策；默认生产路径仍以旧 Memory OS 为主。详见 `src/travel-memory/TMR_READINESS.md`。  
 
 **定位：** Decision Quality Improvement Layer；验收单位 = Memory-assisted Decision Episode。  
 **北向问题：** 第 N 个真实 Trip 中，Memory 是否让 Nara 少犯了一次过去的错误？  
 
-**真实链路（今日）：** Agent → **旧 Memory OS** → Decision/CGUS → Outcome → **TMR 写入** Episode/Candidate（热路径 + 可选 Prisma Durable）。  
-**Phase 1 审计：** `GET /decision/:id/explanation` · `GET /memory/:id/evidence`（`travel_memory_*` 表）。  
-**Phase 2+：** Context Assembly；选择性 CONSUME；CGUS soft + Contribution 证明；**Trip Shadow Pair + Outcome 回填**（CaseLog / North-star）。  
-**未接线（完整消费）：** 冰岛真 Trip 运营批量验收、取代旧 Memory OS、CRE Memory Contract、Contract/Self-drive 真源汇聚。  
+**真实链路（今日）：**  
+```
+WRITE: Explicit / Episode / Learning / DNA
+  → TRAVELER_MEMORY_WRITE_GATE → TMR Ledger + Contract（L1 / L2）
+READ:
+  Ledger / Old OS(compat) / Trip Override
+        ↓ Resolver（纯投影）
+  EffectiveTravelerContext（read-only derived）
+        ↓
+  Hard: Gate / Injector     Soft: CGUS / Ranking
+```
 
-**边界：** Decision Contract = 当前约束；Self-drive = World/Operational；TMR = 过去证据。三者并列进 Context Assembly，**禁止**互吞。  
+**产品冻结原则：**  
+> Planner / CGUS / Recommendation **不**直接读 TMR Ledger 或旧 Memory OS；统一读 **EffectiveTravelerContext**。  
+> **Old Memory OS is a transitional upstream compatibility source, not a permanent downstream contract.**  
+> 迁移期内旧 OS 仅作 Resolver 的兼容输入；禁止再把它当作长期并列下游契约。
 
-**Next：** 生产 migrate → 真 Trip 运营验收（Benefit/Harm < 红线）。  
-**禁止：** 扩 Vector / Skill / Graph / 自治学习；把验证基建当成扩能力。
+**边界：** Decision Contract = 当前约束；Self-drive = World/Operational；TMR/Traveler Memory = 过去证据与长期画像。三者并列，**禁止**互吞。 L1 Persistent ≠ L2 Trip Override ≠ L0 Working。  
+
+**V1 实施边界：** M1–M6 即 Traveler Memory V1 正式边界。下一阶段**不**扩 Memory 类型 / Ontology；用真实 Trip 验证 ETC 是否改变推荐与决策（Benefit/Harm）。  
+**禁止：** 扩 Vector / Skill / Graph / 第三存储平面；ETC 写 Memory / 晋升 Candidate；黑盒自动改 L1；Trip 语境直写 GLOBAL_USER；下游直读 8×5 格子重解释 Ontology。
 
 ## Context
 
@@ -223,6 +243,105 @@ CRE 继续回答「决策缺什么事实」；Memory Need Planner 回答「需�
 | `memory.confirm` | 显式确认 → confidence↑ |
 | `memory.invalidate` | INVALIDATE / SUPERSEDE |
 | `memory.build_context` | 任务驱动 Memory Context Package |
+
+### Traveler Memory V1（2026-08-12 实现冻结）
+
+产品模型：**8 Domain × 5 Semantic Type**（FOOD/STAY/SLEEP/MOBILITY/EXPERIENCE/PACE/SPENDING/DECISION_STYLE × PREFERENCE/AVOIDANCE/CONSTRAINT/HABIT/TRADEOFF）。
+
+| 能力 | 代码落点 | 说明 |
+|------|----------|------|
+| Traveler Memory Object | `traveler-memory/traveler-memory-contract.types.ts` | 统一 Contract；predicate=`traveler.{domain}.{semantic}.{key}` |
+| 写入 | `runtime.writeTravelerMemory` | 仍落 TMR Ledger，**不**建第三存储 |
+| EffectiveTravelerContext | `effective-context/*` | **纯投影**；L1+L2(+L0/compat) → 唯一下游读出口 |
+| 硬面消费 | `DecisionParamsInjector` + `EFFECTIVE_TRAVELER_CONTEXT_CONSUME` | off/shadow/active |
+| 软面消费 | `projectAdvisoryHintsFromEffectiveContext` | active 时替换 TMR soft hints；按 authority 分流 |
+| 按我的习惯 / 这次不一样 | `TripOverrideService` + `/traveler-memory/*` | L2=`scope:TRIP`；`l1Untouched:true` |
+| 脏写收口 | `TRAVELER_MEMORY_WRITE_GATE` | Standing / PreferenceLearning / DNA → Candidate |
+
+#### ETC 四纪律（冻结 — 防模糊层）
+
+**1. ETC 必须是纯投影，不拥有事实**
+
+```
+Ledger / Old OS(compat) / Trip Override
+        ↓  Resolver（read → merge → priority → emit）
+EffectiveTravelerContext   ← read-only derived state
+        ↓
+Planner / CGUS / Injector
+```
+
+ETC **只**负责读取 → 合并 → 解析优先级 → 输出。  
+**禁止：** ETC 写 Memory、晋升 Candidate、修改 L1/L2、持有独立 SoT。
+
+**2. 冲突优先级（冻结）**
+
+```
+Current Explicit Trip Constraint
+  > L2 Trip Override
+  > L1 Hard Constraint
+  > L1 Confirmed Preference / Habit
+  > Learned / Inferred Memory
+  > Default
+```
+
+同 key 层内解析（实现层）：`L2_TRIP_OVERRIDE > REQUEST_OVERLAY > L0_WORKING > L1_PERSISTENT`；同层优先 `traveler_memory:*` Contract。  
+**反例（禁止）：** 用户本次明确「住宿省一点」，L1「偏好精品酒店」又被 CGUS soft 加回并压过显式约束。
+
+**3. 8×5 ≠ 下游直接消费 40 格**
+
+Contract 可细；**ETC 输出必须面向决策**（决策字段，而非 Ontology 格子）。  
+例：Ledger 中 `Stay×Preference×quiet` + `Sleep×Habit×light_sleeper` + `Stay×Avoidance×street_facing`  
+→ ETC 可投影为 `stay: { quietnessPriority: "HIGH", avoidStreetFacing: true }`。  
+下游 **禁止** 自行重解释 Memory Ontology；解释逻辑停在 Resolver / ETC 投影。
+
+**4. `active` ≠ 所有 Memory 都生效**
+
+ETC 每条决策向输出须带：
+
+```
+{ value, authority, confidence, provenance, sourceScope }
+```
+
+Semantic Type **决定消费权限**（不只是分类）：
+
+| Semantic | 默认 authority / 消费面 |
+|----------|-------------------------|
+| CONSTRAINT | 可进硬面（Gate / Injector） |
+| PREFERENCE | 多数只参与排序 |
+| HABIT | 仅作 context |
+| TRADEOFF | 进 utility |
+| AVOIDANCE | 通常形成 penalty |
+
+`EFFECTIVE_TRAVELER_CONTEXT_CONSUME=active` 仅表示「下游读 ETC」；**不**表示每条记忆自动硬生效。
+
+**实现对照：** `EffectiveMemoryItemV1` 显式带 `value` / `authority` / `confidence` / `sourceRefs`(provenance) / `sourceScope`(+`layer`) / `semanticType`；硬/软投影器按 `mayEnterHard|SoftDecisionSurface` 分流，禁止下游自行猜权限。
+
+#### 架构终态（V1）
+
+```
+              WRITE SIDE
+                  │
+ Explicit / Episode / Learning / DNA
+                  ↓
+     TRAVELER_MEMORY_WRITE_GATE
+                  ↓
+        TMR Ledger + Contract
+            L1        L2
+              \       /
+               Resolver（纯投影）
+                  ↓
+        EffectiveTravelerContext
+                  ↓
+      ┌───────────┴───────────┐
+      ↓                       ↓
+ Hard Decision Surface    Soft Decision
+ Gate / Injector          CGUS / Ranking
+```
+
+旧 Memory OS：**迁移期 Resolver 兼容输入**，不是永久下游契约。
+
+**Habit Inherit：** 不写 L1；清 Trip Override；标记 `trip_memory_mode=HABIT_INHERIT`。  
+**Trip Different：** 只写 TRIP subject；硬守卫拒绝 GLOBAL_USER。
 
 ### Procedural Memory 纪律
 

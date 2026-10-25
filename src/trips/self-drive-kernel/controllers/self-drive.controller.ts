@@ -1,35 +1,48 @@
 import {
   BadRequestException,
+  Body,
   ConflictException,
   Controller,
   ForbiddenException,
   Get,
   NotFoundException,
   Param,
+  Patch,
+  Post,
   Query,
   UnauthorizedException,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../../auth/decorators/public.decorator';
 import {
   CurrentUser,
   CurrentUserPayload,
 } from '../../../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import {
   ErrorCode,
   errorResponse,
   successResponse,
 } from '../../../common/dto/standard-response.dto';
 import { ConstraintSolverAccessService } from '../../trip-constraint-solver/services/constraint-solver-access.service';
+import {
+  PatchIcelandSelfDriveDrivingSettingsDto,
+  PreviewDrivingSettingsImpactDto,
+  ReevaluateDrivingSettingsDto,
+} from '../../iceland-self-drive/dto/patch-driving-settings.dto';
 import { SelfDriveKernelService } from '../services/self-drive-kernel.service';
+import { SelfDriveSettingsFacade } from '../services/self-drive-settings.facade';
 
 @ApiTags('self-drive-kernel')
+@ApiBearerAuth()
 @Public()
 @Controller('trips/:tripId/self-drive')
 export class SelfDriveController {
   constructor(
     private readonly access: ConstraintSolverAccessService,
     private readonly kernel: SelfDriveKernelService,
+    private readonly settings: SelfDriveSettingsFacade,
   ) {}
 
   private parseDayIndex(raw?: string): number | undefined {
@@ -223,6 +236,73 @@ export class SelfDriveController {
         runtimeMonitor: engines.runtimeMonitor,
         recommendedActions: engines.recovery.recommendedActions,
       });
+    } catch (e) {
+      return this.handleError(e);
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('driving-settings')
+  @ApiOperation({
+    summary: '全球统一自驾设置（读）',
+    description:
+      '形状与国家无关；用 data.countryCode / capabilities 做 iOS 分支。旧路径 /iceland-self-drive/.../driving-settings 仍兼容。',
+  })
+  async getDrivingSettings(
+    @Param('tripId') tripId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    try {
+      const data = await this.settings.get(user.userId, tripId);
+      return successResponse(data);
+    } catch (e) {
+      return this.handleError(e);
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('driving-settings')
+  @ApiOperation({ summary: '全球统一自驾设置（写）' })
+  async patchDrivingSettings(
+    @Param('tripId') tripId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() body: PatchIcelandSelfDriveDrivingSettingsDto,
+  ) {
+    try {
+      const data = await this.settings.patch(user.userId, tripId, body);
+      return successResponse(data);
+    } catch (e) {
+      return this.handleError(e);
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('driving-settings/preview-impact')
+  @ApiOperation({ summary: '自驾设置草稿影响预览' })
+  async previewDrivingSettingsImpact(
+    @Param('tripId') tripId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() body: PreviewDrivingSettingsImpactDto,
+  ) {
+    try {
+      const data = await this.settings.previewImpact(user.userId, tripId, body);
+      return successResponse(data);
+    } catch (e) {
+      return this.handleError(e);
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('driving-settings/reevaluate')
+  @ApiOperation({ summary: '保存后重评 / 调整草案' })
+  async reevaluateDrivingSettings(
+    @Param('tripId') tripId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() body: ReevaluateDrivingSettingsDto,
+  ) {
+    try {
+      const data = await this.settings.reevaluate(user.userId, tripId, body);
+      return successResponse(data);
     } catch (e) {
       return this.handleError(e);
     }

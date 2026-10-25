@@ -12,14 +12,16 @@ import type { FactFreshness, FactVerificationStatus } from './common-states.type
 export const TRAVEL_WORLD_FACT_SCHEMA_ID = 'tripnara.travel_world_fact@v1';
 
 /** 事实权威层级 */
-export type FactAuthorityLevel =
-  | 'GOVERNMENT'
-  | 'OFFICIAL_OPERATOR'
-  | 'SUPPLIER_CONTRACT'
-  | 'USER_BOOKING'
-  | 'USER_DECLARATION'
-  | 'MODEL_INFERENCE'
-  | 'THIRD_PARTY';
+export const FACT_AUTHORITY_LEVEL_VALUES = [
+  'GOVERNMENT',
+  'OFFICIAL_OPERATOR',
+  'SUPPLIER_CONTRACT',
+  'USER_BOOKING',
+  'USER_DECLARATION',
+  'MODEL_INFERENCE',
+  'THIRD_PARTY',
+] as const;
+export type FactAuthorityLevel = (typeof FACT_AUTHORITY_LEVEL_VALUES)[number];
 
 /** 事实作用域 */
 export interface TravelWorldFactScope {

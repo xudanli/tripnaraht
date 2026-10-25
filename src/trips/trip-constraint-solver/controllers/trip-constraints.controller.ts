@@ -72,7 +72,8 @@ export class TripConstraintsController {
     summary: '获取行程约束列表（统一 SSOT 读模型）',
     description:
       '合成 intent / budget / pacing / wishes / feasibility 为 TripConstraint[]；' +
-      '返回 contract（旅行决策合同）与 meta.sections（7+2 分区）；支持 type/category/status/conflictOnly 过滤',
+      '返回 contract（旅行决策合同）与 meta.sections（7+2 分区）；支持 type/category/status/conflictOnly 过滤。' +
+      '默认用决策问题投影/快路径拉冲突高亮（秒级）；?includeConflicts=full 才同步全量 planning-conflicts。',
   })
   @ApiParam({ name: 'tripId', description: '行程 ID' })
   async list(

@@ -18,6 +18,7 @@ import {
 } from './iceland-self-drive-completion.util';
 import {
   bootstrapIcelandSelfDriveMetadata,
+  isCompleteIcelandSelfDriveMetadata,
   isIcelandSelfDriveProductTrip,
 } from './iceland-self-drive-metadata-hydrate.util';
 import {
@@ -71,7 +72,7 @@ export class IcelandSelfDriveBootstrapService {
     }
 
     let isd = readIcelandSelfDriveMetadata(trip.metadata);
-    if (!isd) {
+    if (!isCompleteIcelandSelfDriveMetadata(isd)) {
       if (!isIcelandSelfDriveProductTrip(trip.metadata, trip.destination)) {
         throw new NotFoundException({
           code: 'NOT_ICELAND_SELF_DRIVE',

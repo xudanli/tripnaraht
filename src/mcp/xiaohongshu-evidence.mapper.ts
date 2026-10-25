@@ -138,32 +138,57 @@ export function mapXhsFeedRowToFact(
   row: Record<string, unknown>,
   idx: number,
 ): XhsEvidenceFact | null {
-  const id =
-    pickStr(row, ['feed_id', 'feedId', 'note_id', 'noteId', 'id', 'model_type']) ||
+  const noteCard =
+    asRecord(row.noteCard) ||
+    asRecord(row.note_card) ||
+    asRecord(row.card) ||
+    null;
+  const interact =
+    asRecord(noteCard?.interactInfo) ||
+    asRecord(noteCard?.interact_info) ||
+    asRecord(row.interactInfo) ||
+    asRecord(row.interact_info) ||
+    null;
+  const user =
+    asRecord(noteCard?.user) ||
+    asRecord(row.user) ||
+    asRecord(row.author) ||
+    null;
+
+  let id =
+    pickStr(row, ['feed_id', 'feedId', 'note_id', 'noteId', 'id']) ||
+    pickStr(noteCard || {}, ['feed_id', 'feedId', 'note_id', 'noteId', 'id']) ||
     `xhs-${idx}`;
-  const title = pickStr(row, ['title', 'display_title', 'desc', 'name']);
-  const content = pickStr(row, [
-    'content',
-    'desc',
-    'description',
-    'text',
-    'note_card',
-  ]);
+  if (id === 'note' || id === 'normal') {
+    id = `xhs-${idx}`;
+  }
+  const title =
+    pickStr(row, ['title', 'display_title', 'displayTitle', 'desc', 'name']) ||
+    pickStr(noteCard || {}, [
+      'title',
+      'display_title',
+      'displayTitle',
+      'desc',
+      'name',
+    ]);
+  const content =
+    pickStr(row, ['content', 'desc', 'description', 'text']) ||
+    pickStr(noteCard || {}, ['content', 'desc', 'description', 'text']);
   const excerptSrc = content || title;
   if (!excerptSrc && !title) return null;
 
-  const liked = pickNum(row, [
+  const liked = pickNum(interact || row, [
     'liked_count',
     'likedCount',
     'like_count',
     'likes',
   ]);
-  const collected = pickNum(row, [
+  const collected = pickNum(interact || row, [
     'collected_count',
     'collectedCount',
     'collect_count',
   ]);
-  const commented = pickNum(row, [
+  const commented = pickNum(interact || row, [
     'comment_count',
     'commentCount',
     'comments_count',
@@ -174,15 +199,25 @@ export function mapXhsFeedRowToFact(
 
   const author =
     pickStr(row, ['user_id', 'userId', 'author_id']) ||
-    (() => {
-      const u = asRecord(row.user) || asRecord(row.author);
-      return u ? pickStr(u, ['user_id', 'userId', 'id', 'nickname', 'name']) : undefined;
-    })();
+    (user
+      ? pickStr(user, [
+          'user_id',
+          'userId',
+          'id',
+          'nickname',
+          'nickName',
+          'name',
+        ])
+      : undefined);
 
+  const coverObj = asRecord(noteCard?.cover) || asRecord(row.cover);
   const cover =
     pickStr(row, ['cover', 'coverUrl', 'image', 'mainPic']) ||
+    (coverObj
+      ? pickStr(coverObj, ['url', 'url_default', 'info_list'])
+      : undefined) ||
     (() => {
-      const imgs = row.images ?? row.image_list;
+      const imgs = row.images ?? row.image_list ?? noteCard?.images;
       if (Array.isArray(imgs) && imgs.length) {
         const first = imgs[0];
         if (typeof first === 'string') return first;
@@ -194,10 +229,15 @@ export function mapXhsFeedRowToFact(
       return undefined;
     })();
 
+  const xsec =
+    pickStr(row, ['xsecToken', 'xsec_token']) ||
+    pickStr(noteCard || {}, ['xsecToken', 'xsec_token']);
   const url =
     pickStr(row, ['url', 'share_url', 'note_url', 'link']) ||
     (id && !id.startsWith('xhs-')
-      ? `https://www.xiaohongshu.com/explore/${id}`
+      ? `https://www.xiaohongshu.com/explore/${id}${
+          xsec ? `?xsec_token=${encodeURIComponent(xsec)}` : ''
+        }`
       : undefined);
 
   return {

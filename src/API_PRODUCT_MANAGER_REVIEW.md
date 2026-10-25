@@ -463,7 +463,7 @@
 | 模块 | 文档路径 | 状态 |
 |------|---------|------|
 | 认证 | `USER_API_DOCUMENTATION.md` | ✅ |
-| 用户偏好 | `USER_PREFERENCES_API_DOCUMENTATION.md` | ✅ |
+| 用户偏好 | `internal-docs/api/USER_PREFERENCES_API_DOCUMENTATION.md` | ✅ |
 | 行程管理 | `TRIP_DETAIL_API_DOCUMENTATION.md` | ✅ |
 | 规划助手 | `planning-assistant/API_DOCUMENTATION.md` | ✅ |
 | 规划工作台 | `PLANNING_WORKBENCH_API.md` | ✅ |

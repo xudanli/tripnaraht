@@ -6,6 +6,12 @@ import { UpdateUserProfileDto, GetUserProfileResponseDto } from './dto/user-prof
 import { GetUsersQueryDto, UserListResponseDto, UserResponseDto, UpdateUserDto } from './dto/admin-user.dto';
 import { CurrentUserResponseDto, UpdateCurrentUserDto, DeleteAccountResponseDto } from './dto/current-user.dto';
 import { UserStatsResponseDto, UserDetailResponseDto } from './dto/user-stats.dto';
+import {
+  projectMobileDetail,
+  projectMobileExtras,
+} from './utils/admin-user-enrichment.util';
+import { buildSummary } from '../mobile/services/mobile-driver-profile.service';
+import type { MobileDriverProfileResponseDto } from '../mobile/dto/mobile-driver-profile.dto';
 
 interface MulterFile {
   buffer: Buffer;
@@ -265,6 +271,7 @@ export class UsersService {
 
   /**
    * 获取用户列表（管理接口）
+   * 附带 iOS 个人中心摘要：identity / travelPortrait / driverSummary + 计数
    */
   async getUsers(query: GetUsersQueryDto): Promise<UserListResponseDto> {
     const page = query.page || 1;
@@ -297,15 +304,64 @@ export class UsersService {
           emailVerified: true,
           displayName: true,
           avatarUrl: true,
+          platformRole: true,
           createdAt: true,
           updatedAt: true,
+          profile: { select: { preferences: true } },
         },
       }),
       this.prisma.user.count({ where }),
     ]);
 
+    const userIds = users.map((u) => u.id);
+    const [tripGroups, docGroups] = userIds.length
+      ? await Promise.all([
+          this.prisma.tripCollaborator.groupBy({
+            by: ['userId'],
+            where: { userId: { in: userIds } },
+            _count: true,
+          }),
+          this.prisma.userCredentialDocument.groupBy({
+            by: ['userId'],
+            where: { userId: { in: userIds }, deletedAt: null },
+            _count: true,
+          }),
+        ])
+      : [[], []];
+
+    const tripCountByUser = new Map(
+      tripGroups.map((g) => [g.userId, g._count]),
+    );
+    const docCountByUser = new Map(
+      docGroups.map((g) => [g.userId, g._count]),
+    );
+
+    const enriched: UserResponseDto[] = users.map((user) => {
+      const extras = projectMobileExtras(user.profile?.preferences);
+      return {
+        id: user.id,
+        googleSub: user.googleSub,
+        email: user.email,
+        emailVerified: user.emailVerified,
+        displayName: user.displayName,
+        avatarUrl: user.avatarUrl,
+        platformRole: user.platformRole,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+        identity: extras.identity,
+        travelPortrait: extras.travelPortrait,
+        driverSummary: extras.driverSummary,
+        hasIdentity: extras.hasIdentity,
+        hasTravelPortrait: extras.hasTravelPortrait,
+        hasDriverProfile: extras.hasDriverProfile,
+        tripCount: tripCountByUser.get(user.id) ?? 0,
+        documentCount: docCountByUser.get(user.id) ?? 0,
+        emergencyContactCount: extras.emergencyContactCount,
+      };
+    });
+
     return {
-      users: users as UserResponseDto[],
+      users: enriched,
       total,
       page,
       limit,
@@ -314,7 +370,7 @@ export class UsersService {
   }
 
   /**
-   * 获取用户详情（管理接口）
+   * 获取用户详情（管理接口）— 含 iOS 个人中心摘要
    */
   async getUserById(userId: string): Promise<UserResponseDto> {
     const user = await this.prisma.user.findUnique({
@@ -326,8 +382,10 @@ export class UsersService {
         emailVerified: true,
         displayName: true,
         avatarUrl: true,
+        platformRole: true,
         createdAt: true,
         updatedAt: true,
+        profile: { select: { preferences: true } },
       },
     });
 
@@ -335,7 +393,34 @@ export class UsersService {
       throw new NotFoundException(`User not found: ${userId}`);
     }
 
-    return user as UserResponseDto;
+    const extras = projectMobileExtras(user.profile?.preferences);
+    const [tripCount, documentCount] = await Promise.all([
+      this.prisma.tripCollaborator.count({ where: { userId } }),
+      this.prisma.userCredentialDocument.count({
+        where: { userId, deletedAt: null },
+      }),
+    ]);
+
+    return {
+      id: user.id,
+      googleSub: user.googleSub,
+      email: user.email,
+      emailVerified: user.emailVerified,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+      platformRole: user.platformRole,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      identity: extras.identity,
+      travelPortrait: extras.travelPortrait,
+      driverSummary: extras.driverSummary,
+      hasIdentity: extras.hasIdentity,
+      hasTravelPortrait: extras.hasTravelPortrait,
+      hasDriverProfile: extras.hasDriverProfile,
+      tripCount,
+      documentCount,
+      emergencyContactCount: extras.emergencyContactCount,
+    };
   }
 
   /**
@@ -466,7 +551,7 @@ export class UsersService {
   }
 
   /**
-   * 获取用户详情（包含关联数据统计）（管理接口）
+   * 获取用户详情（包含关联数据 + iOS 个人中心完整块）（管理接口）
    */
   async getUserDetail(userId: string): Promise<UserDetailResponseDto> {
     const user = await this.prisma.user.findUnique({
@@ -480,11 +565,36 @@ export class UsersService {
       throw new NotFoundException(`用户不存在: ${userId}`);
     }
 
-    // 获取关联数据统计
-    const [tripCount, collectionCount, likeCount] = await Promise.all([
+    const mobile = projectMobileDetail(user.profile?.preferences);
+    const driverSummary = mobile.driverProfile
+      ? buildSummary(
+          mobile.driverProfile as unknown as Omit<
+            MobileDriverProfileResponseDto,
+            'updatedAt'
+          >,
+        )
+      : null;
+
+    const [tripCount, collectionCount, likeCount, documents] = await Promise.all([
       this.prisma.tripCollaborator.count({ where: { userId } }),
       this.prisma.tripCollection.count({ where: { userId } }),
       this.prisma.tripLike.count({ where: { userId } }),
+      this.prisma.userCredentialDocument.findMany({
+        where: { userId, deletedAt: null },
+        select: {
+          id: true,
+          type: true,
+          status: true,
+          expiresOn: true,
+          numberLast4: true,
+          fileName: true,
+          mimeType: true,
+          fileSize: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
     ]);
 
     return {
@@ -494,16 +604,27 @@ export class UsersService {
       emailVerified: user.emailVerified,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
+      platformRole: user.platformRole,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
-      profile: user.profile ? {
-        preferences: user.profile.preferences,
-        createdAt: user.profile.createdAt,
-        updatedAt: user.profile.updatedAt,
-      } : null,
+      profile: user.profile
+        ? {
+            preferences: user.profile.preferences,
+            createdAt: user.profile.createdAt,
+            updatedAt: user.profile.updatedAt,
+          }
+        : null,
+      identity: mobile.identity,
+      travelPortrait: mobile.travelPortrait,
+      driverProfile: mobile.driverProfile,
+      driverSummary,
+      emergencyContacts: mobile.emergencyContacts,
+      documents,
       tripCount,
       collectionCount,
       likeCount,
+      documentCount: documents.length,
+      emergencyContactCount: mobile.emergencyContacts.length,
     };
   }
 }

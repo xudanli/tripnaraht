@@ -61,6 +61,14 @@ import { Rfc001InternalDeprecationInterceptor } from './api/rfc001-internal-depr
 import { EffectivePlanExecutionModule } from '../../decision-runtime/execution/effective-plan-execution.module';
 import { NeptuneRepairProvider } from '../../decision-runtime/candidates/providers/neptune-repair.provider';
 import { SolverModule } from '../../decision-runtime/solver/solver.module';
+import { ProactiveDecisionOrchestratorService } from '../proactive-decision/orchestration/proactive-decision-orchestrator.service';
+import { ProactiveDecisionSurfacePersistService } from '../proactive-decision/surface/proactive-decision-surface-persist.service';
+import { ProactiveRfc001ApplyAdapterService } from '../proactive-decision/execution/proactive-rfc001-apply.adapter';
+import { ProactiveSilentLearningMemoryService } from '../proactive-decision/memory/proactive-silent-learning-memory.service';
+import { TravelMemoryModule } from '../../travel-memory/travel-memory.module';
+import { WorldConsistencyModule } from '../decision/world-consistency/world-consistency.module';
+import { EvidenceResolverLookRoadAuthorityPort } from '../decision/world-consistency/evidence-resolver-look-road-authority.port';
+import { LookRoadAuthorityDecisionTickService } from '../decision/world-consistency/look-road-authority-decision-tick.service';
 
 @Module({
   imports: [
@@ -70,10 +78,12 @@ import { SolverModule } from '../../decision-runtime/solver/solver.module';
     SolverModule,
     forwardRef(() => SkillsModule),
     forwardRef(() => DecisionModule),
-    DecisionSemanticsModule,
+    forwardRef(() => DecisionSemanticsModule),
     forwardRef(() => DecisionGatewayModule),
     TripConstraintSolverModule,
     forwardRef(() => TepModule),
+    TravelMemoryModule,
+    forwardRef(() => WorldConsistencyModule),
   ],
   controllers: [
     Rfc001IcelandInternalController,
@@ -89,6 +99,10 @@ import { SolverModule } from '../../decision-runtime/solver/solver.module';
     RoadCloseImpactAnalyzerService,
     DecisionProblemDetectorService,
     Rfc001DecisionProblemStoreService,
+    ProactiveDecisionOrchestratorService,
+    ProactiveDecisionSurfacePersistService,
+    ProactiveRfc001ApplyAdapterService,
+    ProactiveSilentLearningMemoryService,
     RoadSegmentUnavailablePipelineService,
     DecisionWorkspaceService,
     RoadSegmentUnavailableEvaluateService,
@@ -130,6 +144,8 @@ import { SolverModule } from '../../decision-runtime/solver/solver.module';
     AttentionInternalDualReadService,
     AttentionPrimarySsoCutoverService,
     AttentionShadowEvidenceWriter,
+    EvidenceResolverLookRoadAuthorityPort,
+    LookRoadAuthorityDecisionTickService,
   ],
   exports: [
     DecisionCoreService,
@@ -138,6 +154,10 @@ import { SolverModule } from '../../decision-runtime/solver/solver.module';
     RoadCloseImpactAnalyzerService,
     DecisionProblemDetectorService,
     Rfc001DecisionProblemStoreService,
+    ProactiveDecisionOrchestratorService,
+    ProactiveDecisionSurfacePersistService,
+    ProactiveRfc001ApplyAdapterService,
+    ProactiveSilentLearningMemoryService,
     RoadSegmentUnavailablePipelineService,
     DecisionWorkspaceService,
     RoadSegmentUnavailableEvaluateService,
@@ -172,6 +192,8 @@ import { SolverModule } from '../../decision-runtime/solver/solver.module';
     AttentionOrchestrationShadowRunnerService,
     AttentionInternalDualReadService,
     AttentionPrimarySsoCutoverService,
+    EvidenceResolverLookRoadAuthorityPort,
+    LookRoadAuthorityDecisionTickService,
   ],
 })
 export class GuardianDecisionCoreModule {}

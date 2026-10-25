@@ -35,7 +35,7 @@ export function buildAlertImpactSummary(risk: ActiveRisk): string {
   const parts: string[] = [];
   if (risk.type === 'ENVIRONMENT') {
     const envSource = risk.sourceRefs.find((s) => s.sourceSystem === 'ENVIRONMENT_EVENT');
-    if (envSource) parts.push(`weather · ${risk.level === 'CRITICAL' ? 'red' : 'yellow'}`);
+    if (envSource) parts.push(`weather · ${resolveEnvironmentImpactSeverityLabel(risk)}`);
   }
   if (risk.affectedActivities.length > 0) {
     const labels = [...new Set(risk.affectedActivities.map((a) => a.label).filter(Boolean))];
@@ -51,4 +51,21 @@ export function buildAlertImpactSummary(risk: ActiveRisk): string {
 
 function formatTimeLabel(iso: string): string {
   return formatClockLabel(iso, { emptyLabel: iso });
+}
+
+/** 影响范围色标应对齐事件/门禁，勿把 HIGH+STOP 误标成 yellow。 */
+function resolveEnvironmentImpactSeverityLabel(risk: ActiveRisk): string {
+  const official = risk.observedMetrics?.OFFICIAL_WARNING_LEVEL;
+  if (typeof official === 'string' && official.trim()) {
+    return official.trim().toLowerCase();
+  }
+  if (
+    risk.executionGate === 'STOP' ||
+    risk.level === 'CRITICAL' ||
+    risk.level === 'HIGH'
+  ) {
+    return 'red';
+  }
+  if (risk.level === 'MEDIUM') return 'yellow';
+  return 'green';
 }

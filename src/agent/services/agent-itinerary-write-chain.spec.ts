@@ -40,23 +40,24 @@ describe('agent itinerary write chain (pending migration complete)', () => {
     expect(result.error).toBe(EFFECTIVE_PLAN_WRITE_CHAIN_REQUIRED_CODE);
   });
 
-  it('CAS-118: System1Executor executeAPI blocked when write chain on', async () => {
-    process.env.EFFECTIVE_PLAN_WRITE_CHAIN = '1';
+  it('CAS-118: System1Executor executeAPI never mutates itinerary', async () => {
+    const remove = jest.fn();
+    const create = jest.fn();
     const svc = new System1ExecutorService(
-      {} as never,
-      {} as never,
-      {} as never,
-      undefined,
-      undefined,
-      undefined,
-      new EffectivePlanWriteGuardService(),
+      { search: jest.fn() } as never,
+      { findOne: jest.fn() } as never,
+      { remove, create } as never,
     );
-    await expect(
-      (svc as any).executeAPI({
-        user_input: '删除 蓝湖',
-        trip: { trip_id: 'trip-1' },
-      }),
-    ).rejects.toThrow(BadRequestException);
+    const out = await (svc as any).executeAPI({
+      user_input: '删除 蓝湖',
+      trip: { trip_id: 'trip-1' },
+      request_id: 'r-cas-118',
+    });
+    expect(remove).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+    expect(out.result.applied).toBe(false);
+    expect(out.result.authority).toBe('ESCALATED');
+    expect(String(out.answerText)).toMatch(/不能直接改行程/);
   });
 
   it('CAS-119: materializePlanStateToTimeline blocked when write chain on', async () => {

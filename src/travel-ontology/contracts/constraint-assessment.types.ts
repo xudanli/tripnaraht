@@ -4,12 +4,15 @@
 
 export const CONSTRAINT_ASSESSMENT_SCHEMA_ID = 'tripnara.constraint_assessment@v1' as const;
 
+export const CONSTRAINT_ASSESSMENT_OUTCOME_VALUES = [
+  'ALLOW',
+  'WARNING',
+  'NEED_CONFIRM',
+  'BLOCK',
+  'UNKNOWN',
+] as const;
 export type ConstraintAssessmentOutcome =
-  | 'ALLOW'
-  | 'WARNING'
-  | 'NEED_CONFIRM'
-  | 'BLOCK'
-  | 'UNKNOWN';
+  (typeof CONSTRAINT_ASSESSMENT_OUTCOME_VALUES)[number];
 
 export interface ConstraintAssessmentBasis {
   contextId: string;

@@ -23,7 +23,7 @@ import {
 import type { ContextHashVersionInputs } from './page-insight-context-hash.service';
 import { selectMostImportantProblemId } from './decision-space-page-context.builder';
 
-const COPILOT_USER = 'copilot-context-builder';
+const COPILOT_USER = 'anonymous-dev-user';
 
 export interface ExecContextGate {
   ok: boolean;

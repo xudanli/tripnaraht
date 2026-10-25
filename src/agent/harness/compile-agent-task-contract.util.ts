@@ -42,11 +42,10 @@ function detectDecisionSupport(msg: string): boolean {
   );
 }
 
+import { isLiveFeasibilityUtterance } from '../utils/live-feasibility-utterance.util';
+
 function detectLiveExecution(msg: string): boolean {
-  return (
-    /还能去|来得及|晚了|晚点|延误|现在还能|今天继续还是|返回酒店/.test(msg) ||
-    /会不会赶不上|还能不能去/.test(msg)
-  );
+  return isLiveFeasibilityUtterance(msg);
 }
 
 function detectTeamAction(msg: string): boolean {

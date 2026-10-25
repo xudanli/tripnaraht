@@ -11,7 +11,7 @@ export type FliggyLodgingSearchResolved = {
 
 /** 知名城市（可直接作 dest_name） */
 const CITY_HINT_RE =
-  /(北京|上海|广州|深圳|杭州|成都|重庆|西安|南京|苏州|三亚|厦门|青岛|武汉|长沙|昆明|丽江|大理|桂林|拉萨|林芝|波密|昌都|康定|理塘|巴塘|芒康|左贡|香格里拉|稻城|九寨沟|乌鲁木齐|哈尔滨|沈阳|大连|天津|郑州|济南|合肥|福州|南昌|南宁|贵阳|海口|银川|西宁|呼和浩特|石家庄|太原|兰州|香港|澳门|台北|张家界|黄山|峨眉山|新都桥)/;
+  /(北京|上海|广州|深圳|杭州|成都|重庆|西安|南京|苏州|三亚|厦门|青岛|武汉|长沙|昆明|丽江|大理|桂林|拉萨|林芝|波密|昌都|康定|理塘|巴塘|芒康|左贡|八宿|香格里拉|稻城|九寨沟|乌鲁木齐|哈尔滨|沈阳|大连|天津|郑州|济南|合肥|福州|南昌|南宁|贵阳|海口|银川|西宁|乌兰|大柴旦|敦煌|嘉峪关|张掖|祁连|呼和浩特|石家庄|太原|兰州|香港|澳门|台北|张家界|黄山|峨眉山|新都桥)/;
 
 /**
  * 景点 / 走廊名 → 宜住城镇（飞猪 dest_name）。
@@ -21,7 +21,8 @@ const LODGING_HUB_RULES: Array<{ match: RegExp; hub: string; poi?: string }> = [
   { match: /布达拉宫|大昭寺|八廓|罗布林卡|拉萨/i, hub: '拉萨', poi: '布达拉宫' },
   { match: /林芝机场|米林|鲁朗|雅鲁藏布|林芝/i, hub: '林芝' },
   { match: /波密|通麦|嘎隆拉/i, hub: '波密' },
-  { match: /东达山|业拉山|怒江72拐|左贡/i, hub: '左贡' },
+  { match: /东达山|业拉山|怒江72拐|怒江大桥|左贡/i, hub: '左贡' },
+  { match: /八宿|然乌|帮达/i, hub: '八宿' },
   { match: /芒康|如美/i, hub: '芒康' },
   { match: /巴塘/i, hub: '巴塘' },
   { match: /理塘|勒通古镇/i, hub: '理塘' },
@@ -33,6 +34,13 @@ const LODGING_HUB_RULES: Array<{ match: RegExp; hub: string; poi?: string }> = [
   { match: /九寨|黄龙/i, hub: '九寨沟' },
   { match: /兵马俑|华清宫|大雁塔|回民街/i, hub: '西安', poi: '兵马俑' },
   { match: /宽窄巷子|春熙路|太古里|双流|天府/i, hub: '成都' },
+  // 青甘大环线：飞猪不认「茶卡镇」；裸「茶卡」易漂重庆，统一落到乌兰
+  { match: /茶卡盐湖|茶卡镇|茶卡/i, hub: '乌兰', poi: '茶卡盐湖' },
+  { match: /大柴旦翡翠湖|翡翠湖|大柴旦/i, hub: '大柴旦', poi: '翡翠湖' },
+  { match: /青海湖景区|青海湖/i, hub: '西宁', poi: '青海湖' },
+  { match: /莫高窟|鸣沙山|月牙泉/i, hub: '敦煌', poi: '莫高窟' },
+  { match: /七彩丹霞|丹霞地貌/i, hub: '张掖', poi: '七彩丹霞' },
+  { match: /祁连草原|扁都口|祁连/i, hub: '祁连' },
 ];
 
 /**
@@ -45,6 +53,50 @@ export function stripClientContextAppendix(message: string): string {
     .replace(/\n+\s*Day\s*\d+[\s\S]*$/iu, '')
     .split('\n')[0]
     ?.trim() ?? '';
+}
+
+/**
+ * iOS 日程条过夜镇：`[日程] Day4 · 如美/左贡 → 八宿` →「八宿」
+ * 优先于当日中途景点（如怒江大桥）作飞猪 dest。
+ */
+export function extractScheduleOvernightTownZh(message: string): string | null {
+  const raw = String(message ?? '');
+  const arrow = raw.match(
+    /\[日程\][^\n]*?(?:→|->|至)\s*([\u4e00-\u9fff]{2,8})(?:\s|$)/,
+  );
+  if (arrow?.[1]) return arrow[1];
+  const hubbed = mapToLodgingHub(raw.match(/\[日程\]([^\n]+)/)?.[1] ?? '');
+  return hubbed?.hub ?? null;
+}
+
+/**
+ * 用户可见的过夜锚点文案：优先 meta / 日程箭头原文（茶卡镇），再飞猪枢纽（乌兰）。
+ * 避免空卡时兜底成含糊的「行程过夜点」。
+ */
+export function resolveHotelDestHintZh(input: {
+  message?: string | null;
+  meta?: Record<string, unknown> | null;
+}): string {
+  const meta = input.meta ?? {};
+  for (const key of ['destination', 'dest_name', 'destName'] as const) {
+    const v = meta[key];
+    if (typeof v === 'string' && v.trim() && !/^(CN|CHN|China|中国)$/i.test(v.trim())) {
+      return v.trim();
+    }
+  }
+  const raw = String(input.message ?? '');
+  const arrow = raw.match(
+    /\[日程\][^\n]*?(?:→|->|至)\s*([\u4e00-\u9fff]{2,8})(?:\s|$)/,
+  );
+  if (arrow?.[1]) return arrow[1];
+  const overnight = extractScheduleOvernightTownZh(raw);
+  if (overnight) return overnight;
+  const lodging = resolveFliggyLodgingSearch({
+    naturalLanguage: raw,
+    placeHint: raw,
+    query: raw,
+  });
+  return lodging?.destName ?? '行程过夜点';
 }
 
 function stripNoise(raw: string): string {
@@ -180,10 +232,14 @@ export function resolveFliggyHotelKeywords(input: {
   placeHint?: string | null;
 }): string | undefined {
   const raw = stripNoise(
-    String(input.query || input.naturalLanguage || input.placeHint || ''),
+    stripClientContextAppendix(
+      String(input.query || input.naturalLanguage || input.placeHint || ''),
+    ),
   );
   if (!raw || raw.length < 2) return undefined;
   // 已是目的地短名时不必再当 keyWords（避免干扰 dest）
   if (/^[\u4e00-\u9fff]{2,8}$/.test(raw)) return undefined;
+  // 日程附录残留 / DayN 不应进飞猪 keyword
+  if (/^\[?日程\]?|^\s*Day\s*\d+/i.test(raw)) return undefined;
   return raw.slice(0, 40);
 }

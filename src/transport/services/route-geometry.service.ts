@@ -111,7 +111,7 @@ export class RouteGeometryService {
       const amapMode =
         travelMode === 'WALKING' ? 'walking' : travelMode === 'TRANSIT' ? 'transit' : 'driving';
       const amap =
-        amapMode === 'transit'
+        amapMode === 'transit' || !this.amapRoutes.isRoutesEnabled()
           ? null
           : await this.amapRoutes.computeRouteGeometry(
               from.lat,

@@ -27,6 +27,7 @@ import type {
   MobileItineraryCalendarDayDto,
   MobileActivityExecutionDetailDto,
 } from '../dto/mobile-execution.types';
+import { assembleMobileProactiveDecisionSurface } from '../../trips/proactive-decision/surface/assemble-mobile-proactive-decision-surface.util';
 import {
   attentionTypeIcon,
   computeDayProgress,
@@ -75,6 +76,12 @@ import {
   isExecutionRiskShadowCompareEnabled,
   resolveExecutionRiskCutoverMode,
 } from '../../trips/execution-risk-center/config/execution-risk-feature-flags.util';
+import { attachRiskId, projectEnvironmentEventToRisk } from '../../trips/execution-risk-center/adapters/environment-event-risk.adapter';
+import {
+  buildVideoDemoFilmPackExecutionAlerts,
+  extractVideoDemoFilmPack,
+} from '../utils/video-demo-film-pack-alerts.util';
+import { mergeRiskProjections } from '../../trips/execution-risk-center/utils/risk-merge.util';
 import { buildExecutionAlertsFromActiveRisks } from '../utils/active-risk-alert.projection.util';
 import {
   buildCurrentLocationName,
@@ -92,6 +99,20 @@ import {
 } from '../utils/mobile-intercom.projection.util';
 import { resolveExecutionActionDeadlineFromTimeSlots } from '../../trips/execution-risk-center/utils/execution-action-deadline.util';
 
+function settleOrNull<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), ms);
+    promise
+      .then((v) => {
+        clearTimeout(timer);
+        resolve(v);
+      })
+      .catch(() => {
+        clearTimeout(timer);
+        resolve(null);
+      });
+  });
+}
 @Injectable()
 export class MobileExecutionService {
   constructor(
@@ -116,22 +137,32 @@ export class MobileExecutionService {
 
   async getContextSnapshot(tripId: string, userId: string): Promise<MobileContextSnapshotDto> {
     const trip = await this.access.assertTripMember(tripId, userId);
-    const [snapshot, state, queue, attention] = await Promise.all([
-      this.snapshotAssembler.assemble(tripId).catch(() => null),
-      this.tripsService.getTripState(tripId).catch(() => null),
-      this.decisionQueue.getQueue(tripId, { hydrateRecommendations: false }).catch(() => null),
-      this.tripsService.getAttentionQueue({ tripId, limit: 20, offset: 0 }).catch(() => null),
+    // 不拉 attention-queue：其 persona→feasibility 支路会在 timeout 后继续占满事件循环。
+    const snapRef = await settleOrNull(this.snapshotAssembler.resolveSnapshotRef(tripId), 800);
+    const [snapshot, state, queue] = await Promise.all([
+      settleOrNull(this.snapshotAssembler.assemble(tripId), 1_500),
+      settleOrNull(this.tripsService.getTripState(tripId), 1_500),
+      settleOrNull(
+        this.decisionQueue.getQueue(tripId, { hydrateRecommendations: false }),
+        1_200,
+      ),
     ]);
 
     const members = await this.loadMembers(tripId);
     const lifecycle = mapTripLifecycle(trip.status);
     const contextVersion = computeMobileContextVersion({
-      constraintsVersion: snapshot?.bindings?.constraintsVersion ?? 0,
+      constraintsVersion: snapshot?.bindings?.constraintsVersion ?? snapRef?.constraintsVersion ?? 0,
       tripUpdatedAt: trip.updatedAt,
-      effectivePlanVersionId: snapshot?.effectivePlan?.versionId,
+      effectivePlanVersionId:
+        snapshot?.effectivePlan?.versionId ?? snapRef?.effectivePlanVersionId,
     });
 
-    const progressItems = await this.loadTodayItems(tripId, trip.startDate, trip.endDate);
+    // 进度条非首屏关键：短预算；避免 CS 轮询拖住 loadTodayItems
+    const progressItems =
+      (await settleOrNull(
+        this.loadTodayItems(tripId, trip.startDate, trip.endDate),
+        800,
+      )) ?? [];
     const progressPercent = computeDayProgress(progressItems);
 
     const worldFacts = this.extractWorldFacts(snapshot);
@@ -142,13 +173,12 @@ export class MobileExecutionService {
         status: 'pending' as const,
       })) ?? [];
 
-    const notifications =
-      attention?.items.map((item) => ({
-        id: item.id,
-        category: item.type?.includes('risk') || item.type?.includes('weather') ? 'risk' : 'info',
-        title: item.title,
-        createdAt: item.createdAt,
-      })) ?? [];
+    const notifications: Array<{
+      id: string;
+      category: string;
+      title: string;
+      createdAt: string;
+    }> = [];
 
     const activeSosRead = projectActiveSosRead(trip.metadata);
 
@@ -169,7 +199,13 @@ export class MobileExecutionService {
             version: snapshot.bindings?.constraintsVersion ?? 1,
             title: trip.name ? `${trip.name} 执行方案` : '执行中路线',
           }
-        : null,
+        : snapRef?.effectivePlanVersionId
+          ? {
+              id: snapRef.effectivePlanVersionId,
+              version: snapRef.constraintsVersion ?? 1,
+              title: trip.name ? `${trip.name} 执行方案` : '执行中路线',
+            }
+          : null,
       members,
       decisions,
       worldFacts,
@@ -201,19 +237,24 @@ export class MobileExecutionService {
 
     const [members, snapshot, state, today, queue, alertsPreview, advisory, adjustmentQueue] =
       await Promise.all([
-      this.loadMembers(tripId),
-      this.snapshotAssembler.assemble(tripId).catch(() => null),
-      this.tripsService.getTripState(tripId).catch(() => null),
+      settleOrNull(this.loadMembers(tripId), 1_200),
+      settleOrNull(this.snapshotAssembler.assemble(tripId), 2_000),
+      settleOrNull(this.tripsService.getTripState(tripId), 2_000),
       isExecuting
-        ? this.tripToday.getToday(tripId, userId).catch(() => null)
+        ? settleOrNull(this.tripToday.getToday(tripId, userId), 2_000)
         : Promise.resolve(null),
-      this.decisionQueue.getQueue(tripId, { hydrateRecommendations: false }).catch(() => null),
-      !lite ? this.getExecutionAlerts(tripId, userId).catch(() => null) : Promise.resolve(null),
+      settleOrNull(
+        this.decisionQueue.getQueue(tripId, { hydrateRecommendations: false }),
+        1_500,
+      ),
+      !lite
+        ? settleOrNull(this.getExecutionAlerts(tripId, userId), 3_000)
+        : Promise.resolve(null),
       isExecuting && !lite
-        ? this.executionAdvisory.getAdvisory(tripId, userId).catch(() => null)
+        ? settleOrNull(this.executionAdvisory.getAdvisory(tripId, userId), 1_500)
         : Promise.resolve(null),
       isExecuting
-        ? this.getExecutionAdjustmentQueue(tripId, userId).catch(() => null)
+        ? settleOrNull(this.getExecutionAdjustmentQueue(tripId, userId), 3_000)
         : Promise.resolve(null),
     ]);
 
@@ -222,6 +263,8 @@ export class MobileExecutionService {
       tripUpdatedAt: trip.updatedAt,
       effectivePlanVersionId: snapshot?.effectivePlan?.versionId,
     });
+
+    const memberList = members ?? [];
 
     const todayItems = await this.loadTodayItems(tripId, trip.startDate, trip.endDate, dayNumber, {
       state,
@@ -313,12 +356,12 @@ export class MobileExecutionService {
         },
       ],
       team: {
-        activeCount: members.length,
-        totalCount: members.length,
-        summary: `${members.length} 位成员同行`,
+        activeCount: memberList.length,
+        totalCount: memberList.length,
+        summary: `${memberList.length} 位成员同行`,
         note: today?.teamThermometer?.visible ? `团队温度 ${today.teamThermometer.level}` : undefined,
         trackingDeviceCount: 0,
-        members: members.map((m) => ({
+        members: memberList.map((m) => ({
           id: m.id,
           name: m.displayName,
           role: m.role,
@@ -391,6 +434,19 @@ export class MobileExecutionService {
     };
   }
 
+  /** 仅 revision：禁止为 contextVersion 拉全量 assemble / attention */
+  private async resolveContextVersionFast(
+    tripId: string,
+    tripUpdatedAt: Date,
+  ): Promise<number> {
+    const snapRef = await settleOrNull(this.snapshotAssembler.resolveSnapshotRef(tripId), 600);
+    return computeMobileContextVersion({
+      constraintsVersion: snapRef?.constraintsVersion ?? 0,
+      tripUpdatedAt,
+      effectivePlanVersionId: snapRef?.effectivePlanVersionId,
+    });
+  }
+
   async getTodayItinerary(
     tripId: string,
     userId: string,
@@ -398,8 +454,12 @@ export class MobileExecutionService {
   ): Promise<MobileTodayItineraryDto> {
     const trip = await this.access.assertTripMember(tripId, userId);
     const dayNumber = resolveDayNumber(trip.startDate, trip.endDate, DateTime.now(), opts?.dayIndex);
-    const contextVersion = (await this.getContextSnapshot(tripId, userId)).contextVersion;
-    const items = await this.loadTodayItems(tripId, trip.startDate, trip.endDate, dayNumber);
+    const contextVersion = await this.resolveContextVersionFast(tripId, trip.updatedAt);
+    const items =
+      (await settleOrNull(
+        this.loadTodayItems(tripId, trip.startDate, trip.endDate, dayNumber),
+        2_500,
+      )) ?? [];
     const activeItem = items.find((i) => i.status === 'inProgress') ?? items.find((i) => i.status === 'upcoming') ?? null;
 
     let warningTitle = '今日行程正常';
@@ -408,7 +468,8 @@ export class MobileExecutionService {
     let warningRecommendation = '按当前计划执行';
 
     try {
-      const events = await this.environmentRadar.listOpenEvents(tripId, userId);
+      const events =
+        (await settleOrNull(this.environmentRadar.listOpenEvents(tripId, userId), 1_200)) ?? [];
       const top = events.find((e) => e.severity === 'red' || e.severity === 'yellow');
       if (top) {
         warningTitle = top.description?.slice(0, 40) ?? '环境预警';
@@ -420,6 +481,9 @@ export class MobileExecutionService {
       // environment module optional
     }
 
+    const members =
+      (await settleOrNull(this.loadMembers(tripId), 1_000)) ?? [];
+
     return {
       dayTitle: `Day ${dayNumber} 日程执行`,
       contextVersion,
@@ -429,9 +493,13 @@ export class MobileExecutionService {
       warningRecommendation,
       items,
       activeItem,
-      participantCount: (await this.loadMembers(tripId)).length,
+      participantCount: members.length,
       merchantName: activeItem?.merchantName ?? '',
       confirmationCode: activeItem?.confirmationCode ?? '',
+      proactiveL1Passive: assembleMobileProactiveDecisionSurface({
+        tripId,
+        metadata: trip.metadata,
+      }).l1PassiveBanner,
     };
   }
 
@@ -694,10 +762,10 @@ export class MobileExecutionService {
 
   async getLiveRoute(tripId: string, userId: string): Promise<MobileLiveRouteDto> {
     const trip = await this.access.assertTripMember(tripId, userId);
-    const contextVersion = (await this.getContextSnapshot(tripId, userId)).contextVersion;
-    const state = await this.tripsService.getTripState(tripId);
-    const nextStop = state.nextStop;
-    const members = await this.loadMembers(tripId);
+    const contextVersion = await this.resolveContextVersionFast(tripId, trip.updatedAt);
+    const state = await settleOrNull(this.tripsService.getTripState(tripId), 2_000);
+    const nextStop = state?.nextStop;
+    const members = (await settleOrNull(this.loadMembers(tripId), 1_000)) ?? [];
 
     const destLat = nextStop?.Place?.latitude ?? nextStop?.latitude ?? null;
     const destLng = nextStop?.Place?.longitude ?? nextStop?.longitude ?? null;
@@ -713,7 +781,11 @@ export class MobileExecutionService {
       });
     }
 
-    const dayItems = await this.loadTodayRawItems(tripId, trip.startDate, trip.endDate);
+    const dayItems =
+      (await settleOrNull(
+        this.loadTodayRawItems(tripId, trip.startDate, trip.endDate),
+        2_000,
+      )) ?? [];
     const coords: Array<[number, number]> = [];
     for (const item of dayItems) {
       const lat = item.placeLat;
@@ -734,7 +806,8 @@ export class MobileExecutionService {
     let aiAlertDetail = '暂无显著道路或天气影响';
     let aiRecommendation = '按导航前往下一站';
     try {
-      const events = await this.environmentRadar.listOpenEvents(tripId, userId);
+      const events =
+        (await settleOrNull(this.environmentRadar.listOpenEvents(tripId, userId), 1_000)) ?? [];
       const top = events[0];
       if (top) {
         aiAlertTitle = top.description?.slice(0, 40) ?? aiAlertTitle;
@@ -745,16 +818,22 @@ export class MobileExecutionService {
       // optional
     }
 
+    const progressItems =
+      (await settleOrNull(
+        this.loadTodayItems(tripId, trip.startDate, trip.endDate),
+        1_500,
+      )) ?? [];
+
     return {
       contextVersion,
       navInstruction: nextStop?.placeName ? `前往 ${nextStop.placeName}` : '查看今日路线',
       navDistance: '—',
       navNext: nextStop?.placeName ?? '—',
-      eta: formatTimeHHmm(nextStop?.estimatedArrivalTime ?? state.eta),
-      remaining: formatRemainingMinutes(nextStop?.estimatedArrivalTime ?? state.eta),
+      eta: formatTimeHHmm(nextStop?.estimatedArrivalTime ?? state?.eta),
+      remaining: formatRemainingMinutes(nextStop?.estimatedArrivalTime ?? state?.eta),
       activityTitle: nextStop?.placeName ?? '今日活动',
       distanceToDestination: '—',
-      progress: computeDayProgress(await this.loadTodayItems(tripId, trip.startDate, trip.endDate)),
+      progress: computeDayProgress(progressItems),
       teamSummary: `${members.length} 位成员`,
       teamNote: '位置共享需开启对讲模块',
       teamMembers: members.map((m) => ({
@@ -788,19 +867,38 @@ export class MobileExecutionService {
   /** 第一层：执行预警 — 统一 Execution Risk Center 投影（legacy 回退保留） */
   async getExecutionAlerts(tripId: string, userId: string): Promise<ExecutionAlertsDto> {
     const trip = await this.access.assertTripMember(tripId, userId);
-    const snapshot = await this.snapshotAssembler.assemble(tripId).catch(() => null);
+    // 禁止 await 全量 assemble：会拖死 App「活跃风险」页；仅取轻量 revision
+    const snapRef = await settleOrNull(this.snapshotAssembler.resolveSnapshotRef(tripId), 800);
     const contextVersion = computeMobileContextVersion({
-      constraintsVersion: snapshot?.bindings?.constraintsVersion ?? 0,
+      constraintsVersion: snapRef?.constraintsVersion ?? 0,
       tripUpdatedAt: trip.updatedAt,
-      effectivePlanVersionId: snapshot?.effectivePlan?.versionId,
+      effectivePlanVersionId: snapRef?.effectivePlanVersionId,
     });
+
+    // 拍摄 Demo 硬快路径：有 videoDemoFilmPack 时绝不走慢聚合/错误 legacy
+    const filmPack = extractVideoDemoFilmPack(trip.metadata);
+    if (filmPack) {
+      const filmAlerts = await this.tryBuildFilmPackExecutionAlerts(
+        tripId,
+        userId,
+        contextVersion,
+        filmPack,
+      );
+      if (filmAlerts) return filmAlerts;
+    }
 
     const cutoverMode = resolveExecutionRiskCutoverMode();
 
     if (cutoverMode === 'SHADOW_COMPARE') {
       const [legacy, canonical] = await Promise.all([
-        this.getExecutionAlertsLegacy(tripId, userId, trip, contextVersion).catch(() => null),
-        this.buildCanonicalExecutionAlerts(tripId, userId, contextVersion).catch(() => null),
+        settleOrNull(
+          this.getExecutionAlertsLegacy(tripId, userId, trip, contextVersion),
+          3_000,
+        ),
+        settleOrNull(
+          this.buildCanonicalExecutionAlerts(tripId, userId, contextVersion),
+          4_000,
+        ),
       ]);
 
       if (this.shadowCompare?.isEnabled()) {
@@ -812,7 +910,9 @@ export class MobileExecutionService {
 
     if (cutoverMode === 'CANONICAL' && this.activeRiskAggregation) {
       try {
-        return await this.buildCanonicalExecutionAlerts(tripId, userId, contextVersion);
+        const canonical = await this.buildCanonicalExecutionAlerts(tripId, userId, contextVersion);
+        if (this.hasExecutionAlertPayload(canonical)) return canonical;
+        if (!isExecutionRiskLegacyFallbackEnabled()) return canonical;
       } catch {
         if (!isExecutionRiskLegacyFallbackEnabled()) throw new NotFoundException('执行预警不可用');
       }
@@ -824,13 +924,78 @@ export class MobileExecutionService {
         if (isExecutionRiskShadowCompareEnabled() && this.shadowCompare) {
           this.shadowCompare.compareForTrip(tripId, userId).catch(() => undefined);
         }
-        return canonical;
+        // 空投影不算成功：高负载超时后勿挡住 legacy / 再试
+        if (this.hasExecutionAlertPayload(canonical)) return canonical;
       } catch {
         // fall through to legacy aggregation
       }
     }
 
-    return this.getExecutionAlertsLegacy(tripId, userId, trip, contextVersion);
+    return (
+      (await settleOrNull(
+        this.getExecutionAlertsLegacy(tripId, userId, trip, contextVersion),
+        3_000,
+      )) ?? this.emptyExecutionAlerts(tripId, contextVersion)
+    );
+  }
+
+  private hasExecutionAlertPayload(dto: ExecutionAlertsDto): boolean {
+    return Boolean(dto.primaryRisk) || (dto.alerts?.length ?? 0) > 0;
+  }
+
+  /** 影片包：对齐拍摄文案；短尝试真实 riskId，失败则 metadata 兜底 */
+  private async tryBuildFilmPackExecutionAlerts(
+    tripId: string,
+    userId: string,
+    contextVersion: number,
+    filmPack: NonNullable<ReturnType<typeof extractVideoDemoFilmPack>>,
+  ): Promise<ExecutionAlertsDto | null> {
+    const recommended =
+      filmPack.options?.find((o) => o.recommended) ??
+      filmPack.options?.find((o) => o.label === filmPack.recommendedOption);
+    const recommendedLabel = recommended?.name
+      ? `推荐${recommended.name}`
+      : '推荐替换附近室内活动后加油并前往酒店';
+    const conclusion = filmPack.conclusionZh ?? '原计划稳定性下降';
+
+    if (this.activeRiskAggregation) {
+      const envRisks = await settleOrNull(
+        this.activeRiskAggregation.listEnvironmentOnlyRisks(tripId, userId, { lite: true }),
+        400,
+      );
+      if (envRisks && envRisks.length > 0) {
+        const dto = buildExecutionAlertsFromActiveRisks({
+          tripId,
+          contextVersion,
+          risks: envRisks,
+          summaryHeadline: conclusion,
+          summaryDetail: filmPack.causalChain?.main?.join(' → '),
+          summaryRecommendedAction: recommendedLabel,
+        });
+        // 活跃风险标题保持「强风…」（已出现的环境风险）；结论放 headline / AI
+        if (dto.primaryRisk) {
+          dto.primaryRisk = {
+            ...dto.primaryRisk,
+            recommendedAction: recommendedLabel,
+          };
+        }
+        dto.aiRecommendation = {
+          ...dto.aiRecommendation,
+          title: recommendedLabel,
+          headline: conclusion,
+          detail:
+            dto.aiRecommendation.detail ||
+            '阵风18m/s+ × 高车身露营车使安全车速下降；推荐替换室内活动后加油前往酒店。',
+        };
+        return dto;
+      }
+    }
+
+    return buildVideoDemoFilmPackExecutionAlerts({
+      tripId,
+      contextVersion,
+      pack: filmPack,
+    });
   }
 
   private async buildCanonicalExecutionAlerts(
@@ -842,21 +1007,46 @@ export class MobileExecutionService {
       throw new NotFoundException('Execution Risk Center unavailable');
     }
 
-    const [risks, summary, advisory, cutoverPlan] = await Promise.all([
-      this.activeRiskAggregation.listRisks(tripId, userId),
+    // 先拿环境 lite（不 hydrate、不跑 listRisks），避免与慢路径抢事件循环导致双双超时 → 空 alerts。
+    const envRisks = await settleOrNull(
+      this.activeRiskAggregation.listEnvironmentOnlyRisks(tripId, userId, { lite: true }),
+      2_500,
+    );
+
+    let effectiveRisks =
+      envRisks && envRisks.length > 0
+        ? envRisks
+        : ((await settleOrNull(this.activeRiskAggregation.listRisks(tripId, userId), 2_500)) ??
+          []);
+
+    if (effectiveRisks.length === 0) {
+      effectiveRisks =
+        (await settleOrNull(this.projectOpenEnvironmentEventsToRisks(tripId, userId), 1_500)) ??
+        [];
+    }
+
+    if (effectiveRisks.length === 0) {
+      return this.emptyExecutionAlerts(tripId, contextVersion);
+    }
+
+    // 文案增强可失败：有 primaryRisk 比等 advisory/summary 更重要
+    const [summary, advisory, cutoverPlan] = await Promise.all([
       this.executionRiskSummary
-        ? this.executionRiskSummary.getSummary(tripId, userId).catch(() => null)
+        ? settleOrNull(this.executionRiskSummary.getSummary(tripId, userId), 800)
         : Promise.resolve(null),
-      this.executionAdvisory.getAdvisory(tripId, userId).catch(() => null),
-      this.primarySsoCutover?.loadCutoverPlan(tripId).catch(() => null) ?? Promise.resolve(null),
+      settleOrNull(this.executionAdvisory.getAdvisory(tripId, userId), 800),
+      this.primarySsoCutover
+        ? settleOrNull(this.primarySsoCutover.loadCutoverPlan(tripId), 600)
+        : Promise.resolve(null),
     ]);
+
     const topRecommendation =
       advisory?.recommendations.find((r) => r.isRecommended) ??
       advisory?.recommendations[0];
     return buildExecutionAlertsFromActiveRisks({
       tripId,
       contextVersion,
-      risks,
+      risks: effectiveRisks,
       summaryHeadline: summary?.recommendation?.headline,
       summaryDetail:
         advisory?.causalInsight?.causalStory?.assessment ??
@@ -866,9 +1056,38 @@ export class MobileExecutionService {
       summaryRecommendedAction:
         topRecommendation?.label ?? summary?.recommendation?.recommendedAction,
       causalInsight: advisory?.causalInsight,
-      evidenceIds: risks.flatMap((r) => r.evidenceRefs.map((e) => e.id)),
+      evidenceIds: effectiveRisks.flatMap((r) => r.evidenceRefs.map((e) => e.id)),
       cutoverPlan,
     });
+  }
+
+  /** listRisks 超时/空结果时：与 ERC 同源 hydrate 的环境事件投影（ID 与 execution-risks 对齐） */
+  private async projectOpenEnvironmentEventsToRisks(tripId: string, userId: string) {
+    if (this.activeRiskAggregation?.listEnvironmentOnlyRisks) {
+      return this.activeRiskAggregation.listEnvironmentOnlyRisks(tripId, userId, {
+        lite: true,
+      });
+    }
+    const events = await this.environmentRadar.listOpenEvents(tripId, userId);
+    const projections = [];
+    for (const summary of events) {
+      let eventForProjection = summary;
+      if (summary.affectedItemCount > 0 || summary.alternativePlanCount > 0) {
+        try {
+          eventForProjection = await this.environmentRadar.getEvent(tripId, summary.id, userId);
+        } catch {
+          eventForProjection = summary;
+        }
+      }
+      projections.push(
+        attachRiskId(
+          projectEnvironmentEventToRisk(eventForProjection, {
+            validUntil: new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString(),
+          }),
+        ),
+      );
+    }
+    return mergeRiskProjections(projections);
   }
 
   private emptyExecutionAlerts(tripId: string, contextVersion: number): ExecutionAlertsDto {
@@ -894,11 +1113,16 @@ export class MobileExecutionService {
     contextVersion: number,
   ): Promise<ExecutionAlertsDto> {
     const [attention, envEvents, advisory, listView] = await Promise.all([
-      this.tripsService.getAttentionQueue({ tripId, limit: 50, offset: 0 }).catch(() => null),
-      this.environmentRadar.listOpenEvents(tripId, userId).catch(() => []),
-      this.executionAdvisory.getAdvisory(tripId, userId).catch(() => null),
+      settleOrNull(this.tripsService.getAttentionQueue({ tripId, limit: 50, offset: 0 }), 1_500),
+      settleOrNull(this.environmentRadar.listOpenEvents(tripId, userId), 1_500).then(
+        (v) => v ?? [],
+      ),
+      settleOrNull(this.executionAdvisory.getAdvisory(tripId, userId), 1_500),
       isDecisionGatewayUnifiedEnabled()
-        ? this.decisionReadModel.listProblems(tripId, { queueOnly: true }).catch(() => null)
+        ? settleOrNull(
+            this.decisionReadModel.listProblems(tripId, { queueOnly: true }),
+            2_000,
+          )
         : Promise.resolve(null),
     ]);
 
@@ -1012,40 +1236,81 @@ export class MobileExecutionService {
     userId: string,
   ): Promise<ExecutionAdjustmentQueueDto> {
     const trip = await this.access.assertTripMember(tripId, userId);
-    const snapshot = await this.snapshotAssembler.assemble(tripId).catch(() => null);
+    const snapRef = await settleOrNull(this.snapshotAssembler.resolveSnapshotRef(tripId), 800);
     const contextVersion = computeMobileContextVersion({
-      constraintsVersion: snapshot?.bindings?.constraintsVersion ?? 0,
+      constraintsVersion: snapRef?.constraintsVersion ?? 0,
       tripUpdatedAt: trip.updatedAt,
-      effectivePlanVersionId: snapshot?.effectivePlan?.versionId,
+      effectivePlanVersionId: snapRef?.effectivePlanVersionId,
     });
 
-    const members = await this.loadMembers(tripId);
-    const memberNamesById = new Map(members.map((m) => [m.id, m.displayName]));
-    const todayItems = await this.loadTodayItems(tripId, trip.startDate, trip.endDate);
+    const members = await settleOrNull(this.loadMembers(tripId), 1_500);
+    const memberNamesById = new Map((members ?? []).map((m) => [m.id, m.displayName]));
+    const todayItems =
+      (await settleOrNull(
+        this.loadTodayItems(tripId, trip.startDate, trip.endDate),
+        2_500,
+      )) ?? [];
     const activityTitleById = new Map(todayItems.map((i) => [i.id, i.title]));
     const nextDeadline = this.resolveNextActivityDeadline(todayItems);
 
     if (this.adjustmentQueueProjection) {
-      try {
-        const projected = await this.adjustmentQueueProjection.getAdjustmentQueue(
-          tripId,
-          userId,
-          { memberNamesById, activityTitleById, actionDeadline: nextDeadline },
-        );
-        return { ...projected, contextVersion };
-      } catch {
-        // fall through to legacy
+      const projected = await settleOrNull(
+        this.adjustmentQueueProjection.getAdjustmentQueue(tripId, userId, {
+          memberNamesById,
+          activityTitleById,
+          actionDeadline: nextDeadline,
+        }),
+        3_000,
+      );
+      if (projected) {
+        return {
+          ...projected,
+          contextVersion,
+          proactiveDecisionV1: assembleMobileProactiveDecisionSurface({
+            tripId,
+            metadata: trip.metadata,
+          }),
+        };
       }
     }
 
-    return this.getExecutionAdjustmentQueueLegacy(
-      tripId,
-      userId,
-      contextVersion,
-      memberNamesById,
-      activityTitleById,
-      nextDeadline,
-    );
+    const legacy =
+      (await settleOrNull(
+        this.getExecutionAdjustmentQueueLegacy(
+          tripId,
+          userId,
+          contextVersion,
+          memberNamesById,
+          activityTitleById,
+          nextDeadline,
+        ),
+        3_000,
+      )) ?? {
+        schemaId: EXECUTION_ADJUSTMENT_QUEUE_SCHEMA_ID,
+        tripId,
+        contextVersion,
+        projectionSource: 'legacy' as const,
+        pendingCount: 0,
+        criticalCount: 0,
+        highPriorityCount: 0,
+        headline: '暂无待调整事项',
+        items: [],
+        countsByType: {
+          SAFETY_INTERVENTION: 0,
+          DYNAMIC_REPLAN: 0,
+          TEAM_COORDINATION: 0,
+          EXECUTION_PREPARATION: 0,
+        },
+        linkedActiveRiskCount: 0,
+      };
+
+    return {
+      ...legacy,
+      proactiveDecisionV1: assembleMobileProactiveDecisionSurface({
+        tripId,
+        metadata: trip.metadata,
+      }),
+    };
   }
 
   private async getExecutionAdjustmentQueueLegacy(
@@ -1057,9 +1322,16 @@ export class MobileExecutionService {
     nextDeadline?: string,
   ): Promise<ExecutionAdjustmentQueueDto> {
     const [queue, listView] = await Promise.all([
-      this.decisionQueue.getQueue(tripId, { hydrateRecommendations: true }),
+      settleOrNull(
+        // 与 canonical projection 对齐：不 hydrate，避免 getRepairOptions→GuardianDebate 洪水
+        this.decisionQueue.getQueue(tripId, { hydrateRecommendations: false }),
+        3_000,
+      ),
       isDecisionGatewayUnifiedEnabled()
-        ? this.decisionReadModel.listProblems(tripId, { queueOnly: true }).catch(() => null)
+        ? settleOrNull(
+            this.decisionReadModel.listProblems(tripId, { queueOnly: true }),
+            2_000,
+          )
         : Promise.resolve(null),
     ]);
 
@@ -1067,7 +1339,7 @@ export class MobileExecutionService {
       (listView?.items ?? []).map((item) => [item.problemId, item]),
     );
 
-    const items = queue.items
+    const items = (queue?.items ?? [])
       .map((consumer) =>
         projectConsumerToIntervention({
           consumer,
@@ -1095,11 +1367,11 @@ export class MobileExecutionService {
       tripId,
       contextVersion,
       projectionSource: 'legacy',
-      pendingCount: queue.openCount,
+      pendingCount: queue?.openCount ?? items.length,
       criticalCount: items.filter((i) => i.priority === 'CRITICAL').length,
       highPriorityCount: items.filter((i) => i.priority === 'HIGH' || i.priority === 'CRITICAL')
         .length,
-      headline: queue.headline,
+      headline: queue?.headline ?? (items.length ? `待处理 ${items.length} 项` : '暂无待调整事项'),
       items,
       countsByType,
     };
@@ -1113,7 +1385,81 @@ export class MobileExecutionService {
   /** 单个调整项的完整因果链回放（技术 trace + 叙事投影） */
   async getInterventionCausalTrace(tripId: string, userId: string, interventionId: string) {
     await this.access.assertTripMember(tripId, userId);
-    return this.decisionReadModel.getCausalTraceReplay(tripId, interventionId);
+    const candidates = await this.resolveCausalTraceProblemCandidates(
+      tripId,
+      userId,
+      interventionId,
+    );
+    let lastError: unknown;
+    for (const problemId of candidates) {
+      try {
+        return await this.decisionReadModel.getCausalTraceReplay(tripId, problemId);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    if (lastError) throw lastError;
+    throw new NotFoundException(`CAUSAL_TRACE_NOT_FOUND: ${interventionId}`);
+  }
+
+  /**
+   * App 传入的 interventionId 常是 `intervention-cluster-cluster_risk_…`，
+   * 与种子 problemId / 因果链 problemId 不对齐；在此展开候选。
+   */
+  private async resolveCausalTraceProblemCandidates(
+    tripId: string,
+    userId: string,
+    interventionId: string,
+  ): Promise<string[]> {
+    const out: string[] = [];
+    const push = (id?: string | null) => {
+      const v = id?.trim();
+      if (v && !out.includes(v)) out.push(v);
+    };
+    push(interventionId);
+
+    const clusterPrefix = 'intervention-cluster-';
+    if (interventionId.startsWith(clusterPrefix)) {
+      const clusterId = interventionId.slice(clusterPrefix.length);
+      push(clusterId);
+      // cluster_${riskId} → riskId
+      if (clusterId.startsWith('cluster_')) {
+        push(clusterId.slice('cluster_'.length));
+      }
+    }
+
+    // film pack：强风活跃风险 → 种子 problemId（canonicalCausalTracesV1）
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { metadata: true },
+    });
+    const meta = (trip?.metadata ?? {}) as Record<string, unknown>;
+    const pack =
+      meta.videoDemoFilmPack && typeof meta.videoDemoFilmPack === 'object'
+        ? (meta.videoDemoFilmPack as {
+            riskId?: string;
+            problemId?: string;
+            environmentEventId?: string;
+          })
+        : null;
+    const riskHint = out.find((id) => id.startsWith('risk_'));
+    if (pack?.problemId) {
+      if (!riskHint || !pack.riskId || riskHint === pack.riskId) {
+        push(pack.problemId);
+      }
+    }
+
+    // 环境风险上的 decisionProblemIds
+    if (this.activeRiskAggregation && riskHint) {
+      try {
+        const risk = await this.activeRiskAggregation.getRisk(tripId, riskHint, userId);
+        for (const id of risk?.decisionProblemIds ?? []) push(id);
+      } catch {
+        // ignore
+      }
+    }
+
+    return out;
   }
 
   private resolveNextActivityDeadline(

@@ -3,6 +3,10 @@ import { PhysicalValidatorService } from '../../domain/ontology/validator/physic
 
 describe('PhysicalDomainAdminController', () => {
   let c: PhysicalDomainAdminController;
+  let weatherSourceBridge: {
+    applyRuntime: jest.Mock;
+    probe: jest.Mock;
+  };
   let db: {
     budgets: Map<string, any>;
     inventory: Map<string, any>;
@@ -16,6 +20,18 @@ describe('PhysicalDomainAdminController', () => {
       inventory: new Map(),
       constraints: new Map(),
       sources: new Map(),
+    };
+    weatherSourceBridge = {
+      applyRuntime: jest.fn(),
+      probe: jest.fn(async (sourceId: string) => {
+        const src = db.sources.get(sourceId);
+        return {
+          sourceId,
+          ok: Boolean(src?.enabled),
+          checkedAt: new Date().toISOString(),
+          detail: src?.enabled ? 'OK source=openweather temp=1C' : 'DISABLED',
+        };
+      }),
     };
     const prisma: any = {
       physicalDomainBudget: {
@@ -70,7 +86,11 @@ describe('PhysicalDomainAdminController', () => {
         }),
       },
     };
-    c = new PhysicalDomainAdminController(prisma, new PhysicalValidatorService(prisma));
+    c = new PhysicalDomainAdminController(
+      prisma,
+      new PhysicalValidatorService(prisma),
+      weatherSourceBridge as any,
+    );
   });
 
   it('exposes read-only static physical policies (Policy Lab Phase A)', async () => {
@@ -212,13 +232,23 @@ describe('PhysicalDomainAdminController', () => {
     ).toThrow();
   });
 
-  it('data source test reflects enabled status', async () => {
+  it('data source test probes via bridge and patch applies runtime', async () => {
+    await c.getDataSources();
+
     const ok = (await c.testDataSource('weather-api') as any).data;
+    expect(weatherSourceBridge.probe).toHaveBeenCalledWith('weather-api');
     expect(ok.ok).toBe(true);
+    expect(ok.detail).not.toMatch(/SIMULATED/);
 
     await c.patchDataSource('weather-api', { enabled: false });
+    expect(weatherSourceBridge.applyRuntime).toHaveBeenCalledWith(
+      'weather-api',
+      expect.objectContaining({ enabled: false }),
+    );
+
     const bad = (await c.testDataSource('weather-api') as any).data;
     expect(bad.ok).toBe(false);
+    expect(bad.detail).toBe('DISABLED');
   });
 
   it('resource quote should return resourceHash and quote fields', async () => {

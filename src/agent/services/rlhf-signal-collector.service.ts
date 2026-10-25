@@ -9,6 +9,11 @@ import type {
   RlhfObservationHarnessSnapshot,
   RlhfTradeoffComparisonDwell,
 } from './rlhf-decision-context.types';
+import {
+  deriveBehaviorFromRlhfSignal,
+  deriveFeedbackFlagsFromRlhfType,
+  mergeTripRunFeedbackIntoMetadata,
+} from './trip-run-feedback.util';
 
 /**
  * 行为信号
@@ -200,6 +205,12 @@ export class RLHFSignalCollectorService {
     // 异步持久化到数据库
     this.persistBehaviorSignal(fullSignal).catch(e =>
       this.logger.warn(`[RLHF] Failed to persist behavior signal: ${e?.message}`)
+    );
+    this.syncTripRunFeedbackMetadata(signal.trip_run_id, {
+      behavior: deriveBehaviorFromRlhfSignal(fullSignal),
+      source: 'rlhf_behavior',
+    }).catch(e =>
+      this.logger.warn(`[RLHF] Failed to sync TripRun behavior: ${e?.message}`)
     );
 
     this.logger.debug(`[RLHF] Behavior signal: ${signal.signal_type} on ${signal.target.element_type}`);
@@ -393,6 +404,12 @@ export class RLHFSignalCollectorService {
     // 异步持久化到数据库
     this.persistFeedbackSignal(fullSignal).catch(e =>
       this.logger.warn(`[RLHF] Failed to persist feedback signal: ${e?.message}`)
+    );
+    this.syncTripRunFeedbackMetadata(signal.trip_run_id, {
+      feedback: deriveFeedbackFlagsFromRlhfType(fullSignal.feedback_type, fullSignal.value),
+      source: 'rlhf_feedback',
+    }).catch(e =>
+      this.logger.warn(`[RLHF] Failed to sync TripRun feedback: ${e?.message}`)
     );
 
     this.logger.debug(`[RLHF] Feedback signal: ${signal.feedback_type} for decision ${signal.decision_point_id}`);
@@ -757,5 +774,49 @@ export class RLHFSignalCollectorService {
     }
 
     return signals;
+  }
+
+  /** 将 RLHF 信号投影到 TripRun.metadata.observability_v1.feedback/behavior */
+  private async syncTripRunFeedbackMetadata(
+    tripRunId: string,
+    input: {
+      feedback?: ReturnType<typeof deriveFeedbackFlagsFromRlhfType>;
+      behavior?: ReturnType<typeof deriveBehaviorFromRlhfSignal>;
+      source: string;
+    },
+  ): Promise<void> {
+    if (!this.prisma || !tripRunId) return;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(tripRunId.trim())) return;
+
+    const existing = await this.prisma.tripRun.findUnique({
+      where: { id: tripRunId.trim() },
+      select: { metadata: true },
+    });
+    if (!existing) return;
+
+    const feedback = input.feedback
+      ? { ...input.feedback, source: input.source }
+      : null;
+    const behavior = input.behavior
+      ? { ...input.behavior, source: input.source }
+      : null;
+    // 空 behavior（未推导出任何字段）跳过，避免无意义写放大
+    const behaviorHasSignal =
+      behavior &&
+      (typeof behavior.clickedRecommend === 'boolean' ||
+        typeof behavior.regenerated === 'boolean' ||
+        typeof behavior.editedRoute === 'boolean' ||
+        typeof behavior.abandoned === 'boolean');
+    if (!feedback && !behaviorHasSignal) return;
+
+    const merged = mergeTripRunFeedbackIntoMetadata(existing.metadata, {
+      feedback,
+      behavior: behaviorHasSignal ? behavior : null,
+    });
+    await this.prisma.tripRun.update({
+      where: { id: tripRunId.trim() },
+      data: { metadata: merged.metadata as any },
+    });
   }
 }

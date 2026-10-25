@@ -2,7 +2,7 @@
 
 > **Sprint 目标**：在不大改架构的前提下，验证六条入口链路是否经过同一套约束权威、版本权威、决策记录与写入保护。  
 > **填完本表前**：不扩展新编排模式。  
-> **关联**：`CONSTRAINT_SEMANTIC_CONSOLIDATION.md` · `DECISION_RUNTIME_MATURITY.md` · `AGENT_UNIFIED_INTERFACE_SCOPE.md` · Staging env：`.env.canonical-authority-staging.example`
+> **关联**：`CONSTRAINT_SEMANTIC_CONSOLIDATION.md` · `DECISION_RUNTIME_MATURITY.md` · `AGENT_UNIFIED_INTERFACE_SCOPE.md` · Staging env：`config/env/.env.canonical-authority-staging.example`
 
 ---
 
@@ -288,7 +288,7 @@ INTAKE → PRECONDITION_GATE → RESEARCH → PLAN → PLAN_EVALUATION → VERIF
 
 > **前提**：Authority Harness 58/58 已绿；Gateway 输出 `authority_audit_v1` / `authority_gateway_v1` / `replay_strict_seal_v1`。  
 > **原则**：先观测 → 再 ingress 权威 → 最后全局 ENFORCE；每阶段只改 **一个** 主 flag。  
-> **Staging env 片段**：仓库根目录 `.env.canonical-authority-staging.example`（按 Phase 复制粘贴）。  
+> **Staging env 片段**：仓库根目录 `config/env/.env.canonical-authority-staging.example`（按 Phase 复制粘贴）。  
 > **Phase 1 Staging PR 模板**：`PHASE1_STAGING_DEPLOY_PR_BODY.md`（可直接 `gh pr create --body-file`）。
 
 ### 13.1 Day 0 — Ramp 前基线

@@ -62,7 +62,7 @@ import { EvidenceCompletenessChecker, EvidenceCompletenessResult } from './servi
 import { EvidenceTriggerService, EvidenceTriggerResult } from './services/evidence-trigger.service';
 import { EvidencePriorityFilter, EvidenceGroupBy, EvidenceSortBy } from './dto/evidence.dto';
 import { OpeningHoursUtil } from '../common/utils/opening-hours.util';
-import { resolveTripTimezone } from '../common/utils/destination-timezone.util';
+import { resolveTripTimezone, withDestinationDisplayTimes } from '../common/utils/destination-timezone.util';
 import {
   CONSULTATION_DAY_SKELETON_FOOTER_ZH,
   CONSULTATION_NAMED_DRAFT_APPENDIX_FOOTER_ZH,
@@ -1412,6 +1412,11 @@ export class TripsService {
     
     const hikingDayCards = buildHikingDayCardsForTrip(tripData.metadata, tripData.TripDay ?? []);
 
+    const tripTimezone = resolveTripTimezone({
+      destination: tripData.destination,
+      metadata: tripData.metadata,
+    });
+
     const transformedTripDays = await Promise.all(
       (tripData.TripDay ?? []).map(async (day: any, index: number) => {
       const dayNumber = index + 1;
@@ -1435,7 +1440,7 @@ export class TripsService {
             (placeDto as any).metadata = { ...meta, coordinates: coords };
           }
         }
-        return {
+        const base = {
           ...item,
           Place: resolvedPlace,
           placeName:
@@ -1445,6 +1450,9 @@ export class TripsService {
           crossDayInfo: this.calculateCrossDayInfo(item, day.date),
           isRequired,
         };
+        // checkout 项可能已带墙钟字段；常规项补上，避免 iOS 用设备时区拆 Z
+        if (base.timezone && base.startAtLocal) return base;
+        return withDestinationDisplayTimes(base as Record<string, unknown>, tripTimezone);
       };
 
       const sortedItems = attachDisplaySortIndices(
@@ -1479,6 +1487,7 @@ export class TripsService {
     return {
       ...tripData,
       TripDay: transformedTripDays,
+      timezone: tripTimezone,
       revision: revisionInfo.revision,
       revisionLabel: revisionInfo.revisionLabel,
       // 叙事主题 Banner（Trip 详情页顶部展示，需 NARRATIVE_THEME_V1=true）
@@ -2063,7 +2072,11 @@ export class TripsService {
 
     if (this.feasibilityReport) {
       try {
-        const report = await this.feasibilityReport.getReport(tripId);
+        // Attention / persona 读路径禁止打满 SmartRoutes：启发式 conflicts + 不拉 ERC，
+        // 避免 getPersonaAlerts → getReport → listRisks → getAttentionQueue 环挂死。
+        const report = await this.feasibilityReport.getReportFast(tripId, {
+          conflictsQuery: { useRouteApi: false },
+        });
         feasibilityIssues = report.issues ?? [];
       } catch (err) {
         this.logger.debug(
@@ -3357,8 +3370,8 @@ export class TripsService {
    * 获取行程列表（管理接口）
    */
   async findAllAdmin(query: any) {
-    const page = query.page || 1;
-    const limit = Math.min(query.limit || 20, 100); // 最大100
+    const page = Number(query.page) || 1;
+    const limit = Math.min(Number(query.limit) || 20, 100); // 最大100
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -3368,9 +3381,10 @@ export class TripsService {
       where.status = query.status;
     }
 
-    // 目的地筛选
-    if (query.destination) {
-      where.destination = query.destination.toUpperCase();
+    // 目的地筛选（兼容文档中的 countryCode）
+    const destinationFilter = query.destination || query.countryCode;
+    if (destinationFilter) {
+      where.destination = String(destinationFilter).toUpperCase();
     }
 
     // 开始日期范围
@@ -3395,35 +3409,48 @@ export class TripsService {
       }
     }
 
-    // 用户筛选
+    // 用户筛选（创建者）
     if (query.userId) {
       where.TripCollaborator = {
         some: {
           userId: query.userId,
-          role: 'OWNER', // 只查询创建者
+          role: 'OWNER',
         },
       };
     }
 
-    // 搜索功能（目的地、用户邮箱）
+    // 搜索：目的地 / 行程名 / 创建者邮箱与昵称
+    // TripCollaborator 无 User 关联，先查匹配用户再按 owner userId 过滤
     if (query.search) {
-      const searchTerm = query.search.toLowerCase();
-      where.OR = [
+      const searchTerm = String(query.search).trim();
+      const matchedOwners = await this.prisma.user.findMany({
+        where: {
+          OR: [
+            { email: { contains: searchTerm, mode: 'insensitive' } },
+            { displayName: { contains: searchTerm, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+        take: 200,
+      });
+      const matchedOwnerIds = matchedOwners.map((u) => u.id);
+
+      const orFilters: any[] = [
         { destination: { contains: searchTerm, mode: 'insensitive' } },
-        {
+        { name: { contains: searchTerm, mode: 'insensitive' } },
+        { id: { contains: searchTerm, mode: 'insensitive' } },
+      ];
+      if (matchedOwnerIds.length > 0) {
+        orFilters.push({
           TripCollaborator: {
             some: {
               role: 'OWNER',
-              User: {
-                OR: [
-                  { email: { contains: searchTerm, mode: 'insensitive' } },
-                  { displayName: { contains: searchTerm, mode: 'insensitive' } },
-                ],
-              },
+              userId: { in: matchedOwnerIds },
             },
           },
-        },
-      ];
+        });
+      }
+      where.OR = orFilters;
     }
 
     // 排序
@@ -3432,7 +3459,7 @@ export class TripsService {
     const orderBy: any = {};
     orderBy[sortBy] = sortOrder;
 
-    // 查询数据
+    // 查询数据（不拉整棵 TripDay/ItineraryItem 树）
     const [trips, total] = await Promise.all([
       this.prisma.trip.findMany({
         where,
@@ -3443,11 +3470,6 @@ export class TripsService {
           TripCollaborator: {
             where: { role: 'OWNER' },
             take: 1,
-          },
-          TripDay: {
-            include: {
-              ItineraryItem: true,
-            },
           },
           _count: {
             select: {
@@ -3463,35 +3485,90 @@ export class TripsService {
       this.prisma.trip.count({ where }),
     ]);
 
-    // 格式化数据
+    const tripIds = trips.map((t: any) => t.id);
+
+    // 批量：行程项数量（按 trip 聚合）
+    const itemsCountByTripId = new Map<string, number>();
+    if (tripIds.length > 0) {
+      const days = await this.prisma.tripDay.findMany({
+        where: { tripId: { in: tripIds } },
+        select: { id: true, tripId: true },
+      });
+      const dayIdToTripId = new Map(days.map((d) => [d.id, d.tripId]));
+      const dayIds = days.map((d) => d.id);
+      if (dayIds.length > 0) {
+        const itemGroups = await this.prisma.itineraryItem.groupBy({
+          by: ['tripDayId'],
+          where: { tripDayId: { in: dayIds } },
+          _count: { _all: true },
+        });
+        for (const group of itemGroups) {
+          const tripId = dayIdToTripId.get(group.tripDayId);
+          if (!tripId) continue;
+          itemsCountByTripId.set(
+            tripId,
+            (itemsCountByTripId.get(tripId) || 0) + group._count._all,
+          );
+        }
+      }
+    }
+
+    // 批量：创建者用户信息
+    const ownerUserIds = [
+      ...new Set(
+        trips
+          .map((t: any) => t.TripCollaborator?.[0]?.userId)
+          .filter((id: string | undefined): id is string => !!id && this.isValidUUID(id)),
+      ),
+    ];
+    const ownerUsers =
+      ownerUserIds.length > 0
+        ? await this.prisma.user.findMany({
+            where: { id: { in: ownerUserIds } },
+            select: {
+              id: true,
+              email: true,
+              displayName: true,
+              avatarUrl: true,
+            },
+          })
+        : [];
+    const ownerUserMap = new Map(ownerUsers.map((u) => [u.id, u]));
+
     const items = trips.map((trip: any) => {
       const ownerCollaborator = trip.TripCollaborator?.[0] || null;
-      // 如果需要用户信息，需要通过 userId 单独查询
-      const owner = ownerCollaborator ? {
-        userId: ownerCollaborator.userId,
-        role: ownerCollaborator.role,
-      } : null;
-      const daysCount = trip._count.TripDay || 0;
-      const itemsCount = trip.TripDay?.reduce((sum: number, day: any) => sum + (day.ItineraryItem?.length || 0), 0) || 0;
+      const ownerUser = ownerCollaborator
+        ? ownerUserMap.get(ownerCollaborator.userId) || null
+        : null;
 
       return {
         id: trip.id,
+        name: trip.name ?? null,
         destination: trip.destination,
         startDate: trip.startDate,
         endDate: trip.endDate,
         status: trip.status,
-        durationDays: Math.ceil((new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1,
+        durationDays:
+          Math.ceil(
+            (new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) /
+              (1000 * 60 * 60 * 24),
+          ) + 1,
         budgetConfig: trip.budgetConfig,
         pacingConfig: trip.pacingConfig,
         createdAt: trip.createdAt,
         updatedAt: trip.updatedAt,
-        owner: owner ? {
-          userId: owner.userId,
-          role: owner.role,
-        } : null,
+        owner: ownerCollaborator
+          ? {
+              userId: ownerCollaborator.userId,
+              role: ownerCollaborator.role,
+              email: ownerUser?.email ?? null,
+              displayName: ownerUser?.displayName ?? null,
+              avatarUrl: ownerUser?.avatarUrl ?? null,
+            }
+          : null,
         stats: {
-          daysCount,
-          itemsCount,
+          daysCount: trip._count.TripDay || 0,
+          itemsCount: itemsCountByTripId.get(trip.id) || 0,
           collaboratorsCount: trip._count.TripCollaborator || 0,
           likesCount: trip._count.TripLike || 0,
           collectionsCount: trip._count.TripCollection || 0,

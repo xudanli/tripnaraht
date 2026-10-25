@@ -1,5 +1,7 @@
 # Decision Draft Module
 
+> ⚠️ **HTTP API 已废弃（2026-08）**：`/api/decision-draft/**` 与 Admin `/admin/decision-draft` 勿新对接；观测请用 `/api/agent/admin/runs`。内部生成/存储服务仍可能被行程创建等引用。
+
 **Decision-First Agent Engine** - 决策优先的旅行规划系统
 
 ---

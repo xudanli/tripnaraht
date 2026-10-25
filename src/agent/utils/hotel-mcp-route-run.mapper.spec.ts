@@ -181,6 +181,15 @@ describe('hotel-mcp-route-run.mapper', () => {
     ).toEqual([2]);
     expect(parseExplicitHotelNightScopeIndices('整个行程酒店推荐', 6)).toBeNull();
     expect(parseExplicitHotelNightScopeIndices('推荐酒店', 6)).toBeNull();
+    expect(
+      parseExplicitHotelNightScopeIndices(
+        '推荐酒店\n\n[日程] Day4 Day 4 · 如美/左贡 → 八宿',
+        14,
+      ),
+    ).toEqual([3]);
+    expect(parseExplicitHotelNightScopeIndices('推荐酒店\n\n[日程] Day 2 · 雷克雅未克', 6)).toEqual([
+      1,
+    ]);
   });
 
   it('parseHotelProximityAnchorDayNumber reads day for distance sorting', () => {

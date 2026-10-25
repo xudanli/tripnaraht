@@ -52,7 +52,11 @@ Content-Type: application/json   # PUT 时需要
 | 存储 | 接口 | 典型字段 |
 |------|------|----------|
 | **User 基本资料** | `/users/me` | email、displayName、avatarUrl |
-| **UserProfile 偏好** | `/users/profile` | 景点类型、饮食、节奏、预算、国籍 |
+| **个人资料（含国籍）** | `/mobile/users/me/identity` | 手机、法定姓名、生日、**国籍**、常住地区、语言 |
+| **UserProfile 偏好** | `/users/profile` | 景点类型、饮食、节奏、预算（**国籍改走 identity**） |
+
+> **2026-08 起（仅 iOS）**：国籍 / 常住地区请用  
+> [`../mobile/IDENTITY_IOS_HANDOFF.md`](../mobile/IDENTITY_IOS_HANDOFF.md)，勿依赖 Web 问卷写 `/users/profile`。
 
 邮箱地址**不可**通过本阶段接口修改（由邮箱 OTP 登录体系管理）。
 
@@ -599,4 +603,4 @@ curl -s -X PUT "$BASE/users/profile" \
 | `src/users/users.controller.ts` | 路由实现 |
 | `src/users/dto/user-profile.dto.ts` | 偏好 DTO |
 | `src/users/dto/current-user.dto.ts` | 基本资料 DTO |
-| `USER_PREFERENCES_API_DOCUMENTATION.md` | 偏好字段全量说明（含规划助手等扩展接口） |
+| `internal-docs/api/USER_PREFERENCES_API_DOCUMENTATION.md` | 偏好字段全量说明（含规划助手等扩展接口） |

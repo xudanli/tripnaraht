@@ -3,9 +3,11 @@
 > 前缀：`/api/mobile/users/me/...`  
 > 鉴权：`Authorization: Bearer <token>`（与紧急联系人一致：软鉴权，未登录时 `success: false`）  
 > 信封：`{ "success": true, "data": {...}, "requestId": "...", "serverTime": "..." }`  
-> 更新：2026-07-21
+> 更新：2026-08-13
 
 跨行程可复用能力。行程级驾驶安排见 [ICELAND_SELF_DRIVE_IOS_API.md](../trips/iceland-self-drive/ICELAND_SELF_DRIVE_IOS_API.md) 的 `driving-settings`。
+
+**个人资料（含国籍）专项对接** → [`IDENTITY_IOS_HANDOFF.md`](./IDENTITY_IOS_HANDOFF.md)（无 Web；国籍须由 iOS 写 identity）。
 
 ---
 
@@ -13,7 +15,10 @@
 
 | 方法 | 路径 | 用途 |
 |------|------|------|
-| GET/PATCH | `/api/mobile/users/me/identity` | 个人资料（含敏感字段） |
+| GET/PATCH/PUT | `/api/mobile/users/me/identity` | 个人资料（含国籍等敏感字段） |
+| GET | `/api/mobile/users/me/identity/options` | 国籍 / 常住地区 / 语言选项包 |
+| GET | `/api/mobile/users/me/identity/nationalities?q=` | 国籍搜索 |
+| GET | `/api/mobile/users/me/identity/residency-regions?countryCode=` | 常住地区（可按国过滤） |
 | GET/PATCH | `/api/mobile/users/me/travel-portrait` | 旅行画像 |
 | GET/PATCH | `/api/mobile/users/me/driver-profile` | 驾驶员资料（无评分） |
 | GET | `/api/mobile/users/me/driver-profile/summary` | 状态卡 |
@@ -21,21 +26,28 @@
 | GET/DELETE | `/api/mobile/users/me/documents/{documentId}` | 本人查看（签名 URL）/ 删除 |
 | GET | `/api/mobile/trips/{tripId}/members/{memberId}/credential-status` | 组织者只读完成态 |
 
-已有保持：`/api/users/me`、emergency-contacts、fitness、contact。
+已有保持：`/api/users/me`、`/api/users/me/avatar`、emergency-contacts、fitness、contact。
 
 ---
 
 ## identity
 
+> **完整字段级契约、Swift 模型、DoD**：见 [`IDENTITY_IOS_HANDOFF.md`](./IDENTITY_IOS_HANDOFF.md)。
+
 ### GET `/api/mobile/users/me/identity`
 
-返回 `displayName` / `avatarUrl` / `email`（来自 User）+ `phone` / `legalFullName` / `dateOfBirth` / `nationality` / `residencyRegion` / `preferredLanguage` / `visibility`。
+返回 `displayName` / `avatarUrl` / `email`（来自 User）+ `phone` / `legalFullName` / `dateOfBirth` / `nationality`（含 `nationalityLabelZh/En`）/ `residencyRegion`（含 label）/ `preferredLanguage` / `visibility`。
 
 `visibility.*`：`self_only` \| `organizer` \| `team`（默认敏感字段 `self_only`）。
 
-### PATCH `/api/mobile/users/me/identity`
+旧 Web 写入的 `preferences.nationality` / `residencyCountry` 会作为 fallback 读出。
 
-部分更新。昵称/头像也可继续走 `PATCH /api/users/me`。
+### PATCH/PUT `/api/mobile/users/me/identity`
+
+部分更新。保存 `nationality` 时**双写**到 `preferences.nationality`（Admin / 准备度可读）。  
+昵称/头像也可继续走 `PUT /api/users/me` / `POST /api/users/me/avatar`。
+
+**不要**再用 `PUT /api/users/profile` 写国籍（iOS-only 路径以 identity 为准）。
 
 ---
 

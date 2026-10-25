@@ -40,6 +40,8 @@ export function buildExecutionAdvisory(input: {
   delayMinutes?: number;
   timezone?: string;
   causalInsight?: ExecutionCausalInsightDto;
+  /** P1.3 — 风险↔约束绑定解析出的最高门禁 */
+  riskBindingGate?: 'ALLOW' | 'AT_RISK' | 'REPLAN_REQUIRED' | 'STOP';
 }): TripExecutionAdvisoryDto {
   const now = DateTime.now().setZone(input.timezone ?? 'UTC');
   const day = input.anchor?.itinerary?.days?.[input.dayNumber - 1]
@@ -86,6 +88,7 @@ export function buildExecutionAdvisory(input: {
     environmentEvents: input.environmentEvents,
     delayMinutes: input.delayMinutes ?? 0,
     atRiskCount: affectedItems.filter((i) => i.status === 'at_risk').length,
+    riskBindingGate: input.riskBindingGate,
   });
 
   const recommendations = buildRecommendations({
@@ -146,17 +149,27 @@ function resolveExecutionVerdict(input: {
   environmentEvents: EnvironmentEventSummary[];
   delayMinutes: number;
   atRiskCount: number;
+  riskBindingGate?: 'ALLOW' | 'AT_RISK' | 'REPLAN_REQUIRED' | 'STOP';
 }): ExecutionVerdictDto {
   const validUntil = DateTime.now().plus({ minutes: 30 }).toISO() ?? undefined;
   const criticalEnv = input.environmentEvents.some((e) => e.severity === 'red');
-  if (criticalEnv || input.todayReadiness?.status === 'block') {
+  if (
+    criticalEnv ||
+    input.todayReadiness?.status === 'block' ||
+    input.riskBindingGate === 'STOP'
+  ) {
     return {
       status: 'STOP',
       headline: '当前条件不建议继续按原计划执行',
       validUntil,
     };
   }
-  if (input.atRiskCount > 0 || input.delayMinutes >= 30 || input.todayReadiness?.status === 'warn') {
+  if (
+    input.riskBindingGate === 'REPLAN_REQUIRED' ||
+    input.atRiskCount > 0 ||
+    input.delayMinutes >= 30 ||
+    input.todayReadiness?.status === 'warn'
+  ) {
     const delay = input.delayMinutes || 45;
     return {
       status: 'REPLAN_REQUIRED',
@@ -164,7 +177,11 @@ function resolveExecutionVerdict(input: {
       validUntil,
     };
   }
-  if (input.delayMinutes > 10 || input.environmentEvents.length > 0) {
+  if (
+    input.riskBindingGate === 'AT_RISK' ||
+    input.delayMinutes > 10 ||
+    input.environmentEvents.length > 0
+  ) {
     return {
       status: 'AT_RISK',
       headline: '存在轻微延误或环境变化，建议关注下一站时间窗',

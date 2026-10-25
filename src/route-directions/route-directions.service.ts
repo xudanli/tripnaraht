@@ -498,7 +498,11 @@ export class RouteDirectionsService {
   ): Promise<any> {
     const template = await this.prisma.routeTemplate.findUnique({
       where: { id },
-      include: { routeDirection: true },
+      include: {
+        routeDirection: true,
+        packingChecklist: true,
+        budgetEstimate: true,
+      },
     });
 
     if (!template) {
@@ -508,7 +512,40 @@ export class RouteDirectionsService {
     // 标准化 dayPlans 格式
     template.dayPlans = this.normalizeDayPlans(template.dayPlans);
 
-    return template;
+    const checklist = (template as any).packingChecklist;
+    const budget = (template as any).budgetEstimate;
+    const { packingChecklist, budgetEstimate, ...rest } = template as any;
+
+    return {
+      ...rest,
+      packingChecklistId: checklist?.id ?? null,
+      hasPackingChecklist: Boolean(checklist),
+      packingChecklistSummary: checklist
+        ? {
+            id: checklist.id,
+            version: checklist.version,
+            nameCN: checklist.nameCN ?? null,
+            isActive: checklist.isActive,
+            lastUpdated: checklist.updatedAt?.toISOString?.() ?? undefined,
+          }
+        : null,
+      budgetEstimateId: budget?.id ?? null,
+      hasBudgetEstimate: Boolean(budget),
+      budgetEstimateSummary: budget
+        ? {
+            id: budget.id,
+            version: budget.version,
+            currency: budget.currency,
+            nameCN: budget.nameCN ?? null,
+            isActive: budget.isActive,
+            dayCount: Array.isArray(budget.dayBudgets)
+              ? budget.dayBudgets.length
+              : undefined,
+            totals: budget.totals ?? null,
+            lastUpdated: budget.updatedAt?.toISOString?.() ?? undefined,
+          }
+        : null,
+    };
   }
 
   /**
@@ -767,11 +804,25 @@ export class RouteDirectionsService {
     routeDirectionId?: number;
     durationDays?: number;
     isActive?: boolean | string;
+    includePackingSummary?: boolean | string;
+    hasPackingChecklist?: boolean | string;
+    includeBudgetSummary?: boolean | string;
+    hasBudgetEstimate?: boolean | string;
     limit?: number;
     offset?: number;
   }): Promise<any[]> {
     const where: any = {};
     const isActive = normalizeBooleanQuery(options?.isActive);
+    const includePackingSummary =
+      normalizeBooleanQuery(options?.includePackingSummary) === true;
+    const hasPackingChecklist = normalizeBooleanQuery(
+      options?.hasPackingChecklist,
+    );
+    const includeBudgetSummary =
+      normalizeBooleanQuery(options?.includeBudgetSummary) === true;
+    const hasBudgetEstimate = normalizeBooleanQuery(
+      options?.hasBudgetEstimate,
+    );
 
     if (options?.routeDirectionId !== undefined) {
       where.routeDirectionId = options.routeDirectionId;
@@ -791,9 +842,29 @@ export class RouteDirectionsService {
       }
     }
 
+    if (hasPackingChecklist === true) {
+      where.packingChecklist = { isNot: null };
+    } else if (hasPackingChecklist === false) {
+      where.packingChecklist = { is: null };
+    }
+
+    if (hasBudgetEstimate === true) {
+      where.budgetEstimate = { isNot: null };
+    } else if (hasBudgetEstimate === false) {
+      where.budgetEstimate = { is: null };
+    }
+
     const query: any = {
       where,
-      include: { routeDirection: true },
+      include: {
+        routeDirection: true,
+        ...(includePackingSummary || hasPackingChecklist !== undefined
+          ? { packingChecklist: true }
+          : {}),
+        ...(includeBudgetSummary || hasBudgetEstimate !== undefined
+          ? { budgetEstimate: true }
+          : {}),
+      },
       orderBy: { createdAt: 'desc' },
     };
 
@@ -807,11 +878,65 @@ export class RouteDirectionsService {
 
     const templates = await this.prisma.routeTemplate.findMany(query);
 
-    // 标准化每个模板的 dayPlans 格式
-    return templates.map(template => ({
-      ...template,
-      dayPlans: this.normalizeDayPlans(template.dayPlans),
-    }));
+    const wantPacking =
+      includePackingSummary || hasPackingChecklist !== undefined;
+    const wantBudget =
+      includeBudgetSummary || hasBudgetEstimate !== undefined;
+
+    return templates.map((template: any) => {
+      const checklist = template.packingChecklist;
+      const budget = template.budgetEstimate;
+      const { packingChecklist, budgetEstimate, ...rest } = template;
+      const base = {
+        ...rest,
+        dayPlans: this.normalizeDayPlans(template.dayPlans),
+      };
+
+      if (!wantPacking && !wantBudget) {
+        return base;
+      }
+
+      return {
+        ...base,
+        ...(wantPacking
+          ? {
+              packingChecklistId: checklist?.id ?? null,
+              hasPackingChecklist: Boolean(checklist),
+              packingChecklistSummary: checklist
+                ? {
+                    id: checklist.id,
+                    version: checklist.version,
+                    nameCN: checklist.nameCN ?? null,
+                    isActive: checklist.isActive,
+                    lastUpdated:
+                      checklist.updatedAt?.toISOString?.() ?? undefined,
+                  }
+                : null,
+            }
+          : {}),
+        ...(wantBudget
+          ? {
+              budgetEstimateId: budget?.id ?? null,
+              hasBudgetEstimate: Boolean(budget),
+              budgetEstimateSummary: budget
+                ? {
+                    id: budget.id,
+                    version: budget.version,
+                    currency: budget.currency,
+                    nameCN: budget.nameCN ?? null,
+                    isActive: budget.isActive,
+                    dayCount: Array.isArray(budget.dayBudgets)
+                      ? budget.dayBudgets.length
+                      : undefined,
+                    totals: budget.totals ?? null,
+                    lastUpdated:
+                      budget.updatedAt?.toISOString?.() ?? undefined,
+                  }
+                : null,
+            }
+          : {}),
+      };
+    });
   }
 
   /**

@@ -31,13 +31,18 @@ describe('DecisionKernelService CGUS Outcome Loop', () => {
     const travelMemoryRuntime = {
       ingestCgusOutcomeLoop: jest.fn(),
     };
+    const wmOutcomeValidation = {
+      onCgusUserAction: jest.fn(),
+      onCgusOutcome: jest.fn(),
+    };
     const stateManager = new StateManagerService();
     const kernel = Object.create(DecisionKernelService.prototype) as DecisionKernelService;
     (kernel as any).stateManager = stateManager;
     (kernel as any).feedbackPersistence = persistence;
     (kernel as any).travelMemoryRuntime = travelMemoryRuntime;
+    (kernel as any).wmOutcomeValidation = wmOutcomeValidation;
     (kernel as any).logger = { warn: jest.fn(), log: jest.fn(), debug: jest.fn(), error: jest.fn() };
-    return { kernel, persistence, travelMemoryRuntime };
+    return { kernel, persistence, travelMemoryRuntime, wmOutcomeValidation };
   }
 
   it('persists OVERRIDE action and Trip Review summary', async () => {
@@ -51,7 +56,7 @@ describe('DecisionKernelService CGUS Outcome Loop', () => {
         optimizationHints: { method: 'CGUS', cgusDecisionTrace: trace },
       } as DecisionState,
     };
-    const { kernel, persistence, travelMemoryRuntime } = makeKernel(store);
+    const { kernel, persistence, travelMemoryRuntime, wmOutcomeValidation } = makeKernel(store);
 
     const written = await kernel.writeCgusDecisionOutcomeLoop({
       tripRunId: 'run1',
@@ -73,6 +78,14 @@ describe('DecisionKernelService CGUS Outcome Loop', () => {
         trace: expect.objectContaining({ chosen_candidate: 'B' }),
       }),
     );
+    expect(wmOutcomeValidation.onCgusUserAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tripId: 'run1',
+        decisionId: 'run1:OPTIMIZE:v0',
+        userAction: 'OVERRIDE',
+        overrideNote: '想看海岸',
+      }),
+    );
 
     const outcome = await kernel.writeCgusDecisionOutcomeLoop({
       tripRunId: 'run1',
@@ -86,6 +99,14 @@ describe('DecisionKernelService CGUS Outcome Loop', () => {
     expect(outcome.trace?.decision_regret).toBe('NONE');
     expect(travelMemoryRuntime.ingestCgusOutcomeLoop).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'outcome' }),
+    );
+    expect(wmOutcomeValidation.onCgusOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tripId: 'run1',
+        decisionId: 'run1:OPTIMIZE:v0',
+        decisionRegret: 'NONE',
+        actualOutcome: { completed: true, safetyIncident: false },
+      }),
     );
 
     const reviewed = await kernel.writeCgusDecisionOutcomeLoop({

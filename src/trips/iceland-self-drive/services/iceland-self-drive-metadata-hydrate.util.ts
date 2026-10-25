@@ -9,14 +9,23 @@ import { readIcelandSelfDriveMetadata } from './iceland-self-drive-response.util
 
 /**
  * True when the trip should use iceland-self-drive BFF (driving-settings / bootstrap).
- * Accepts explicit productLine, and legacy IS trips that only have readiness /
- * vehicle-confirm signals (pre-productLine stamps).
+ * Accepts explicit productLine, legacy readiness stamps, and Iceland destination
+ * (aligned with DecisionCaseService.isIcelandSelfDrive — IS ⇒ self-drive BFF).
  */
 export function isIcelandSelfDriveProductTrip(
   rawMeta: unknown,
   destination?: string | null,
+  pacingConfig?: unknown,
 ): boolean {
-  if (!rawMeta || typeof rawMeta !== 'object') return false;
+  const dest = (destination ?? '').trim().toUpperCase();
+  const destLabel = typeof destination === 'string' ? destination : '';
+  const isIceland =
+    dest === 'IS' || dest === 'ICELAND' || /冰岛/i.test(destLabel);
+  if (isIceland) return true;
+
+  if (!rawMeta || typeof rawMeta !== 'object') {
+    return isSelfDrivePacing(pacingConfig);
+  }
   const meta = rawMeta as Record<string, unknown>;
   if (meta.productLine === 'iceland_self_drive') return true;
   const isd = meta.icelandSelfDrive;
@@ -31,22 +40,19 @@ export function isIcelandSelfDriveProductTrip(
   }
   if (meta.vehicleConfirmedAt || meta.insuranceConfirmedAt) return true;
 
-  const dest = (destination ?? '').trim().toUpperCase();
-  const isIceland = dest === 'IS' || dest === 'ICELAND' || /冰岛/.test(destination ?? '');
-  if (isIceland) {
-    const constraints = meta.constraints;
-    if (
-      constraints &&
-      typeof constraints === 'object' &&
-      !Array.isArray(constraints) &&
-      ('vehicleType' in constraints ||
-        'vehicle_type' in constraints ||
-        'fRoadAllowed' in constraints)
-    ) {
-      return true;
-    }
-  }
+  if (isSelfDrivePacing(pacingConfig) || isSelfDrivePacing(meta)) return true;
+
+  // Non-Iceland: vehicle constraint alone is not enough for this BFF
   return false;
+}
+
+function isSelfDrivePacing(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+  const o = raw as Record<string, unknown>;
+  const mode = String(o.travelMode ?? o.mobilityMode ?? '').toLowerCase();
+  if (mode === 'self_drive' || mode === 'self-drive') return true;
+  const transport = String(o.transport ?? '').toLowerCase();
+  return transport === 'car' || transport === 'self_drive';
 }
 
 function toYmd(value: unknown): string | null {
@@ -67,7 +73,10 @@ export function bootstrapIcelandSelfDriveMetadata(input: {
   existingMeta?: unknown;
 }): IcelandSelfDriveTripMetadata {
   const existing = readIcelandSelfDriveMetadata(input.existingMeta);
-  if (existing) return existing;
+  if (existing?.wizard?.vehicleAcquisition) {
+    // Complete enough for driving-settings BFF
+    if (existing.drivingSettings) return existing;
+  }
 
   const start =
     toYmd(input.startDate) ??
@@ -75,7 +84,7 @@ export function bootstrapIcelandSelfDriveMetadata(input: {
   const end = toYmd(input.endDate) ?? start;
   const now = new Date().toISOString();
 
-  return {
+  const defaults: IcelandSelfDriveTripMetadata = {
     productLine: 'iceland_self_drive',
     idempotencyKey: `hydrate_${input.tripId}`,
     contextVersion: `cv_hydrate_${Date.now()}`,
@@ -118,4 +127,50 @@ export function bootstrapIcelandSelfDriveMetadata(input: {
       },
     ],
   };
+
+  if (!existing) return defaults;
+
+  // Partial blob（如 decision 只写了 drivingSettings.vehicle）→ 补 wizard / 缺省块，保留已有字段
+  const acquisition =
+    existing.wizard?.vehicleAcquisition ??
+    defaults.wizard.vehicleAcquisition;
+  return {
+    ...defaults,
+    ...existing,
+    productLine: existing.productLine ?? defaults.productLine,
+    idempotencyKey: existing.idempotencyKey ?? defaults.idempotencyKey,
+    contextVersion: existing.contextVersion ?? defaults.contextVersion,
+    wizard: existing.wizard?.vehicleAcquisition
+      ? existing.wizard
+      : { ...defaults.wizard, ...(existing.wizard ?? {}) },
+    drivingSettings:
+      existing.drivingSettings ??
+      buildInitialDrivingSettings(acquisition === 'owned' ? 'owned' : 'rent'),
+    routeSkeleton: existing.routeSkeleton ?? defaults.routeSkeleton,
+    hardAnchors: existing.hardAnchors ?? defaults.hardAnchors,
+    warnings: [
+      ...(existing.warnings ?? []),
+      {
+        code: 'ISD_METADATA_REPAIRED',
+        message: '已补齐残缺 icelandSelfDrive（缺 wizard 等）',
+      },
+    ],
+    createdAt: existing.createdAt ?? defaults.createdAt,
+    generationStatus: existing.generationStatus ?? defaults.generationStatus,
+    lastEvents: [
+      ...(existing.lastEvents ?? []),
+      {
+        type: 'trip_context_changed',
+        at: now,
+        message: 'repair_iceland_self_drive_metadata',
+      },
+    ],
+  };
+}
+
+/** True when ISD blob can serve driving-settings without crashing on wizard. */
+export function isCompleteIcelandSelfDriveMetadata(
+  isd: IcelandSelfDriveTripMetadata | null | undefined,
+): boolean {
+  return Boolean(isd?.wizard?.vehicleAcquisition && isd.drivingSettings);
 }

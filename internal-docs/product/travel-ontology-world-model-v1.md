@@ -15,6 +15,8 @@
 
 **下位文档：**
 
+- [Ontology V0.5 成熟度与演进口径](./travel-ontology-v05-maturity.md)
+- [TripNARA 知识体系 7 层（4 底座 + 3 运行时）](./tripnara-knowledge-system-v1.md)
 - [冰岛 P0 差距清单](./travel-ontology-world-model-p0-gap-backlog.md)
 - [旅行决策基础设施 — 产品叙事与融资框架](./tripnara-decision-infrastructure-narrative-v1.md)
 

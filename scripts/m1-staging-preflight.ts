@@ -55,7 +55,7 @@ async function main() {
   console.log(
     ready
       ? 'Next: npm run m1:staging-canary'
-      : 'Next: set .env.m1 from .env.m1.example, then re-run preflight. Meanwhile: npm run m1:rehearsal-embedded',
+      : 'Next: set .env.m1 from config/env/.env.m1.example, then re-run preflight. Meanwhile: npm run m1:rehearsal-embedded',
   );
   process.exit(ready ? 0 : 2);
 }

@@ -36,8 +36,20 @@ import {
   consumeProjectionToObservability,
   resolveConsumeTaskAllowRegex,
   type TravelMemoryConsumeProjectionV1,
+  type TravelMemoryDecisionHintV1,
 } from '../../travel-memory/context-assembly/selective-consume.util';
 import type { AssembledTravelContextV1 } from '../../travel-memory/context-assembly/assembled-context.types';
+import {
+  effectiveTravelerContextToObservability,
+  resolveEffectiveTravelerContext,
+} from '../../travel-memory/effective-context/resolve-effective-traveler-context.util';
+import { resolveEffectiveTravelerContextConsumeMode } from '../../travel-memory/effective-context/resolve-etc-consume-mode.util';
+import {
+  buildEtcSoftHintsAudit,
+  projectAdvisoryHintsFromEffectiveContext,
+} from '../../travel-memory/effective-context/project-advisory-hints-from-etc.util';
+import type { EffectiveTravelerContextV1 } from '../../travel-memory/effective-context/effective-traveler-context.types';
+import { enforceKnowledgeDecisionIngress } from '../../knowledge-system/runtime/assert-knowledge-decision-ingress.util';
 
 /** Kernel 依赖的 Agent 能力子集（避免整包 AgentService 耦合） */
 export type DecisionRuntimeKernelAgentDeps = {
@@ -251,6 +263,112 @@ export async function prepareDecisionRuntimeTick(
     }
   }
 
+  // EffectiveTravelerContext — 硬面(M2 Injector) + 软面(M3 CGUS hints)
+  let effectiveTravelerContext: EffectiveTravelerContextV1 | null = null;
+  /** 实际注入 soft 路径的 hints（TMR consume 或 ETC active） */
+  let injectedSoftHints: TravelMemoryDecisionHintV1[] | null =
+    travelMemoryConsume?.decisionHints?.length
+      ? travelMemoryConsume.decisionHints
+      : null;
+  try {
+    const etcConsumeMode = resolveEffectiveTravelerContextConsumeMode();
+    effectiveTravelerContext = resolveEffectiveTravelerContext({
+      memory,
+      assembledTravelContext,
+      decisionHints: travelMemoryConsume?.decisionHints ?? null,
+    });
+    if (etcConsumeMode === 'active') {
+      effectiveTravelerContext = {
+        ...effectiveTravelerContext,
+        consumptionMode: 'ACTIVE',
+      };
+    }
+
+    const tmrHints = travelMemoryConsume?.decisionHints ?? [];
+    const etcHints = projectAdvisoryHintsFromEffectiveContext(
+      effectiveTravelerContext,
+    );
+    let softSource: 'tmr' | 'etc' | 'none' = injectedSoftHints?.length
+      ? 'tmr'
+      : 'none';
+    let softApplied = false;
+
+    if (etcConsumeMode === 'active' && etcHints.length > 0) {
+      injectedSoftHints = etcHints;
+      softSource = 'etc';
+      softApplied = true;
+      (
+        request as RouteAndRunRequestDto & {
+          __travelMemoryDecisionHints?: unknown;
+        }
+      ).__travelMemoryDecisionHints = etcHints;
+      memory.observability.layers.push('effective_traveler_context_soft_active');
+    } else if (etcConsumeMode === 'shadow') {
+      memory.observability.layers.push('effective_traveler_context_soft_shadow');
+    }
+
+    const softHintsAudit =
+      etcConsumeMode === 'off'
+        ? undefined
+        : buildEtcSoftHintsAudit({
+            mode: etcConsumeMode,
+            etcHints,
+            tmrHints,
+            softSource,
+            applied: softApplied,
+          });
+
+    tickObs.effective_traveler_context = effectiveTravelerContextToObservability(
+      effectiveTravelerContext,
+      etcConsumeMode,
+      softHintsAudit,
+    );
+    (
+      request as RouteAndRunRequestDto & {
+        __effectiveTravelerContext?: unknown;
+      }
+    ).__effectiveTravelerContext = tickObs.effective_traveler_context;
+
+    // Knowledge Runtime SSOT — ETC + Vector ban (Snapshot checked at Constraint gateway)
+    const ksIngress = enforceKnowledgeDecisionIngress({
+      consumer: 'Gate',
+      effectiveTravelerContext,
+      requireSnapshot: false,
+      hardBlockFromVector: false,
+    });
+    (
+      tickObs as DecisionRuntimeTickObservabilityV1 & {
+        knowledge_runtime_ssot?: unknown;
+      }
+    ).knowledge_runtime_ssot = ksIngress;
+    if (!ksIngress.ok && ksIngress.enforceMode === 'shadow') {
+      deps.logger?.warn?.(
+        `[prepareTick] knowledge_runtime_ssot shadow: ${ksIngress.violations.join(' | ')}`,
+      );
+    }
+
+    memory.observability.layers.push(
+      etcConsumeMode === 'active'
+        ? 'effective_traveler_context_active'
+        : etcConsumeMode === 'shadow'
+          ? 'effective_traveler_context_shadow_diff'
+          : 'effective_traveler_context_shadow',
+    );
+    if (ksIngress.enforceMode !== 'off') {
+      memory.observability.layers.push(
+        ksIngress.ok
+          ? `knowledge_runtime_ssot_${ksIngress.enforceMode}_ok`
+          : `knowledge_runtime_ssot_${ksIngress.enforceMode}_violation`,
+      );
+    }
+  } catch (err) {
+    deps.logger?.warn?.(
+      `[prepareTick] effective traveler context skipped: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+
   const ledgerStart = Date.now();
   if (
     !replayAnchor &&
@@ -404,11 +522,15 @@ export async function prepareDecisionRuntimeTick(
   (request as RouteAndRunRequestDto & { __memoryContractObs?: unknown }).__memoryContractObs = memContractObs;
   const execCtxBase = deps.agentExecutionContextFactory.createFromFrozenMemory(memory);
   const goldenChainSpanId = randomUUID();
-  const consumeHints = travelMemoryConsume?.decisionHints;
+  const consumeHints = injectedSoftHints;
   const execCtx: AgentExecutionContext = {
     ...execCtxBase,
     activeParentSpanId: goldenChainSpanId,
     ...(consumeHints?.length ? { travelMemoryDecisionHints: consumeHints } : {}),
+    // M1/M2：挂载完整 ETC；硬面仅 ACTIVE+env 时由 Injector 消费
+    ...(effectiveTravelerContext
+      ? { effectiveTravelerContext }
+      : {}),
   };
   recordPhase(tickObs, 'MVCC_FREEZE', freezeStart);
 
@@ -423,6 +545,7 @@ export async function prepareDecisionRuntimeTick(
       tickObs,
       assembledTravelContext,
       travelMemoryConsume,
+      effectiveTravelerContext,
     },
   };
 }

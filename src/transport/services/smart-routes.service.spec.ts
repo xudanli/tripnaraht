@@ -12,6 +12,7 @@ describe('SmartRoutesService', () => {
 
   const amapRoutes = {
     getRoutes: jest.fn(),
+    isRoutesEnabled: jest.fn().mockReturnValue(true),
   } as unknown as jest.Mocked<AmapRoutesService>;
 
   const mapboxDirections = {

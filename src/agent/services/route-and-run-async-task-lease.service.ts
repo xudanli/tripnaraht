@@ -28,7 +28,7 @@ export class RouteAndRunAsyncTaskLeaseService {
     if (status !== 'STALE') return false;
     if (this.resumeInFlight.has(taskId)) return true;
     if ((record.resume_count ?? 0) >= parseTaskMaxResume()) {
-      await this.taskStore.markFailed(
+      await this.asyncService.markFailedAndFinalizeChat(
         taskId,
         `Worker lease expired and max resume (${parseTaskMaxResume()}) exhausted`,
       );

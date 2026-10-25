@@ -25,6 +25,7 @@ import { MobileDailyDriveService } from './services/mobile-daily-drive.service';
 import { MobileInTripHomeService } from './services/mobile-in-trip-home.service';
 import { MobileOverviewDashboardService } from './services/mobile-overview-dashboard.service';
 import { MobileExecutionQuickActionsService } from './services/mobile-execution-quick-actions.service';
+import { MobileProactiveDecisionService } from './services/mobile-proactive-decision.service';
 import { MobileEmergencyContactsService } from './services/mobile-emergency-contacts.service';
 import { MobileEmergencyPackService } from './services/mobile-emergency-pack.service';
 import { MobilePushTokenService } from './services/mobile-push-token.service';
@@ -75,6 +76,7 @@ import { CountriesModule } from '../countries/countries.module';
     MobileInTripHomeService,
     MobileOverviewDashboardService,
     MobileExecutionQuickActionsService,
+    MobileProactiveDecisionService,
     MobileEmergencyContactsService,
     MobileEmergencyPackService,
     MobilePushTokenService,

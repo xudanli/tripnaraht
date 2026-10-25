@@ -80,6 +80,7 @@ import { IcelandSelfDriveBootstrapService } from './services/iceland-self-drive-
   exports: [
     IcelandSelfDriveCatalogService,
     IcelandSelfDriveBookablePlacesService,
+    IcelandSelfDriveDrivingSettingsService,
     IcelandRegionPlanningPackService,
     IcelandInitialPlanSeedService,
     IcelandInitialPlanPipelineService,

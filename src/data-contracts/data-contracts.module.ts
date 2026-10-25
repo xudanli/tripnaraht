@@ -3,6 +3,7 @@
 import { Module, Global, OnModuleInit } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { DataSourceRouterService } from './services/data-source-router.service';
+import { AdminWeatherSourceBridge } from './services/admin-weather-source-bridge.service';
 import { DefaultWeatherAdapter } from './adapters/default-weather.adapter';
 import { WeatherApiAdapter } from './adapters/weatherapi.adapter';
 import { OpenMeteoWeatherAdapter } from './adapters/open-meteo-weather.adapter';
@@ -15,6 +16,7 @@ import { IcelandAuroraAdapter } from './adapters/iceland-aurora.adapter';
 import { IcelandFRoadService } from './services/iceland-froad.service';
 import { IcelandComprehensiveService } from './services/iceland-comprehensive.service';
 import { DataContractsController } from './data-contracts.controller';
+import { PrismaModule } from '../prisma/prisma.module';
 
 /**
  * 数据契约模块
@@ -24,11 +26,12 @@ import { DataContractsController } from './data-contracts.controller';
  */
 @Global()
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, PrismaModule],
   controllers: [DataContractsController],
   providers: [
     // 路由器服务
     DataSourceRouterService,
+    AdminWeatherSourceBridge,
     
     // 天气适配器
     DefaultWeatherAdapter,
@@ -49,6 +52,7 @@ import { DataContractsController } from './data-contracts.controller';
   ],
   exports: [
     DataSourceRouterService,
+    AdminWeatherSourceBridge,
     IcelandComprehensiveService, // 导出冰岛综合服务
     IcelandSafetyAdapter, // 导出冰岛安全适配器（供 IcelandInfoController 使用）
   ],

@@ -1,7 +1,7 @@
 # Harness Kernel 硬门禁 Runbook（Control P0+）
 
 > **Companion**：[harness-production-checklist.md](./harness-production-checklist.md) · [harness-architecture-map.md](./harness-architecture-map.md)  
-> **Env 模板**：[`/.env.harness-production.example`](../../.env.harness-production.example)
+> **Env 模板**：[`/config/env/.env.harness-production.example`](../../config/env/.env.harness-production.example)
 
 ## 1. 语义
 

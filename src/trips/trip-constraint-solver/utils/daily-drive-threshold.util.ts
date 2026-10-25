@@ -32,14 +32,53 @@ function readPositiveNumber(value: unknown): number | undefined {
   return value;
 }
 
+function readDailyLimitFromDrivingSettings(settings: unknown): number | undefined {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return undefined;
+  const ds = settings as Record<string, unknown>;
+  const route =
+    ds.routePreference && typeof ds.routePreference === 'object'
+      ? (ds.routePreference as Record<string, unknown>)
+      : null;
+  const drivers =
+    ds.drivers && typeof ds.drivers === 'object'
+      ? (ds.drivers as Record<string, unknown>)
+      : null;
+  return (
+    readPositiveNumber(route?.dailyDrivingLimitHours) ??
+    readPositiveNumber(drivers?.dailyDrivingLimitHours)
+  );
+}
+
+/**
+ * 用户配置的每日驾驶上限（小时）。
+ * 自驾设置 / constraints 多字段并存且不一致时取更严（更小）值，避免
+ * mirror 只写 legacy `maxDailyDriveHours` 而 canonical 仍为 6 时「改成 4h 不生效」。
+ */
 export function readUserMaxDailyDrivingHours(metadata: unknown): number | undefined {
   const constraints = readConstraints(metadata);
-  const fromHours =
-    readPositiveNumber(constraints.maxDailyDrivingHours) ??
-    readPositiveNumber(constraints.maxDailyDriveHours);
-  if (fromHours != null) {
-    return fromHours;
+  const hourCandidates: number[] = [];
+
+  const canonical = readPositiveNumber(constraints.maxDailyDrivingHours);
+  const legacy = readPositiveNumber(constraints.maxDailyDriveHours);
+  if (canonical != null) hourCandidates.push(canonical);
+  if (legacy != null) hourCandidates.push(legacy);
+
+  if (metadata && typeof metadata === 'object') {
+    const meta = metadata as Record<string, unknown>;
+    const fromSelf = readDailyLimitFromDrivingSettings(
+      (meta.selfDrive as Record<string, unknown> | undefined)?.drivingSettings,
+    );
+    const fromIsd = readDailyLimitFromDrivingSettings(
+      (meta.icelandSelfDrive as Record<string, unknown> | undefined)?.drivingSettings,
+    );
+    if (fromSelf != null) hourCandidates.push(fromSelf);
+    if (fromIsd != null) hourCandidates.push(fromIsd);
   }
+
+  if (hourCandidates.length) {
+    return Math.min(...hourCandidates);
+  }
+
   const fromMinutes =
     readPositiveNumber(constraints.maxDailyDriveMinutes) ??
     readPositiveNumber(constraints.max_daily_drive_minutes);
@@ -116,6 +155,7 @@ export function applyMaxDailyDrivingHoursConstraintPatch(
       readPositiveNumber(raw.maxDailyDriveMinutes) ??
       readPositiveNumber(raw.max_daily_drive_minutes);
     hours =
+      readPositiveNumber(raw.raw) ??
       readPositiveNumber(raw.maxDailyDrivingHours) ??
       readPositiveNumber(raw.maxDailyDriveHours) ??
       readPositiveNumber(raw.maxHours) ??

@@ -8,6 +8,7 @@ import { TripContextExtractorService } from './shared/trip-context-extractor.ser
 import { ReadinessService } from '../../trips/readiness/services/readiness.service';
 import { UserDecisionService } from '../../trips/readiness/services/user-decision.service';
 import { ClaudeGatekeeperAgentService } from '../services/sub-agents/gatekeeper-agent.service';
+import { PolicyLabConflictMatrixService } from '../../domain/policy-lab/policy-lab-conflict-matrix.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const minimalTripCtx = {
@@ -228,6 +229,7 @@ describe('GateEvalExecutorService — conflict matrix from DB', () => {
       providers: [
         GateEvalExecutorService,
         TripContextExtractorService,
+        PolicyLabConflictMatrixService,
         { provide: PrismaService, useValue: prismaMock },
       ],
     }).compile();

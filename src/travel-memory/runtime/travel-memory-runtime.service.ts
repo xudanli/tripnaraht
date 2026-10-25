@@ -34,6 +34,15 @@ import type {
   TripMemoryView,
   UserProfileMemoryView,
 } from '../types/memory-context-package.types';
+import {
+  listTravelerMemoryObjects,
+  writeTravelerMemoryObject,
+} from '../traveler-memory/write-traveler-memory.util';
+import type {
+  TravelerMemoryObjectV1,
+  WriteTravelerMemoryRequestV1,
+  WriteTravelerMemoryResultV1,
+} from '../traveler-memory/traveler-memory-contract.types';
 
 const EPISODE_RING_MAX = 500;
 
@@ -122,9 +131,28 @@ export class TravelMemoryRuntimeService implements TravelMemoryApi {
       confidence: decision.confidence,
       status: decision.status,
       validFrom: req.validFrom,
+      evidenceRefs: req.evidenceRefs,
     });
     void this.persistDurable(event);
     return { ok: true, event };
+  }
+
+  /**
+   * M4：按 Traveler Memory Contract 写入（Domain × Semantic × key）。
+   * 仍落 TMR Ledger，不新建存储平面。
+   */
+  writeTravelerMemory(
+    req: WriteTravelerMemoryRequestV1,
+  ): WriteTravelerMemoryResultV1 {
+    return writeTravelerMemoryObject(this, req);
+  }
+
+  /** M4：列出用户 Traveler Memory Objects（含 legacy 投影） */
+  listTravelerMemories(
+    userId: string,
+    opts?: { includeCandidates?: boolean; includeLegacy?: boolean },
+  ): TravelerMemoryObjectV1[] {
+    return listTravelerMemoryObjects(this.ledger, userId, opts);
   }
 
   confirm(req: ConfirmMemoryRequest): MemoryEventV1 {

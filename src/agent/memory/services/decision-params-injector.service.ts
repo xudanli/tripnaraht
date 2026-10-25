@@ -2,7 +2,7 @@
 
 /**
  * DecisionParams Injector Service
- * 
+ *
  * 将 DecisionParams 注入到决策引擎的各个组件中
  */
 
@@ -11,6 +11,7 @@ import { DecisionParams, normalizeDecisionParams } from '../interfaces/decision-
 import type { AgentMemoryContext } from '../interfaces/agent-memory-context.interface';
 import { MemoryService } from './memory.service';
 import { AgentMemoryContextStore } from '../context/agent-memory-context.store';
+import { AgentExecutionContextStore } from '../../runtime/agent-execution-context.store';
 import { UserProfileMapperService } from './user-profile-mapper.service';
 import { DecisionParamsMappingV2Service } from './decision-params-mapping-v2.service';
 import { ShadowModeDiffService } from './shadow-mode-diff.service';
@@ -18,7 +19,10 @@ import { MemoryStateDecisionParamsService } from './memory-state-decision-params
 import { calculateRouteDirectionHealthScore } from '../interfaces/route-direction-health.interface';
 import { resolveRouteHealthFromContext } from '../utils/route-health-memory.util';
 import { applyTripFeedbackOverlayToDecisionParams } from '../utils/trip-feedback-memory.util';
-import { createDefaultUserTravelProfile } from '../interfaces/user-travel-profile.interface';
+import {
+  createDefaultUserTravelProfile,
+  type UserTravelProfile,
+} from '../interfaces/user-travel-profile.interface';
 import { applyRoutePartyFitnessToDecisionParams } from '../utils/route-party-fitness-decision-overlay.util';
 import {
   applyIcelandMarketPriorToDecisionParams,
@@ -26,6 +30,9 @@ import {
 } from '../../../trips/iceland/market-preference/apply-iceland-market-prior-to-decision-params';
 import { readIcelandMarketSegmentFromTravelPreference } from '../../../trips/iceland/market-preference/iceland-market-preference-memory.util';
 import { DecisionOsSloService } from '../../../decision/slo/decision-os-slo.service';
+import { resolveEffectiveTravelerContextConsumeMode } from '../../../travel-memory/effective-context/resolve-etc-consume-mode.util';
+import { projectUserTravelProfileFromEffectiveContext } from '../../../travel-memory/effective-context/project-profile-from-etc.util';
+import type { EffectiveTravelerContextDecisionParamsAuditV1 } from '../../../travel-memory/effective-context/etc-decision-params-audit.types';
 
 function cloneDecisionParams(params: DecisionParams): DecisionParams {
   return JSON.parse(JSON.stringify(params)) as DecisionParams;
@@ -43,6 +50,7 @@ export class DecisionParamsInjectorService {
     @Optional() private readonly memoryStateParams?: MemoryStateDecisionParamsService,
     @Optional() private readonly slo?: DecisionOsSloService,
     @Optional() private readonly memoryContextStore?: AgentMemoryContextStore,
+    @Optional() private readonly executionContextStore?: AgentExecutionContextStore,
   ) {}
 
   /**
@@ -65,7 +73,7 @@ export class DecisionParamsInjectorService {
    */
   async getDecisionParamsForUser(userId: string): Promise<DecisionParams> {
     const profile = await this.getUserTravelProfileForRuntime(userId);
-    
+
     const useLegacy = process.env.DECISION_PARAMS_MAPPING_LEGACY === '1';
     const shadowMode = process.env.DECISION_PARAMS_SHADOW_MODE === '1';
 
@@ -79,15 +87,21 @@ export class DecisionParamsInjectorService {
           `[DecisionParamsInjector] SHADOW_MODE diff: user=${userId} changedKeys=${diff.changedKeys.length}`,
         );
       }
-      const params = useLegacy ? legacy : v2;
+      let params = useLegacy ? legacy : v2;
       this.applyRoutePartyFitnessOverlay(userId, params);
       this.applyIcelandMarketPriorOverlay(params);
       this.applyTripFeedbackOverlay(userId, params);
+      params = this.applyEffectiveTravelerContextOverlay(
+        userId,
+        defaultProfile,
+        params,
+        useLegacy,
+      );
       await this.applyMemoryStateV1Overlay(userId, params);
       this.logger.debug(`Generated default decision params for new user ${userId}`);
       return normalizeDecisionParams(params);
     }
-    
+
     // 映射为决策参数
     const legacy = this.profileMapper.mapUserProfileToDecisionParams(profile);
     const v2 = this.mappingV2.map(profile).params;
@@ -97,18 +111,83 @@ export class DecisionParamsInjectorService {
         `[DecisionParamsInjector] SHADOW_MODE diff: user=${userId} changedKeys=${diff.changedKeys.length}`,
       );
     }
-    const params = useLegacy ? legacy : v2;
+    let params = useLegacy ? legacy : v2;
     this.applyRoutePartyFitnessOverlay(userId, params);
     this.applyIcelandMarketPriorOverlay(params);
     this.applyTripFeedbackOverlay(userId, params);
+    params = this.applyEffectiveTravelerContextOverlay(userId, profile, params, useLegacy);
     await this.applyMemoryStateV1Overlay(userId, params);
 
     this.logger.debug(
       `Generated decision params for user ${userId}: ` +
-      `pace=${profile.pacePreference}, confidence=${profile.confidence.toFixed(2)}`
+        `pace=${profile.pacePreference}, confidence=${profile.confidence.toFixed(2)}`,
     );
 
     return normalizeDecisionParams(params);
+  }
+
+  /**
+   * M2：从 exec ALS 的 EffectiveTravelerContext 投影 DecisionParams。
+   * off=忽略；shadow=只 diff；active=替换（L2 override 可生效）。
+   */
+  private applyEffectiveTravelerContextOverlay(
+    userId: string,
+    baseProfile: UserTravelProfile,
+    baselineParams: DecisionParams,
+    useLegacy: boolean,
+  ): DecisionParams {
+    const mode = resolveEffectiveTravelerContextConsumeMode();
+    if (mode === 'off') return baselineParams;
+
+    const exec = this.executionContextStore?.get();
+    const etc = exec?.effectiveTravelerContext;
+    if (!etc) {
+      this.logger.debug(
+        `[DecisionParamsInjector] ETC ${mode}: no effectiveTravelerContext on exec ALS`,
+      );
+      return baselineParams;
+    }
+    if (etc.subjectId != null && etc.subjectId !== userId) {
+      this.logger.debug(
+        `[DecisionParamsInjector] ETC ${mode}: subject mismatch etc=${etc.subjectId} user=${userId}`,
+      );
+      return baselineParams;
+    }
+
+    const projected = projectUserTravelProfileFromEffectiveContext(baseProfile, etc);
+    const etcMapped = useLegacy
+      ? this.profileMapper.mapUserProfileToDecisionParams(projected.profile)
+      : this.mappingV2.map(projected.profile).params;
+
+    // 与 baseline 相同的同步 overlay，保证 diff 只反映 ETC 画像差
+    this.applyRoutePartyFitnessOverlay(userId, etcMapped);
+    this.applyIcelandMarketPriorOverlay(etcMapped);
+    this.applyTripFeedbackOverlay(userId, etcMapped);
+
+    const diff = this.shadowDiff.diff(baselineParams, etcMapped);
+    const applied = mode === 'active';
+    const audit: EffectiveTravelerContextDecisionParamsAuditV1 = {
+      schemaId: 'tripnara.etc_decision_params_audit@v1',
+      version: 1,
+      mode,
+      applied,
+      subjectId: etc.subjectId,
+      tripId: etc.tripId,
+      changedKeys: diff.changedKeys,
+      appliedProfileFields: projected.appliedFields,
+      l2Fields: projected.l2Fields,
+      tripOverridesApplied: [...etc.tripOverridesApplied],
+    };
+
+    if (exec) {
+      exec.etcDecisionParamsAudit = audit;
+    }
+
+    this.logger.debug(
+      `[DecisionParamsInjector] ETC ${mode}: applied=${applied} changedKeys=${diff.changedKeys.length} l2=${projected.l2Fields.join(',') || '-'}`,
+    );
+
+    return applied ? etcMapped : baselineParams;
   }
 
   /**
@@ -197,7 +276,7 @@ export class DecisionParamsInjectorService {
     countryCode: string,
     baseScore: number,
     decisionParams: DecisionParams,
-    routeDirection?: any // RouteDirection 对象（可选，用于提取 tags）
+    routeDirection?: any, // RouteDirection 对象（可选，用于提取 tags）
   ): Promise<number> {
     let adjustedScore = baseScore;
 
@@ -206,26 +285,37 @@ export class DecisionParamsInjectorService {
     if (routeDirection) {
       const routeTags: string[] = routeDirection.tags || [];
       const archetype = (routeDirection as any).metadata?.archetype || '';
-      
+
       // 基于 tags 判断
-      const isScenic = routeTags.includes('摄影') || routeTags.includes('风景') || 
-        archetype.includes('SCENIC') || archetype.includes('FJORD');
-      const isAdventure = routeTags.includes('挑战') || routeTags.includes('冒险') || 
-        archetype.includes('ADVENTURE') || archetype.includes('CHALLENGE');
-      const isStable = routeTags.includes('轻松') || routeTags.includes('稳定') || 
-        archetype.includes('RELAXED') || archetype.includes('URBAN');
+      const isScenic =
+        routeTags.includes('摄影') ||
+        routeTags.includes('风景') ||
+        archetype.includes('SCENIC') ||
+        archetype.includes('FJORD');
+      const isAdventure =
+        routeTags.includes('挑战') ||
+        routeTags.includes('冒险') ||
+        archetype.includes('ADVENTURE') ||
+        archetype.includes('CHALLENGE');
+      const isStable =
+        routeTags.includes('轻松') ||
+        routeTags.includes('稳定') ||
+        archetype.includes('RELAXED') ||
+        archetype.includes('URBAN');
 
       if (isScenic) {
-        adjustedScore *= (1 + decisionParams.routeDirectionBias.sceneryWeight * 0.2);
+        adjustedScore *= 1 + decisionParams.routeDirectionBias.sceneryWeight * 0.2;
       }
       if (isAdventure) {
-        adjustedScore *= (1 + decisionParams.routeDirectionBias.adventureWeight * 0.2);
+        adjustedScore *= 1 + decisionParams.routeDirectionBias.adventureWeight * 0.2;
       }
       if (isStable) {
-        adjustedScore *= (1 + decisionParams.routeDirectionBias.stabilityWeight * 0.2);
+        adjustedScore *= 1 + decisionParams.routeDirectionBias.stabilityWeight * 0.2;
       }
 
-      const marketResolution = readIcelandMarketSegmentFromTravelPreference(this.memoryContextStore?.get());
+      const marketResolution = readIcelandMarketSegmentFromTravelPreference(
+        this.memoryContextStore?.get(),
+      );
       if (marketResolution && routeTags.length > 0) {
         adjustedScore *= getIcelandMarketRouteTagScoreMultiplier(routeTags, marketResolution);
       }
@@ -254,10 +344,7 @@ export class DecisionParamsInjectorService {
   /**
    * 将决策参数的约束注入到 world model
    */
-  injectConstraintsToWorldModel(
-    worldModel: any,
-    decisionParams: DecisionParams
-  ): void {
+  injectConstraintsToWorldModel(worldModel: any, decisionParams: DecisionParams): void {
     if (!worldModel.policies) {
       worldModel.policies = {};
     }
@@ -290,20 +377,20 @@ export class DecisionParamsInjectorService {
 
     this.logger.debug(
       `Injected constraints: ` +
-      `maxElevation=${decisionParams.constraints.maxElevationM}, ` +
-      `maxAscent=${decisionParams.constraints.maxDailyAscentM}, ` +
-      `buffer=${decisionParams.constraints.bufferTimeMin}`
+        `maxElevation=${decisionParams.constraints.maxElevationM}, ` +
+        `maxAscent=${decisionParams.constraints.maxDailyAscentM}, ` +
+        `buffer=${decisionParams.constraints.bufferTimeMin}`,
     );
   }
 
   /**
    * 根据决策参数过滤 RouteDirection（基于 preferredRouteTypes）
-   * 
+   *
    * 规则：如果不在偏好列表中，降权到 60%，但不直接禁止
    */
   filterRouteDirectionByPreference(
     routeDirection: any,
-    preferredRouteTypes: string[]
+    preferredRouteTypes: string[],
   ): { shouldKeep: boolean; scoreMultiplier: number } {
     if (!preferredRouteTypes || preferredRouteTypes.length === 0) {
       return { shouldKeep: true, scoreMultiplier: 1.0 };
@@ -311,8 +398,9 @@ export class DecisionParamsInjectorService {
 
     // 从 RouteDirection 中提取类型
     // 优先使用 metadata.archetype，其次尝试从 tags 推断
-    let routeType = (routeDirection as any).metadata?.archetype || (routeDirection as any).metadata?.routeType;
-    
+    let routeType =
+      (routeDirection as any).metadata?.archetype || (routeDirection as any).metadata?.routeType;
+
     // 如果还没有，尝试从 tags 推断
     if (!routeType && routeDirection.tags) {
       const tags = routeDirection.tags as string[];
@@ -330,7 +418,7 @@ export class DecisionParamsInjectorService {
         routeType = 'NATURE';
       }
     }
-    
+
     // 如果从 archetype 中提取（如 HIGH_ALTITUDE_CULTURAL_TREKKING -> HIKING）
     if (routeType && typeof routeType === 'string') {
       const archetypeUpper = routeType.toUpperCase();
@@ -348,7 +436,7 @@ export class DecisionParamsInjectorService {
         routeType = 'NATURE';
       }
     }
-    
+
     if (!routeType) {
       // 无法确定类型，不降权
       return { shouldKeep: true, scoreMultiplier: 1.0 };
@@ -356,11 +444,13 @@ export class DecisionParamsInjectorService {
 
     // 检查是否在偏好列表中（支持部分匹配）
     const routeTypeUpper = routeType.toUpperCase();
-    const isPreferred = preferredRouteTypes.some(pref => {
+    const isPreferred = preferredRouteTypes.some((pref) => {
       const prefUpper = pref.toUpperCase();
-      return routeTypeUpper === prefUpper ||
+      return (
+        routeTypeUpper === prefUpper ||
         routeTypeUpper.includes(prefUpper) ||
-        prefUpper.includes(routeTypeUpper);
+        prefUpper.includes(routeTypeUpper)
+      );
     });
 
     if (!isPreferred) {
@@ -371,4 +461,3 @@ export class DecisionParamsInjectorService {
     return { shouldKeep: true, scoreMultiplier: 1.0 };
   }
 }
-

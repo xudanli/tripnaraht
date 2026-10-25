@@ -414,13 +414,16 @@ function buildIntentConstraints(
       scopeBinding ? (inferCoarseScopeFromBinding(scopeBinding) ?? { type: 'TRIP' as const }) : { type: 'TRIP' as const },
       scopeBinding,
     );
-    const value =
-      extended ??
-      ({
-        maxHours: dailyDrive.maxDailyDrivingHours,
-        hours: dailyDrive.maxDailyDrivingHours,
-        maxDailyDrivingHours: dailyDrive.maxDailyDrivingHours,
-      } as Record<string, unknown>);
+    const hours = dailyDrive.maxDailyDrivingHours;
+    // extended 可能仍残留旧 maxHours；以 resolve 结果为准，避免 UI 显示 6h 而自驾设置已是 4h
+    const value = {
+      ...(extended && typeof extended === 'object' ? extended : {}),
+      maxHours: hours,
+      hours,
+      maxDailyDrivingHours: hours,
+      judgmentRule: `单日驾驶时长不超过 ${hours} 小时`,
+      rule: `单日驾驶时长不超过 ${hours} 小时`,
+    } as Record<string, unknown>;
     out.push({
       id,
       tripId: trip.id,
@@ -637,8 +640,18 @@ export function aggregateTripConstraints(input: {
   conflicts?: PlanningConflictItem[];
   isFeasibilityStale?: boolean;
   userId: string;
+  /** P1.3 — 活跃风险绑定激活的约束模板 ID */
+  riskActivatedConstraintIds?: string[];
 }): { items: TripConstraint[]; meta: TripConstraintsListMeta; contract: TravelDecisionContract } {
-  const { trip, summary, teamWishes = [], conflicts = [], isFeasibilityStale, userId } = input;
+  const {
+    trip,
+    summary,
+    teamWishes = [],
+    conflicts = [],
+    isFeasibilityStale,
+    userId,
+    riskActivatedConstraintIds = [],
+  } = input;
   const ext = readMetaExt(trip.metadata);
   const metadata = (trip.metadata as Record<string, unknown>) ?? {};
   const pacing = (trip.pacingConfig as Record<string, unknown>) ?? {};
@@ -658,6 +671,9 @@ export function aggregateTripConstraints(input: {
 
   const raw = [...legacy, ...unified, ...wishes, ...official];
   const conflictIds = inferScopedConflictConstraintIds(raw, conflicts);
+  for (const id of riskActivatedConstraintIds) {
+    conflictIds.add(id);
+  }
   const projected = projectTripConstraintsForBff(raw.map((c) => withConflict(c, conflictIds)));
   const all = projected;
 

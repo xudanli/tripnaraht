@@ -47,4 +47,14 @@ export interface Rfc001DecisionProblem {
   status: Rfc001DecisionProblemStatus;
   /** Canonical capability key for Gateway routing (RFC-002) */
   semanticCapability?: string;
+  /**
+   * RFC-PD-001 — optional Proactive Decision V1 binding.
+   * Persisted in trip.metadata JSON; not required by Phase-0 zod core schema.
+   */
+  proactiveCaseId?:
+    | 'CASE_CONTINUE_ACTIVITY'
+    | 'CASE_REROUTE'
+    | 'CASE_POSTPONE_ACTIVITY';
+  proactiveImpactSchemaId?: 'nara.proactive_impact@v1';
+  proactiveIdempotencyKey?: string;
 }

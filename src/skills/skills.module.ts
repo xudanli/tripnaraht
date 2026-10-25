@@ -28,6 +28,7 @@ import { QueryRewritingModule } from '../agent/query-rewriting.module';
 import { GovernanceModule } from '../governance/governance.module';
 import { WorldStrategyModule } from '../agent/strategy/world-strategy.module';
 import { PoiAccessCapacityModule } from '../poi-access-capacity/poi-access-capacity.module';
+import { WorldConsistencyModule } from '../trips/decision/world-consistency/world-consistency.module';
 import { CountryConfigService } from './world/services/country-config.service';
 import { EvidenceCacheService } from './world/services/evidence-cache.service';
 import { PrefetcherService } from './world/services/prefetcher.service';
@@ -297,6 +298,7 @@ const enablePlacesModule = process.env.ENABLE_PLACES_MODULE === 'true';
     forwardRef(() => DataContractsModule), // 导入 DataContractsModule 以支持 WeatherSearchSkill 使用天气适配器
     ExaModule, // 导入 ExaModule 以支持 WorldBuildContextSkill 使用 ExaIntegrationService
     CacheModule, // 导入 CacheModule 以支持 WorldBuildContextSkill 使用缓存
+    forwardRef(() => WorldConsistencyModule), // P0-1 decision-tick road binding for world.buildContext
     forwardRef(() => IcelandInfoModule), // SafeTravel / Vedur 等冰岛信息源（SafetravelGetAdvisoriesSkill）
     forwardRef(() => MemoryModule), // WorldDecisionMemory：itinerary.verify 车型仲裁因果写入
     QueryRewritingModule, // poi.search 下游零结果绑定 QueryRewriteMetricsService

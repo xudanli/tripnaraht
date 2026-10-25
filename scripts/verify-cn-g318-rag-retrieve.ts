@@ -35,7 +35,7 @@ const API_BASE = (
 ).replace(/\/$/, '');
 
 async function embed(query: string): Promise<number[]> {
-  const baseUrl = process.env.PYTHON_AI_SERVICE_URL || 'http://10.107.180.94:8001';
+  const baseUrl = process.env.PYTHON_AI_SERVICE_URL || 'http://10.107.180.250:8001';
   const res = await axios.post(
     `${baseUrl}/api/v1/embeddings`,
     { texts: [query], model: 'bge-m3', return_sparse: false },

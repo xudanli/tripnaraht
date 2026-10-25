@@ -11,15 +11,8 @@ import {
   EXECUTION_RISK_KNOWLEDGE_VERSION_ID,
   EXECUTION_RISK_PACKAGE_ROOT,
 } from '../src/trips/execution-risk-center/knowledge/execution-risk-knowledge.mappers';
-import {
-  loadPackageCapabilityRows,
-  loadPackageCausalChainRows,
-  loadPackageDefinitionRows,
-  loadPackageImportCounts,
-  loadPackageInterventionActionRows,
-  loadPackageMappingRows,
-  loadPackageSeverityRuleRows,
-} from '../src/trips/execution-risk-center/knowledge/execution-risk-knowledge.loader';
+import { loadPackageImportCounts } from '../src/trips/execution-risk-center/knowledge/execution-risk-knowledge.loader';
+import { importExecutionRiskKnowledgeVersion } from '../src/trips/execution-risk-center/knowledge/execution-risk-knowledge-import.util';
 
 const prisma = new PrismaClient();
 const VERSION_ID = EXECUTION_RISK_KNOWLEDGE_VERSION_ID;
@@ -38,112 +31,13 @@ async function main(): Promise<void> {
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.executionRiskKnowledgeVersion.updateMany({
-      where: { isActive: true },
-      data: { isActive: false },
+    await importExecutionRiskKnowledgeVersion(tx, {
+      versionId: VERSION_ID,
+      packageVersion: '1.0.0',
+      status: 'DRAFT',
+      sourcePath: EXECUTION_RISK_PACKAGE_ROOT,
+      activate: true,
     });
-
-    await tx.executionRiskKnowledgeVersion.upsert({
-      where: { id: VERSION_ID },
-      create: {
-        id: VERSION_ID,
-        packageVersion: '1.0.0',
-        status: 'DRAFT',
-        isActive: true,
-        sourcePath: EXECUTION_RISK_PACKAGE_ROOT,
-        rowCounts: counts,
-        activatedAt: new Date(),
-      },
-      update: {
-        packageVersion: '1.0.0',
-        status: 'DRAFT',
-        isActive: true,
-        sourcePath: EXECUTION_RISK_PACKAGE_ROOT,
-        rowCounts: counts,
-        activatedAt: new Date(),
-      },
-    });
-
-    await tx.executionRiskDefinition.deleteMany({ where: { knowledgeVersionId: VERSION_ID } });
-    await tx.executionRiskSeverityRule.deleteMany({ where: { knowledgeVersionId: VERSION_ID } });
-    await tx.executionRiskCausalChain.deleteMany({ where: { knowledgeVersionId: VERSION_ID } });
-    await tx.executionRiskInterventionAction.deleteMany({
-      where: { knowledgeVersionId: VERSION_ID },
-    });
-    await tx.executionRiskCodeMapping.deleteMany({ where: { knowledgeVersionId: VERSION_ID } });
-
-    const capabilityByCode = new Map(
-      loadPackageCapabilityRows().map((row) => [row.knowledgeCode, row]),
-    );
-
-    for (const row of loadPackageDefinitionRows()) {
-      const capability = capabilityByCode.get(row.knowledgeCode);
-      await tx.executionRiskDefinition.create({
-        data: {
-          id: `${VERSION_ID}:${row.knowledgeCode}`,
-          knowledgeVersionId: VERSION_ID,
-          canonicalCode: row.canonicalCode,
-          knowledgeCode: row.knowledgeCode,
-          riskType: row.riskType,
-          displayName: row.displayName,
-          definition: row.definition,
-          isRootCause: row.isRootCause,
-          sourceAliases: row.sourceAliases,
-          status: row.status,
-          since: row.since ?? null,
-          generationMode: capability?.generationMode ?? null,
-          capabilityStatus: capability?.capabilityStatus ?? null,
-        },
-      });
-    }
-
-    for (const row of loadPackageSeverityRuleRows()) {
-      await tx.executionRiskSeverityRule.create({
-        data: {
-          id: row.ruleId,
-          knowledgeVersionId: VERSION_ID,
-          knowledgeCode: row.knowledgeCode,
-          payload: row,
-        },
-      });
-    }
-
-    for (const row of loadPackageCausalChainRows()) {
-      await tx.executionRiskCausalChain.create({
-        data: {
-          id: row.chainId,
-          knowledgeVersionId: VERSION_ID,
-          knowledgeCode: row.knowledgeCode,
-          payload: row,
-        },
-      });
-    }
-
-    for (const row of loadPackageInterventionActionRows()) {
-      await tx.executionRiskInterventionAction.create({
-        data: {
-          id: row.actionCode,
-          knowledgeVersionId: VERSION_ID,
-          actionCategory: row.actionCategory,
-          payload: row,
-        },
-      });
-    }
-
-    for (const row of loadPackageMappingRows()) {
-      await tx.executionRiskCodeMapping.create({
-        data: {
-          id: `${VERSION_ID}:${row.knowledgeCode}`,
-          knowledgeVersionId: VERSION_ID,
-          canonicalCode: row.canonicalCode,
-          knowledgeCode: row.knowledgeCode,
-          riskType: row.riskType,
-          sourceAliases: row.sourceAliases,
-          isRootCause: row.isRootCause,
-          status: row.status,
-        },
-      });
-    }
   });
 
   console.log(`✓ Imported execution risk knowledge v${VERSION_ID}`);

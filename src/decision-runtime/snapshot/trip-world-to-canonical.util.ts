@@ -17,6 +17,7 @@ import {
 } from '../constraints/world-state/completeness-evaluator.util';
 import { auditPlanPoiIdentity } from '../constraints/world-state/plan-poi-identity.util';
 import type { WorldStateDataAvailability } from '../constraints/contracts/world-state-completeness';
+import { canonicalWorldStateToTravelWorldFacts } from '../../travel-ontology/adapters/canonical-world-state-to-ontology-facts.adapter';
 
 export function tripWorldStateToCanonicalSnapshot(input: {
   tripId: string;
@@ -51,7 +52,7 @@ export function tripWorldStateToCanonicalSnapshot(input: {
     }),
   );
 
-  return {
+  const base: CanonicalWorldStateSnapshot = {
     schemaId: 'tripnara.canonical_world_state_snapshot@v1',
     snapshotId: input.snapshotId,
     tripId: input.tripId,
@@ -72,6 +73,12 @@ export function tripWorldStateToCanonicalSnapshot(input: {
       },
     ],
     assertionIds: input.assertionIds,
+  };
+
+  // Phase 2 SSOT: always bind worldFacts so Gate can read snapshot.worldFacts only
+  return {
+    ...base,
+    worldFacts: canonicalWorldStateToTravelWorldFacts(base),
   };
 }
 

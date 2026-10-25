@@ -1,6 +1,9 @@
 /**
  * Planning Workbench Admin API
  *
+ * @deprecated 2026-08：规划工作台 Admin 已废弃。读 `planning_plans` 当前无数据且无稳定写路径；
+ * 观测请用 `/api/agent/admin/runs` / 行程 Admin。HTTP 暂保留兼容，勿新对接。
+ *
  * @Public 跳过全局 JwtAuthGuard；鉴权由 AdminStrictAuthGuard（管理员 JWT 或 x-admin-god-key）。
  */
 import { Controller, Get, Logger, Param, Query, UseGuards } from '@nestjs/common';
@@ -19,7 +22,8 @@ import { successResponse, errorResponse, ErrorCode } from '../common/dto/standar
 import { ApiSuccessResponseDto, ApiErrorResponseDto } from '../common/dto/api-response.dto';
 import { PlanningWorkbenchAdminService } from './services/planning-workbench-admin.service';
 
-@ApiTags('planning-workbench-admin')
+/** @deprecated 见文件头注释 */
+@ApiTags('planning-workbench-admin (deprecated)')
 @Controller('planning-workbench/admin')
 @Public()
 @UseGuards(AdminStrictAuthGuard)
@@ -35,8 +39,7 @@ export class PlanningWorkbenchAdminController {
   constructor(private readonly planningWorkbenchAdminService: PlanningWorkbenchAdminService) {}
 
   @Get('sessions')
-  @ApiOperation({
-    summary: '获取规划会话列表（管理接口）',
+  @ApiOperation({ deprecated: true, summary: '获取规划会话列表（管理接口）',
     description: '获取规划会话列表，支持分页、筛选、排序。需要管理员鉴权。',
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
@@ -72,8 +75,7 @@ export class PlanningWorkbenchAdminController {
   }
 
   @Get('sessions/stats')
-  @ApiOperation({
-    summary: '获取会话统计（管理接口）',
+  @ApiOperation({ deprecated: true, summary: '获取会话统计（管理接口）',
     description: '获取规划会话的统计信息，包括成功率、平均时长等。需要管理员鉴权。',
   })
   @ApiQuery({ name: 'startDate', required: false, type: String })
@@ -95,8 +97,7 @@ export class PlanningWorkbenchAdminController {
   }
 
   @Get('sessions/:id')
-  @ApiOperation({
-    summary: '获取规划会话详情（管理接口）',
+  @ApiOperation({ deprecated: true, summary: '获取规划会话详情（管理接口）',
     description: '获取单个规划会话的详细信息。需要管理员鉴权。',
   })
   @ApiParam({ name: 'id', description: '会话ID（PlanningPlan ID）' })
@@ -118,8 +119,7 @@ export class PlanningWorkbenchAdminController {
   }
 
   @Get('plans')
-  @ApiOperation({
-    summary: '获取规划方案列表（管理接口）',
+  @ApiOperation({ deprecated: true, summary: '获取规划方案列表（管理接口）',
     description: '获取规划方案列表，支持分页、筛选。需要管理员鉴权。',
   })
   @ApiQuery({ name: 'page', required: false, type: Number })
@@ -153,8 +153,7 @@ export class PlanningWorkbenchAdminController {
   }
 
   @Get('plans/:id')
-  @ApiOperation({
-    summary: '获取规划方案详情（管理接口）',
+  @ApiOperation({ deprecated: true, summary: '获取规划方案详情（管理接口）',
     description: '获取单个规划方案的详细信息。需要管理员鉴权。',
   })
   @ApiParam({ name: 'id', description: '方案ID（PlanningPlan ID）' })

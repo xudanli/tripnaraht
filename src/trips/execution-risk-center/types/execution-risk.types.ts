@@ -1,8 +1,11 @@
 /** Execution Risk Center — unified read model (P0) */
 
 import type { RiskMetricBag } from '../knowledge/risk-metric-extraction.util';
+import type { RiskConstraintBindingAttachment } from '../knowledge/risk-constraint-binding-runtime.util';
 
 export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export type { RiskConstraintBindingAttachment };
 
 export type ExecutionGate = 'ALLOW' | 'AT_RISK' | 'REPLAN_REQUIRED' | 'STOP';
 
@@ -137,6 +140,9 @@ export interface ActiveRisk {
 
   /** Internal merge priority — higher wins on field conflicts */
   sourcePriority?: number;
+
+  /** knowledgeCode + severity → TripConstraint 模板桥接（P1.3） */
+  constraintBinding?: RiskConstraintBindingAttachment;
 }
 
 export interface ExecutionRiskSummaryRecommendation {
@@ -241,6 +247,10 @@ export interface ExecutionRiskApplyResponseDto {
     gate: ExecutionGate;
     newRisks: string[];
     resolvedRiskIds: string[];
+    /** 风险激活的约束模板 ID（如 c_official_is_wind_safety） */
+    constraintTemplateIds?: string[];
+    /** 任一条映射为硬阻断 */
+    anyBlocked?: boolean;
   };
   /** Set when response is served from idempotency cache (AC-012) */
   idempotentReplay?: boolean;

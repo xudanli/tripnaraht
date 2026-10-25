@@ -23,6 +23,7 @@ import { SystemModule } from './system/system.module';
 import { UsersModule } from './users/users.module';
 import { LlmModule } from './llm/llm.module';
 import { AgentModule } from './agent/agent.module';
+import { AgentChatModule } from './agent/chat/agent-chat.module';
 import { RailPassModule } from './railpass/railpass.module';
 import { DemModule } from './trips/dem/dem.module';
 import { DataContractsModule } from './data-contracts/data-contracts.module';
@@ -51,6 +52,7 @@ import { ExaModule } from './mcp/exa.module';
 import { GoogleCalendarModule } from './mcp/google-calendar.module';
 import { BookingComModule } from './mcp/booking-com.module';
 import { FliggyDirectModule } from './mcp/fliggy-direct.module';
+import { QWeatherModule } from './mcp/qweather.module';
 import { XiaohongshuDirectModule } from './mcp/xiaohongshu-direct.module';
 import { PostgreSQLMcpModule } from './mcp/postgresql-mcp.module';
 import { BrowserbaseMcpModule } from './mcp/browserbase-mcp.module';
@@ -88,6 +90,7 @@ import { ArrangeItineraryModule } from './trips/arrange-itinerary/arrange-itiner
 import { ResearchModule } from './research/research.module';
 import { TravelContextModule } from './travel-context/travel-context.module';
 import { CanonicalPoiResolutionModule } from './canonical-poi-resolution/canonical-poi-resolution.module';
+import { KnowledgeSystemModule } from './knowledge-system/knowledge-system.module';
 import { TravelCompilerModule } from './travel-compiler/travel-compiler.module';
 import { MobileModule } from './mobile/mobile.module';
 
@@ -129,6 +132,7 @@ import { MobileModule } from './mobile/mobile.module';
     PlacesModule, // 地点相关模块
     TravelProductCatalogModule, // 旅行产品库（Admin CRUD + C 端只读）
     CanonicalPoiResolutionModule, // CPRE — Travel Primary Key resolution (P0)
+    KnowledgeSystemModule, // Knowledge Control Center Phase 1–6
     TravelCompilerModule, // Travel Compiler — Planner Draft → CanonicalTravelGraph (P0)
     FlightPricesModule, // 机票价格参考模块
     HotelsModule, // 酒店价格模块
@@ -159,6 +163,7 @@ import { MobileModule } from './mobile/mobile.module';
     RouteDirectionsModule, // 恢复：测试是否导致阻塞
     RagModule, // 恢复：RAG 模块（用于增强对话）
     AgentModule, // Agent 模块（Router + Orchestrator）（恢复：需要 route_and_run 路由）
+    AgentChatModule, // /api/agent/chat/* 对话抽屉（含 ensure-shared）
     ContextEngineModule, // Context Engine 模块（上下文编译器）
     DecisionKernelModule, // Decision Kernel 模块（Phase 2: DSO + Kernel 入口）
     HarnessModule, // Harness Runtime（步骤契约、确定性校验、trace）
@@ -173,6 +178,7 @@ import { MobileModule } from './mobile/mobile.module';
     GoogleCalendarModule, // Google Calendar MCP 模块（行程同步、事件管理）
     BookingComModule, // Booking.com MCP 模块（租车搜索，通过 RapidAPI）
     FliggyDirectModule, // 飞猪 FlyAI（国内 OTA）
+    QWeatherModule, // 和风天气（国内天气/预警）
     XiaohongshuDirectModule, // 小红书 MCP（社区体验）
     PostgreSQLMcpModule, // PostgreSQL MCP 模块（数据库查询和执行）
     BrowserbaseMcpModule, // Browserbase MCP 模块（浏览器自动化）

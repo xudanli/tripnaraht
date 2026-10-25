@@ -7,9 +7,13 @@
 import type {
   BookingStatus,
   EntryEligibilityStatus,
+  FatigueState,
+  HazardSeverity,
   PlanItemStatus,
   RoadStatus,
   VehicleDrivetrain,
+  VisaRequirement,
+  WeatherWarningLevel,
 } from './common-states.types';
 
 export const TRAVEL_ONTOLOGY_ENTITY_SCHEMA_ID = 'tripnara.travel_ontology_entity@v1';
@@ -30,7 +34,7 @@ export interface TravelerIdentity {
 export interface EntryRule {
   destinationCountry: string;
   passportCountry: string;
-  visaRequirement: 'NONE' | 'VISA_REQUIRED' | 'ETIAS' | 'UNKNOWN';
+  visaRequirement: VisaRequirement;
   allowedStayRule?: string;
   passportValidityRule?: string;
   requiredDocuments?: string[];
@@ -63,7 +67,7 @@ export interface Driver {
   internationalPermit?: boolean;
   winterDrivingExperience?: boolean;
   gravelRoadExperience?: boolean;
-  fatigueState?: 'RESTED' | 'TIRED' | 'UNKNOWN';
+  fatigueState?: FatigueState;
 }
 
 /** §11.2 租用车辆 */
@@ -206,7 +210,7 @@ export interface RouteWeatherExposure {
   visibility?: number;
   temperature?: number;
   icingProbability?: number;
-  warningLevel?: 'NONE' | 'YELLOW' | 'ORANGE' | 'RED';
+  warningLevel?: WeatherWarningLevel;
   exposedVehicleTypes?: string[];
 }
 
@@ -226,7 +230,7 @@ export interface NaturalHazard {
   hazardId: string;
   hazardType: string;
   affectedGeometry?: unknown;
-  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  severity: HazardSeverity;
   validFrom?: string;
   validTo?: string;
   accessRestriction?: string;

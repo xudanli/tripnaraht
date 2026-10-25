@@ -6,6 +6,7 @@ import { ConstraintFailurePolicyService } from './failure-policy.service';
 import { LegacyConstraintCheckerAdapter } from './providers/legacy-checker.provider';
 import { GuardianConstraintProvider } from './providers/guardian-constraint.provider';
 import { DestinationPackConstraintProvider } from './providers/destination-pack.provider';
+import { OntologyConstraintProvider } from './providers/ontology-constraint.provider';
 import {
   isLegacyFeasibleFromReport,
 } from './contracts/canonical-constraint-report';
@@ -138,6 +139,7 @@ describe('ConstraintEvaluationGatewayService', () => {
         },
         GuardianConstraintProvider,
         DestinationPackConstraintProvider,
+        OntologyConstraintProvider,
       ],
     }).compile();
 

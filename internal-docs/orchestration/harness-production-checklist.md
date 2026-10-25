@@ -116,7 +116,7 @@
 | 优先级 | 任务 | 验收 | 状态 |
 |--------|------|------|------|
 | **P0** | Destructive MCP tools 默认 `deny`/`ask` + audit id | `agentic-tool-governance.util.ts` · `[AgenticGovernance] audit=gov_*` 日志 | ✅ |
-| **P1** | 生产开 `FEATURE_AGENTIC_GOVERNANCE_HITL` + 扩展 `tool_policies` | 关键 tool 无 silent auto | ✅ `.env.harness-production.example` |
+| **P1** | 生产开 `FEATURE_AGENTIC_GOVERNANCE_HITL` + 扩展 `tool_policies` | 关键 tool 无 silent auto | ✅ `config/env/.env.harness-production.example` |
 | **P1** | per-user / global daily token quota | `AGENTIC_DAILY_TOKEN_QUOTA_*` + `AgenticTokenQuotaService` | ✅ |
 | **P2** | 统一 Execution Policy Gateway | 编排 + Agentic + MCP 同一 policy 链 | ✅ 主链 tick hydrate + observability |
 | **P3** | Subagent 权限沙箱 | tool 能力不可经 message 传递 | ✅ env + message strip + MCP cap + observability |
@@ -180,14 +180,14 @@ CLI：`tripnara harness trace *` · `tripnara harness badcase *` · `tripnara ha
 ### 5.1 Demo（周末 QC 级）
 
 - [x] `answer_text` 能跑通（L0）— 主链已有；各产品入口自行验收
-- [x] 设 `AGENTIC_LOOP_MAX_TOTAL_TOKENS` — `.env.harness-production.example`
+- [x] 设 `AGENTIC_LOOP_MAX_TOTAL_TOKENS` — `config/env/.env.harness-production.example`
 - [x] Destructive tool 本地 policy 默认 deny — `agentic-tool-governance.util.ts`
 
 ### 5.2 试点（有真实用户）
 
 - [ ] Redis session + PA 多 Pod 验收（§2.4 P0）— 📋 运维
 - [x] `HARNESS_TRACE_MODE=on-failure` + `HARNESS_TRACE_EXPORT_DIR` — 见 trace runbook
-- [x] `FEATURE_AGENTIC_GOVERNANCE_HITL` + 关键 MCP ask — `.env.harness-production.example`
+- [x] `FEATURE_AGENTIC_GOVERNANCE_HITL` + 关键 MCP ask — `config/env/.env.harness-production.example`
 - [ ] 前端 L1：`explain.optimization` 判决书 + 路政 Banner — 本仓 doc only
 - [x] `npm run harness:l1-smoke` — 脚本就绪；CI 勾选由平台侧
 
@@ -262,7 +262,7 @@ tripnara harness llm-routing status --token "$ADMIN_DIAGNOSTICS_TOKEN"
 
 ## 8. 环境变量速查
 
-模板文件：[`/.env.harness-production.example`](../../.env.harness-production.example)
+模板文件：[`/config/env/.env.harness-production.example`](../../config/env/.env.harness-production.example)
 
 ```bash
 # ── State ──

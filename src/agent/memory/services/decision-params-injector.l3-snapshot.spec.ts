@@ -52,6 +52,8 @@ describe('DecisionParamsInjectorService (L3 snapshot consistency)', () => {
       {} as any,
       {} as any,
       { diff: jest.fn() } as any,
+      undefined,
+      undefined,
       store as any,
     );
 
@@ -133,6 +135,8 @@ describe('DecisionParamsInjectorService (L3 snapshot consistency)', () => {
       {} as any,
       {} as any,
       { diff: jest.fn() } as any,
+      undefined,
+      undefined,
       store as any,
     );
 

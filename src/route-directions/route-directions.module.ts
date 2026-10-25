@@ -25,6 +25,12 @@ import { RedisService } from '../redis/redis.service';
 import { WorldFactsModule } from '../world-facts/world-facts.module';
 import { HikingDemoModule } from '../hiking-demo/hiking-demo.module';
 import { HikingDetailOverrideController } from './hiking-detail-override.controller';
+import { RoutePackingChecklistController } from './route-packing-checklist.controller';
+import { TemplatePackingChecklistController } from './template-packing-checklist.controller';
+import { RoutePackingChecklistService } from './services/route-packing-checklist.service';
+import { RouteBudgetEstimateController } from './route-budget-estimate.controller';
+import { TemplateBudgetEstimateController } from './template-budget-estimate.controller';
+import { RouteBudgetEstimateService } from './services/route-budget-estimate.service';
 import { TransportModule } from '../transport/transport.module';
 import { IdentityGovernanceModule } from '../identity-governance/identity-governance.module';
 import { EffectivePlanExecutionModule } from '../decision-runtime/execution/effective-plan-execution.module';
@@ -66,11 +72,21 @@ class MockRedisService {
     forwardRef(() => DecisionModule), // 用于RhythmMatchingService和ThreeLayerExplanationService - 使用 forwardRef 避免循环依赖
     SharedMemoryModule,
   ],
-  controllers: [RouteDirectionsController, HikingDetailOverrideController],
+  controllers: [
+    // 静态子路径须先于 RouteDirectionsController 的 @Get(':id')，避免被当成 id
+    RoutePackingChecklistController,
+    TemplatePackingChecklistController,
+    RouteBudgetEstimateController,
+    TemplateBudgetEstimateController,
+    HikingDetailOverrideController,
+    RouteDirectionsController,
+  ],
   providers: [
     // 在 MCP 模式下，提供假的 RedisService
     ...(disableRedis ? [{ provide: RedisService, useClass: MockRedisService }] : []),
     RouteDirectionsService,
+    RoutePackingChecklistService,
+    RouteBudgetEstimateService,
     RouteDirectionSelectorService,
     RouteDirectionPoiGeneratorService,
     RouteDirectionObservabilityService,
@@ -88,6 +104,8 @@ class MockRedisService {
   ],
   exports: [
     RouteDirectionsService,
+    RoutePackingChecklistService,
+    RouteBudgetEstimateService,
     RouteDirectionSelectorService,
     RouteDirectionPoiGeneratorService,
     RouteDirectionObservabilityService,

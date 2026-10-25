@@ -14,6 +14,7 @@ import { OutcomeCalculationRequest, TripDataForOutcome, TravelEventData } from '
 import { Trip } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReputationEventService } from '../../identity-governance/services/reputation-event.service';
+import { WmOutcomeValidationBridgeService } from '../decision/outcome-validation/wm-outcome-validation-bridge.service';
 
 /**
  * Context for outcome calculation.
@@ -52,6 +53,8 @@ export class TripOutcomeOrchestratorService {
     @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly moneyDnaService?: MoneyDnaService,
     @Optional() private readonly reputationEventService?: ReputationEventService,
+    @Optional()
+    private readonly wmOutcomeValidation?: WmOutcomeValidationBridgeService,
   ) {}
 
   /**
@@ -85,6 +88,20 @@ export class TripOutcomeOrchestratorService {
         this.logger.log(
           `Outcome persisted for trip ${tripId}: success=${result.outcome.success}, score=${result.outcome.overallScore.toFixed(2)}`,
         );
+
+        // WM Outcome Validation backfill (best-effort; never blocks COMPLETED)
+        try {
+          this.wmOutcomeValidation?.onTravelOutcomePersisted({
+            tripId,
+            success: String(result.outcome.success),
+            overallScore: result.outcome.overallScore,
+            satisfaction: result.outcome.satisfaction,
+          });
+        } catch (err) {
+          this.logger.warn(
+            `WmOutcomeValidation backfill skipped for trip ${tripId}: ${err}`,
+          );
+        }
 
         // Record verifiable reputation facts for linked trusted projects
         await this.recordTrustedProjectReputation(tripId, result.outcome);

@@ -65,6 +65,8 @@ describe('Harness route-and-run regression', () => {
     expect((res!.observability as any).live_execution_conclusion.verdict).toMatch(
       /YES|NO|CONDITIONAL/,
     );
+    expect((res!.observability as any).system1_runtime?.family).toBe('LIVE_FEASIBILITY');
+    expect((res!.observability as any).system1_runtime?.authority_allowed).toBe(true);
   });
 
   it('CASE-D01: Decision fast path with harness pipeline', async () => {
@@ -78,6 +80,11 @@ describe('Harness route-and-run regression', () => {
     );
     const problem = (res!.result.payload as any).travel_decision_problem;
     expect(problem.options.find((o: any) => o.optionId === '2WD')?.feasibility).toBe('BLOCKED');
+    expect((res!.observability as any).system1_runtime?.family).toBe('DECISION_SUPPORT');
+    expect((res!.observability as any).system1_runtime?.cre?.operation).toBe('COMPARE_OPTIONS');
+    expect((res!.observability as any).system1_runtime?.sufficiency).toMatch(
+      /SUFFICIENT|PARTIAL/,
+    );
   });
 
   it('CASE-A01: 第三天轻松一点 → ITINERARY_ADJUST + PARTIAL_REPLAN', () => {

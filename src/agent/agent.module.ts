@@ -86,8 +86,12 @@ import { TripDetailController } from './trip-detail.controller';
 import { PlanningWorkbenchController } from './planning-workbench.controller';
 import { PlanningWorkbenchAdminController } from './planning-workbench-admin.controller';
 import { AgentAdminController } from './agent-admin.controller';
+import { System1ConsoleController } from './console/system1-console.controller';
+import { System1ConsoleService } from './console/system1-console.service';
+import { System1ConsoleStore } from './console/system1-console.store';
 import { DecisionReplayController } from './controllers/decision-replay.controller';
 import { AgentRunAdminService } from './services/agent-run-admin.service';
+import { AgentRunReplayAdminService } from './services/agent-run-replay-admin.service';
 import { TripRunManagerService } from './services/trip-run-manager.service';
 import { ActionExecutionService } from './services/action-execution.service';
 import { FinancialHoldStoreService } from './services/financial-hold-store.service';
@@ -272,10 +276,13 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     ExecutionController,
     TripDetailController,
     AgentAdminController,
+    System1ConsoleController,
     DecisionReplayController,
   ],
   providers: [
     ExecutionGatewayService,
+    System1ConsoleStore,
+    System1ConsoleService,
     TripOrchestrationLockService,
     EcpsRuntimeBiasService,
     ExecutionPolicyVersionRegistryService,
@@ -322,6 +329,7 @@ import { AdminStrictAuthGuard } from '../admin/guards/admin-strict-auth.guard';
     SkillInputValidatorService, // Skill 输入参数验证服务
     SkillInputSchemaGeneratorService, // Skill Input Schema 自动生成服务
     AgentRunAdminService, // Agent 运行管理服务（后台管理）
+    AgentRunReplayAdminService, // Decision Replay Admin
     TripRunManagerService, // TripRun 和 TripAttempt 管理服务
     FinancialHoldStoreService,
     SideEffectRegistryService,

@@ -19,6 +19,7 @@ import { DecisionOsP0Module } from '../../decision/decision-os-p0.module';
 
 import { DomainAgentsModule } from '../services/domain-agents/domain-agents.module';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { PolicyLabModule } from '../../domain/policy-lab/policy-lab.module';
 import { WorldFactsModule } from '../../world-facts/world-facts.module';
 import { WorldModelCollectorService } from './shared/world-model-collector.service';
 import { PredictionCollectorService } from './shared/prediction-collector.service';
@@ -57,6 +58,7 @@ import { TrainingModule } from '../training/training.module';
     DecisionOsP0Module,
     DomainAgentsModule,
     PrismaModule,
+    PolicyLabModule,
     WorldFactsModule,
     ConfigModule,
     forwardRef(() => SkillsModule), // SkillsRegistryService for transport/poi/dem/geo skills

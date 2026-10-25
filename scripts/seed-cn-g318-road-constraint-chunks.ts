@@ -22,7 +22,7 @@ class BgeEmbeddingService {
   private httpClient: ReturnType<typeof axios.create>;
 
   constructor() {
-    const baseUrl = process.env.PYTHON_AI_SERVICE_URL || 'http://10.107.180.94:8001';
+    const baseUrl = process.env.PYTHON_AI_SERVICE_URL || 'http://10.107.180.250:8001';
     this.httpClient = axios.create({
       baseURL: baseUrl,
       timeout: 90_000,

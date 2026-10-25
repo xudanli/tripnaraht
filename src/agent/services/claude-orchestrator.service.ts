@@ -339,6 +339,7 @@ import {
   isHotelInventorySearchQuery,
 } from '../utils/orchestration-signals.util';
 import { isDayLodgingChoiceQuery } from '../utils/day-lodging-choice.util';
+import { resolveHotelDestHintZh } from '../../mcp/fliggy-dest.util';
 import {
   buildLightweightTemporalGroundingZhLines,
   buildLightweightTemporalRepairSuffix,
@@ -456,6 +457,7 @@ import {
   runLiveActivitySensorBranch as runLiveActivitySensorBranchShared,
   runLiveCarRentalSensorBranch as runLiveCarRentalSensorBranchShared,
   runLiveFlightSensorBranch as runLiveFlightSensorBranchShared,
+  runLiveXhsSensorBranch as runLiveXhsSensorBranchShared,
 } from '../routing/lightweight-live-sensors.runner';
 import type { LightweightLiveSensorsHost } from '../routing/lightweight-live-sensors.host';
 import {
@@ -470,6 +472,7 @@ import {
   isActivityAdvanceBookingConsultQuery,
   mapActivitySearchItemsToChatCards,
 } from '../chat/build-activity-booking-chat-cards.util';
+import { isXhsCommunityEvidenceConsultQuery } from '../chat/build-xhs-note-chat-cards.util';
 import {
   extractHotelListingDisplayName,
   extractHotelListingPriceHint,
@@ -2288,6 +2291,133 @@ export class ClaudeOrchestratorService {
     );
   }
 
+  /** 委托共享 runner：小红书社区笔记 → xhs_note_cards */
+  private async runLiveXhsSensorBranch(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    effectiveTripId?: string,
+  ) {
+    return runLiveXhsSensorBranchShared(
+      this.liveSensorsHost(),
+      request,
+      context,
+      effectiveTripId,
+    );
+  }
+
+  /**
+   * 小红书笔记出卡快路径：只跑 xiaohongshu live MCP，跳过天气/酒店/RAG/长 LLM。
+   */
+  private async orchestrateXhsNoteCardFastPath(
+    request: RouteAndRunRequestDto,
+    context: AgentContext,
+    effectiveTripId: string | undefined,
+    startTime: number,
+  ): Promise<OrchestrationResult> {
+    const xBranch = await this.runLiveXhsSensorBranch(
+      request,
+      context,
+      effectiveTripId,
+    );
+    const ui = xBranch.xhsRouteRunUi;
+    const cards = Array.isArray(ui?.xhs_note_cards) ? ui!.xhs_note_cards : [];
+    const titles = cards
+      .slice(0, 3)
+      .map((c, i) =>
+        String(
+          (c as { titleZh?: string; title?: string }).titleZh ??
+            (c as { title?: string }).title ??
+            `笔记${i + 1}`,
+        ),
+      )
+      .filter(Boolean);
+    const userAsk = String(request.message ?? '')
+      .replace(/\n+\s*\[(?:日程|行程|上下文|Context)\][\s\S]*$/iu, '')
+      .split('\n')[0]
+      ?.trim() || '小红书社区体验';
+    const answerText = cards.length
+      ? [
+          '结论：已拉取小红书社区笔记抽样（非官方事实），详情见下方卡片。',
+          '',
+          `- 问法：${userAsk}`,
+          `- 样本：${titles.join('、') || '见卡片'}`,
+          '- 说明：社区体验可能过时或片面；与天气/道路/库存冲突时以官方传感器为准。',
+        ].join('\n')
+      : [
+          '结论：暂未拿到可打开的小红书笔记链接（sidecar 未登录或无样本时会如此）。',
+          '',
+          `- 问法：${userAsk}`,
+          '- 说明：请确认 xiaohongshu-mcp 已启动并登录；正文勿编造笔记标题或链接。',
+        ].join('\n');
+
+    this.logger.log({
+      tag: 'lightweight.xhs_note_exclusive_fast_path',
+      request_id: request.request_id,
+      cards: cards.length,
+      duration_ms: Date.now() - startTime,
+    });
+
+    const rd: RoutingDecision = {
+      route: 'SYSTEM2_REASONING',
+      confidence: 0.9,
+      reasoning: 'lightweight_xhs_note_card_fast_path',
+      budget: { max_seconds: 30, max_steps: 1, max_browser_steps: 0 },
+      requiredCapabilities: ['qa'],
+      consentRequired: false,
+      selected_path: 'QA_LIGHT',
+    };
+    const doneAt = Date.now();
+    return {
+      success: true,
+      answerText,
+      result: {
+        routingDecision: rd,
+        intentAnalysis: {
+          intentType: 'simple_query',
+          complexity: 'simple',
+          requiredCapabilities: ['qa'],
+          confidence: 0.9,
+          reasoning: 'lightweight_xhs_note_card_fast_path',
+        },
+        lightweightKnowledgeQa: true,
+        xhsNoteCardFastPath: true,
+        routingTaskType: context.routingTaskType,
+        ...(xBranch.audits.length ? { live_sensor_audit: xBranch.audits } : {}),
+        ...(ui
+          ? {
+              xhs_note_cards: ui.xhs_note_cards,
+              xhs_search_meta: ui.xhs_search_meta,
+              ...(cards.length
+                ? {
+                    schema_id: 'tripnara/chat_xhs_note_cards@v1',
+                    ui_surface: 'xhs_note_cards' as const,
+                  }
+                : {}),
+            }
+          : {}),
+      },
+      stepsExecuted: [],
+      totalDuration: doneAt - startTime,
+      decisionLog: [
+        {
+          request_id: request.request_id,
+          step: 'INTAKE' as OrchestrationStep,
+          actor: 'Orchestrator' as SubAgentType,
+          inputs_summary: (request.message ?? '').substring(0, 240),
+          outputs_summary: `xhs_note_card_fast_path cards=${cards.length}`,
+          evidence_refs: cards.length
+            ? [`live_tool:mcp:xiaohongshu:${request.request_id}`]
+            : [],
+          timestamp: new Date().toISOString(),
+          metadata: {
+            system_action: 'XHS_NOTE_CARD_FAST_PATH',
+            cards: cards.length,
+          },
+        },
+      ],
+    };
+  }
+
   /**
    * 门票/活动出卡快路径：只跑 activity live MCP（国内飞猪），跳过天气/酒店/RAG/长 LLM。
    */
@@ -2414,11 +2544,10 @@ export class ClaudeOrchestratorService {
     const ui = hBranch.hotelRouteRunUi;
     const accommodations = Array.isArray(ui?.accommodations) ? ui!.accommodations : [];
     const metaExtra = (ui?.hotel_search_meta ?? {}) as Record<string, unknown>;
-    const destHint =
-      (typeof metaExtra.destination === 'string' && metaExtra.destination) ||
-      (typeof metaExtra.dest_name === 'string' && metaExtra.dest_name) ||
-      (typeof metaExtra.destName === 'string' && metaExtra.destName) ||
-      '行程过夜点';
+    const destHint = resolveHotelDestHintZh({
+      message: request.message,
+      meta: metaExtra,
+    });
     const names = accommodations
       .slice(0, 3)
       .map((c, i) => String((c as { nameZh?: string; name?: string }).nameZh ?? (c as { name?: string }).name ?? `选项${i + 1}`))
@@ -3018,6 +3147,8 @@ export class ClaudeOrchestratorService {
       language: 'zh',
       ...(countryCode ? { countryCode } : {}),
     };
+    const msg = (request.message ?? '').trim();
+    if (msg) params.naturalLanguage = msg;
     if (effectiveTripId) params.tripId = effectiveTripId;
     if (tripStartYmd) params._resolvedTripStartYmd = tripStartYmd;
     if (tripEndYmd) params._resolvedTripEndYmd = tripEndYmd;
@@ -4011,6 +4142,19 @@ export class ClaudeOrchestratorService {
     );
 
     const tripCtxJoined = tripContextLines.join('\n');
+
+    // 小红书社区笔记出卡：独占快路径（跳过天气/酒店/RAG/长 LLM）
+    if (
+      !lightweightTriviaFact &&
+      isXhsCommunityEvidenceConsultQuery(request.message ?? '')
+    ) {
+      return await this.orchestrateXhsNoteCardFastPath(
+        request,
+        context,
+        effectiveTripId,
+        startTime,
+      );
+    }
 
     // 机票出卡：独占快路径（国内飞猪；跳过天气/酒店/RAG/长 LLM）
     if (!lightweightTriviaFact && isFlightChatCardQuery(request.message ?? '')) {

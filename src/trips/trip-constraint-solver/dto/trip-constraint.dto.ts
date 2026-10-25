@@ -161,6 +161,14 @@ export class ListTripConstraintsQueryDto {
   @IsOptional()
   @IsString()
   conflictOnly?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'full|1=同步拉全量 planning-conflicts（慢）；缺省用决策问题投影/快路径，避免合同页卡住',
+  })
+  @IsOptional()
+  @IsString()
+  includeConflicts?: string;
 }
 
 export class CreateTripConstraintDto {

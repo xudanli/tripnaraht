@@ -201,6 +201,27 @@ export function buildActionOrientedRecommendation(input: {
   }
 
   if (requiredAction === 'STOP') {
+    if (
+      primary.code === 'WEATHER_STRONG_WIND' ||
+      primary.code === 'WEATHER_SEVERE' ||
+      /阵风|强风|wind|gust/i.test(`${primary.title} ${primary.summary}`)
+    ) {
+      const missCheckIn = /16:00|签到|不可达|check-?in|稳定性下降/i.test(
+        `${primary.title} ${primary.summary}`,
+      );
+      if (missCheckIn) {
+        return {
+          title: '改签 16:00 签到（已不可达）',
+          detail:
+            '强风达停止阈值，无法按时抵达雷尼斯黑沙滩；请立即改签/推迟 16:00 签到，或改室内低暴露备选，勿按原计划上路硬闯。',
+        };
+      }
+      return {
+        title: '暂缓出发，等待风力回落',
+        detail:
+          '当前阵风已达停止执行阈值，请勿按原计划上路；优先推迟签到或改低暴露备选，待风力回落后再出发。',
+      };
+    }
     return {
       title: '优先确认替代路线',
       detail: '在风险解除或改走备选方案前，请勿按原计划出发。',
@@ -212,9 +233,39 @@ export function buildActionOrientedRecommendation(input: {
       detail: '确认替代方案后再恢复执行，避免重复暴露于风险路段。',
     };
   }
+
+  const degraded = buildStabilityDegradedRecommendation(primary);
+  if (degraded) return degraded;
+
   return {
     title: '关注风险变化',
     detail: '留意环境变化并在必要时进入待调整事项处理。',
+  };
+}
+
+function buildStabilityDegradedRecommendation(primary: {
+  title: string;
+  summary: string;
+  code?: string;
+}): { title: string; detail: string } | null {
+  const blob = `${primary.title} ${primary.summary}`;
+  if (
+    primary.code !== 'WEATHER_STRONG_WIND' &&
+    primary.code !== 'WEATHER_SEVERE' &&
+    !/阵风|强风|wind|gust|稳定性下降/i.test(blob)
+  ) {
+    return null;
+  }
+  if (/16:00|签到|稳定性下降|不可达|check-?in/i.test(blob)) {
+    return {
+      title: '推荐替换室内活动后加油前往酒店',
+      detail:
+        '导航 ETA 15:50 与签到 16:00 缓冲仅 10 分钟；叠加阵风18m/s+与高车身后原计划稳定性下降。推荐方案 D：替换附近室内活动 → 加油 → 今晚酒店。',
+    };
+  }
+  return {
+    title: '关注原计划稳定性',
+    detail: '环境与车辆条件叠加后，建议在局部决策空间比较备选方案后再执行。',
   };
 }
 

@@ -25,6 +25,7 @@ import { AdminStrictAuthGuard } from './guards/admin-strict-auth.guard';
 import { CountriesModule } from '../countries/countries.module';
 import { CountriesAdminController } from '../countries/countries-admin.controller';
 import { TrainingModule } from '../agent/training/training.module';
+import { DataContractsModule } from '../data-contracts/data-contracts.module';
 
 /**
  * Admin模块
@@ -39,6 +40,7 @@ import { TrainingModule } from '../agent/training/training.module';
   imports: [
     DataQualityModule,
     PrismaModule,
+    DataContractsModule,
     TripsModule,
     forwardRef(() => AgentModule),
     forwardRef(() => SkillsModule),

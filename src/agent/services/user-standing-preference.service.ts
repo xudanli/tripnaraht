@@ -18,6 +18,10 @@ import {
   buildUserPreferenceExtractionPrompt,
   type UserPreferenceLlmExtraction,
 } from '../utils/user-preference-llm-extract.util';
+import { TravelMemoryRuntimeService } from '../../travel-memory/runtime/travel-memory-runtime.service';
+import { resolveTravelerMemoryWriteGateMode } from '../../travel-memory/traveler-memory/resolve-write-gate-mode.util';
+import { buildStandingPreferenceTravelerWrites } from '../../travel-memory/traveler-memory/dirty-write-to-traveler-memory.util';
+import { bridgeWritesToTravelerMemory } from '../../travel-memory/traveler-memory/bridge-dirty-writes.util';
 
 export const TRIPNARA_USER_SUMMARY_BULLETS = 'tripnara_user_summary_bullets' as const;
 export const TRIPNARA_USER_SUMMARY_ZH = 'tripnara_user_summary_zh' as const;
@@ -156,6 +160,7 @@ export class UserStandingPreferenceService {
   constructor(
     @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly llmService?: LlmService,
+    @Optional() private readonly travelMemory?: TravelMemoryRuntimeService,
   ) {}
 
   private isLlmExtractEnabled(): boolean {
@@ -271,6 +276,33 @@ export class UserStandingPreferenceService {
 
     if (bulletsToAdd.length === 0 && !hasNonEmptyStructuredHints(structuredPatch)) {
       return false;
+    }
+
+    const gate = resolveTravelerMemoryWriteGateMode();
+    const strongExplicit = /记住|以后都要|今后都|一律|永远/i.test(msg);
+    if (gate !== 'off') {
+      const drafts = buildStandingPreferenceTravelerWrites({
+        userId: uid!,
+        bullets: bulletsToAdd,
+        structured: structuredPatch,
+        strongExplicit,
+        conversationId: requestId,
+        turnId: requestId,
+      });
+      const audit = bridgeWritesToTravelerMemory(
+        this.travelMemory,
+        gate,
+        'standing',
+        drafts,
+        gate !== 'active',
+      );
+      this.logger.log(
+        `[UserStandingPreference] write_gate=${gate} tm_written=${audit.written}/${audit.attempted} legacy=${audit.legacyProfileWrite}`,
+      );
+      if (gate === 'active') {
+        // 禁止再污染 UserProfile.preferences 摘要字段
+        return audit.written > 0;
+      }
     }
 
     try {

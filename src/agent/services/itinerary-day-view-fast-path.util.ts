@@ -24,6 +24,15 @@ import {
   buildAgentTurnTrace,
   projectAgentTurnTraceForObservability,
 } from '../harness/hardening/agent-turn-trace.util';
+import {
+  adaptDayViewRead,
+  buildTripQueryStateClaims,
+  compileSystem1AcquisitionPlan,
+  ensureSystem1CrePlan,
+  projectSystem1TurnTrace,
+  runSystem1DecisionRuntime,
+} from '../system1-runtime';
+import { evaluateClaimGroundingForHarness } from '../harness/hardening/claim-grounding-eval.util';
 
 export type ItineraryDayViewFastPathHost = {
   logger?: {
@@ -90,6 +99,7 @@ function buildDayViewResponse(params: {
   dayNumber?: number;
   contractTrace?: Record<string, unknown>;
   turnTrace?: Record<string, unknown>;
+  system1Runtime?: Record<string, unknown>;
 }): RouteAndRunResponseDto {
   const latencyMs = Date.now() - params.startTime;
   const titleZh =
@@ -180,6 +190,7 @@ function buildDayViewResponse(params: {
       itinerary_day_view_fast_path: true,
       agent_task_contract: params.contractTrace,
       ...(params.turnTrace ? { agent_turn_trace: params.turnTrace } : {}),
+      ...(params.system1Runtime ? { system1_runtime: params.system1Runtime } : {}),
     },
   } as unknown as RouteAndRunResponseDto;
 
@@ -231,6 +242,51 @@ export async function tryBuildItineraryDayViewFastPath(
 
   const dayMatch = /第\s*(\d+)\s*天/.exec(orch.answerText);
   const dateMatch = /(\d{4}-\d{2}-\d{2})/.exec(orch.answerText);
+  const dayNumber = dayMatch ? Number(dayMatch[1]) : undefined;
+  const dateIso = dateMatch?.[1];
+  const itemCountMatch = /共\s*(\d+)\s*项|items?=(\d+)/i.exec(orch.answerText);
+  const itemCount = itemCountMatch
+    ? Number(itemCountMatch[1] ?? itemCountMatch[2])
+    : undefined;
+
+  const evidence = adaptDayViewRead({
+    tripId,
+    dayNumber: dayNumber ?? null,
+    dateIso: dateIso ?? null,
+    itemCount,
+    success: orch.success,
+  });
+  const crePlan = ensureSystem1CrePlan({
+    family: 'TRIP_QUERY_DAY',
+    message,
+    tripId,
+  });
+  const compiled = compileSystem1AcquisitionPlan({
+    family: 'TRIP_QUERY_DAY',
+    evidence,
+    tripId,
+    skipExternalFetch: true,
+    alreadyFetched: ['trip.current_day', 'trip.timeline'],
+    crePlan,
+  });
+  const runtime = runSystem1DecisionRuntime({
+    message,
+    tripId,
+    contract,
+    family: 'TRIP_QUERY_DAY',
+    creOperation: crePlan.operation,
+    evidence,
+    claims: buildTripQueryStateClaims({
+      text: orch.answerText,
+      family: 'TRIP_QUERY_DAY',
+    }),
+    draftAnswer: orch.answerText,
+    acquisition: compiled.plan,
+    requiredEvidence: compiled.required,
+    cre: compiled.cre,
+  });
+  const system1Runtime = projectSystem1TurnTrace(runtime);
+
   const contractTrace = contract
     ? projectAgentTaskContractForTrace(contract)
     : undefined;
@@ -242,7 +298,13 @@ export async function tryBuildItineraryDayViewFastPath(
           resultStatus: orch.success ? 'OK' : 'NEED_MORE_INFO',
           answerPreviewZh: orch.answerText,
           appliedToItinerary: false,
-          evidence: [],
+          claimGrounding: evaluateClaimGroundingForHarness(runtime),
+          evidence: evidence.map((e) => ({
+            key: e.key,
+            valueZh: typeof e.value === 'string' ? e.value : JSON.stringify(e.value ?? ''),
+            freshness: e.status,
+            source: e.sourceRef,
+          })),
         }),
       )
     : undefined;
@@ -252,9 +314,10 @@ export async function tryBuildItineraryDayViewFastPath(
     startTime,
     answerText: orch.answerText,
     success: orch.success,
-    dateIso: dateMatch?.[1],
-    dayNumber: dayMatch ? Number(dayMatch[1]) : undefined,
+    dateIso,
+    dayNumber,
     contractTrace,
     turnTrace,
+    system1Runtime,
   });
 }

@@ -17,6 +17,10 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { UserPreferences } from '../../planning-assistant/interfaces/planning-assistant.interface';
+import { TravelMemoryRuntimeService } from '../../../../travel-memory/runtime/travel-memory-runtime.service';
+import { resolveTravelerMemoryWriteGateMode } from '../../../../travel-memory/traveler-memory/resolve-write-gate-mode.util';
+import { buildPreferenceLearningTravelerWrites } from '../../../../travel-memory/traveler-memory/dirty-write-to-traveler-memory.util';
+import { bridgeWritesToTravelerMemory } from '../../../../travel-memory/traveler-memory/bridge-dirty-writes.util';
 
 export interface LearnedPreference {
   category: string;
@@ -76,6 +80,7 @@ export class PreferenceLearningService {
 
   constructor(
     @Optional() private readonly prisma?: PrismaService,
+    @Optional() private readonly travelMemory?: TravelMemoryRuntimeService,
   ) {
     this.logger.log('偏好学习服务已初始化');
   }
@@ -147,6 +152,32 @@ export class PreferenceLearningService {
     }
 
     profile.updatedAt = new Date();
+
+    const gate = resolveTravelerMemoryWriteGateMode();
+    if (gate !== 'off') {
+      const drafts = buildPreferenceLearningTravelerWrites({
+        userId,
+        pace: data.pace,
+        activities: data.activities,
+        budget: data.budget,
+        action,
+      });
+      const audit = bridgeWritesToTravelerMemory(
+        this.travelMemory,
+        gate,
+        'preference_learning',
+        drafts,
+        gate !== 'active',
+      );
+      this.logger.debug(
+        `[PreferenceLearning] write_gate=${gate} tm_written=${audit.written}/${audit.attempted}`,
+      );
+      if (gate === 'active') {
+        // 仍更新进程内 cache，但不写 learnedProfile 到 UserProfile
+        this.profileCache.set(profile.userId, profile);
+        return;
+      }
+    }
 
     // 保存档案
     await this.saveProfile(profile);

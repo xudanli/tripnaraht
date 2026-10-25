@@ -35,6 +35,7 @@ import {
   resolveAgentChatMessageText,
 } from './resolve-agent-chat-message.util';
 import { expandHotelFollowupAffirmation } from './expand-hotel-followup-affirmation.util';
+import { isInventoryCardSyncQuery } from './inventory-card-sync-query.util';
 import {
   ACTIVITY_BOOKING_CARDS_SCHEMA,
   buildActivityBookingChatCards,
@@ -64,6 +65,7 @@ import {
 } from './build-flight-chat-cards.util';
 import {
   XHS_NOTE_CARDS_SCHEMA,
+  isXhsCommunityEvidenceConsultQuery,
   projectXhsNoteCardsFromUnknown,
   type XhsNoteChatCard,
 } from './build-xhs-note-chat-cards.util';
@@ -298,8 +300,23 @@ export class AgentChatService {
      * 绑定 trip 的 chat 默认同步会跑 RAG+LLM，常 20–60s+；客户端超时后显示「网络不可用」，
      * 但服务端其实已落库成功。有 trip 时默认 FORCE 异步：秒回 task_id，经 SSE/poll 收结果。
      * 显式传入 async_mode 时仍尊重客户端。
+     *
+     * 例外：出卡类库存问法（酒店 / 租车 / 机票 / 活动 / 餐厅 / 小红书等）走同步快路径；
+     * FORCE 异步易卡在 INTAKE 不出卡。
      */
-    const asyncMode = dto.async_mode ?? (hasTrip ? 'FORCE' : 'OFF');
+    const inventoryCardSync = isInventoryCardSyncQuery(routeMessage);
+    const asyncMode =
+      dto.async_mode ?? (inventoryCardSync ? 'OFF' : hasTrip ? 'FORCE' : 'OFF');
+    if (inventoryCardSync && !dto.async_mode) {
+      this.logger.log(
+        `[agent-chat] inventory card → async_mode=OFF (card fast path) request_id=${requestId}`,
+      );
+      // 清理同会话里已无任务可续跑的「正在规划中…」占位，避免 UI 一直转圈
+      await this.failStaleProcessingPlaceholders(
+        conversationId,
+        '上一轮规划任务已失效，请查看最新回复',
+      );
+    }
 
     const req: RouteAndRunRequestDto = {
       request_id: requestId,
@@ -309,7 +326,10 @@ export class AgentChatService {
       conversation_context: {
         recent_messages: history,
         locale: 'zh-CN',
-        ...(hasTrip ? { context_type: 'active_trip_summary' as const } : {}),
+        // 出卡快路径不依赖全量行程摘要；active_trip_summary 在 Redis/DB 抖动时易拖死整链
+        ...(hasTrip && !inventoryCardSync
+          ? { context_type: 'active_trip_summary' as const }
+          : {}),
       },
       meta: {
         conversation_id: conversationId,
@@ -331,7 +351,30 @@ export class AgentChatService {
         taskId = init.task_id;
         asyncDelegated = true;
       } else {
-        response = await this.agentService.routeAndRun(req);
+        // 小红书 sidecar 检索常 8–40s；须 > LIVE_TOOL_XHS_MS，否则 chat 先超时丢卡。
+        const xhsCardSync = isXhsCommunityEvidenceConsultQuery(routeMessage);
+        const liveXhsBudget =
+          Number(process.env.LIVE_TOOL_XHS_MS ?? 45000) || 45000;
+        const CARD_SYNC_TIMEOUT_MS = xhsCardSync
+          ? Math.max(90_000, liveXhsBudget + 30_000)
+          : 45_000;
+        const run = this.agentService.routeAndRun(req);
+        response = inventoryCardSync
+          ? await Promise.race([
+              run,
+              new Promise<never>((_, reject) =>
+                setTimeout(
+                  () =>
+                    reject(
+                      new Error(
+                        `推荐超时（>${CARD_SYNC_TIMEOUT_MS}ms）。请稍后重试；若持续失败请检查 Redis/供应商配置`,
+                      ),
+                    ),
+                  CARD_SYNC_TIMEOUT_MS,
+                ),
+              ),
+            ])
+          : await run;
         if (response.async_task?.task_id) {
           taskId = response.async_task.task_id;
           asyncDelegated = true;
@@ -2030,6 +2073,46 @@ export class AgentChatService {
       .map((m: any) =>
         m.role === 'USER' ? `用户: ${m.content}` : `助手: ${m.content}`,
       );
+  }
+
+  /** 把同会话里卡死的 PROCESSING 占位标为失败（任务已不在内存 store）。 */
+  private async failStaleProcessingPlaceholders(
+    conversationId: string,
+    content: string,
+  ): Promise<void> {
+    const db = this.db();
+    try {
+      const stale = await db.message.findMany({
+        where: {
+          conversationId,
+          role: 'ASSISTANT',
+          resultStatus: 'PROCESSING',
+        },
+        select: { id: true, taskId: true },
+        take: 20,
+      });
+      if (!stale.length) return;
+      for (const row of stale) {
+        await db.message.update({
+          where: { id: row.id },
+          data: {
+            content,
+            resultStatus: 'FAILED',
+            summaryJson: {
+              async: true,
+              stale: true,
+              task_id: row.taskId ?? null,
+            },
+          },
+        });
+      }
+      this.logger.warn(
+        `[agent-chat] marked ${stale.length} stale PROCESSING placeholder(s) failed conversation=${conversationId}`,
+      );
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.warn(`[agent-chat] failStaleProcessingPlaceholders: ${msg}`);
+    }
   }
 
   private async getConversationForUser(

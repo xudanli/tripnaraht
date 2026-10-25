@@ -348,8 +348,13 @@ export class ItineraryItemsService {
 
     await this.bumpTripRevisionIfAvailable(tripDay.Trip.id);
 
-    // 为 Place 添加坐标字段
-    return this.enrichItemWithCoordinates(newItem);
+    return this.finalizeItemResponse(
+      newItem,
+      resolveTripTimezone({
+        destination: tripDay.Trip?.destination,
+        metadata: tripDay.Trip?.metadata,
+      }),
+    );
   }
 
   /**
@@ -444,8 +449,7 @@ export class ItineraryItemsService {
       },
     });
 
-    // 为每个行程项的 Place 添加坐标字段
-    return Promise.all(items.map(item => this.enrichItemWithCoordinates(item)));
+    return Promise.all(items.map((item) => this.finalizeItemResponse(item)));
   }
 
   /**
@@ -491,8 +495,7 @@ export class ItineraryItemsService {
       return null;
     }
 
-    // 为 Place 添加坐标字段
-    return this.enrichItemWithCoordinates(item);
+    return this.finalizeItemResponse(item);
   }
 
   /**
@@ -557,11 +560,18 @@ export class ItineraryItemsService {
     // 合并结果；退房项固定置顶（displaySortIndex），其余按 startTime
     const allItems = [...checkoutItems, ...todayItems];
 
-    // 添加跨天标记和坐标字段
+    const timezone = resolveTripTimezone({
+      destination: currentTripDay.Trip?.destination,
+      metadata: currentTripDay.Trip?.metadata,
+    });
+
+    // 添加跨天标记、坐标与目的地墙钟字段
     const enrichedItems = await Promise.all(
-      allItems.map(item => this.enrichItemWithCoordinates(item))
+      allItems.map((item) => this.finalizeItemResponse(item, timezone)),
     );
-    const withCrossDay = enrichedItems.map(item => this.addCrossDayInfo(item, currentTripDay.date));
+    const withCrossDay = enrichedItems.map((item) =>
+      this.addCrossDayInfo(item, currentTripDay.date),
+    );
     return attachDisplaySortIndices(withCrossDay);
   }
 
@@ -832,7 +842,13 @@ export class ItineraryItemsService {
     });
     if (!currentTripDay) return [];
     const checkoutItems = await this.findCheckoutItemsForDay(currentTripDay);
-    const enriched = await Promise.all(checkoutItems.map((item) => this.enrichItemWithCoordinates(item)));
+    const timezone = resolveTripTimezone({
+      destination: currentTripDay.Trip?.destination,
+      metadata: currentTripDay.Trip?.metadata,
+    });
+    const enriched = await Promise.all(
+      checkoutItems.map((item) => this.finalizeItemResponse(item, timezone)),
+    );
     return enriched.map((item) => this.addCrossDayInfo(item, currentTripDay.date));
   }
 
@@ -1226,14 +1242,19 @@ export class ItineraryItemsService {
             },
           },
         },
-        TripDay: true,
+        TripDay: {
+          include: {
+            Trip: {
+              select: { id: true, destination: true, metadata: true },
+            },
+          },
+        },
       },
     });
 
     await this.bumpTripRevisionIfAvailable(existing.TripDay.Trip.id);
 
-    // 为 Place 添加坐标字段
-    return this.enrichItemWithCoordinates(updatedItem);
+    return this.finalizeItemResponse(updatedItem);
   }
 
   /**
@@ -1573,6 +1594,25 @@ export class ItineraryItemsService {
     }
 
     return null;
+  }
+
+  /** 从行程项关联的 Trip 解析 IANA 时区（优先 metadata.timezone） */
+  private resolveTimezoneFromItem(item: any): string {
+    const trip = item?.TripDay?.Trip ?? item?.Trip ?? null;
+    return resolveTripTimezone({
+      destination: trip?.destination,
+      metadata: trip?.metadata,
+    });
+  }
+
+  /**
+   * 坐标 + 目的地墙钟字段（timezone / startAtLocal / startTimeLocal …），供 iOS 编辑避免设备时区。
+   */
+  private async finalizeItemResponse(item: any, timezoneHint?: string): Promise<any> {
+    if (!item) return item;
+    const enriched = await this.enrichItemWithCoordinates(item);
+    const timezone = timezoneHint || this.resolveTimezoneFromItem(enriched);
+    return withDestinationDisplayTimes(enriched as Record<string, unknown>, timezone);
   }
 
   /**
@@ -2892,12 +2932,17 @@ export class ItineraryItemsService {
       },
       include: {
         Place: true,
-        TripDay: true,
+        TripDay: {
+          include: {
+            Trip: {
+              select: { id: true, destination: true, metadata: true },
+            },
+          },
+        },
       },
     });
 
-    // 为 Place 添加坐标字段
-    return this.enrichItemWithCoordinates(updatedItem);
+    return this.finalizeItemResponse(updatedItem);
   }
 
   /**
@@ -3037,12 +3082,17 @@ export class ItineraryItemsService {
       },
       include: {
         Place: true,
-        TripDay: true,
+        TripDay: {
+          include: {
+            Trip: {
+              select: { id: true, destination: true, metadata: true },
+            },
+          },
+        },
       },
     });
 
-    // 为 Place 添加坐标字段
-    return this.enrichItemWithCoordinates(updatedItem);
+    return this.finalizeItemResponse(updatedItem);
   }
 
   /**

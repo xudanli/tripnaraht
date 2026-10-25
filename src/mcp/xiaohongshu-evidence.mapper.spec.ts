@@ -21,6 +21,30 @@ describe('xiaohongshu-evidence.mapper', () => {
     expect(fact?.mediaUrl).toContain('example');
   });
 
+  it('maps nested noteCard / interactInfo / xsecToken (REST shape)', () => {
+    const fact = mapXhsFeedRowToFact(
+      {
+        id: '68abc123',
+        xsecToken: 'tok_abc',
+        noteCard: {
+          displayTitle: '西藏的冰川真的绝',
+          user: { nickname: '旅人A' },
+          interactInfo: { likedCount: 120, collectedCount: 30, commentCount: 8 },
+          cover: { url: 'https://sns-img.example/cover.jpg' },
+        },
+      },
+      0,
+    );
+    expect(fact?.factId).toBe('xhs:68abc123');
+    expect(fact?.title).toContain('冰川');
+    expect(fact?.strength).toBe('MODERATE');
+    expect(fact?.authorRef).toBe('旅人A');
+    expect(fact?.mediaUrl).toContain('sns-img');
+    expect(fact?.sourceUrl).toContain('explore/68abc123');
+    expect(fact?.sourceUrl).toContain('xsec_token=tok_abc');
+    expect(fact?.engagement?.liked).toBe(120);
+  });
+
   it('aggregates stance / themes / risks', () => {
     const bundle = mapXhsFeedsToExperienceBundle({
       query: '冰岛 冰川徒步',

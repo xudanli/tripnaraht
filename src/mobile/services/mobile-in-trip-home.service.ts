@@ -86,10 +86,36 @@ export class MobileInTripHomeService {
     opts?: { includeReminder?: boolean; includeActiveRunbook?: boolean },
   ): Promise<InTripHomeDto> {
     await this.access.assertTripMember(tripId, userId);
-    return this.buildHome(tripId, userId, {
+    const build = this.buildHome(tripId, userId, {
       includeReminder: opts?.includeReminder !== false,
       includeActiveRunbook: opts?.includeActiveRunbook !== false,
-      persistRunbook: true,
+      persistRunbook: false,
+    });
+    // 总预算：超时则返回已完成的壳，避免 App 首屏一直转圈
+    const timed = await Promise.race([
+      build,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 4_500)),
+    ]);
+    if (timed) return timed;
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      select: { id: true, name: true },
+    });
+    return projectInTripHome({
+      destinationNameZh: trip?.name ?? '当前行程',
+      evidenceUpdatedAt: new Date().toISOString(),
+      contextVersion: 0,
+      includeReminder: opts?.includeReminder !== false,
+      includeActiveRunbook: opts?.includeActiveRunbook !== false,
+      alerts: null,
+      activeRunbook: null,
+      inlineReminder: null,
+      appliedProposal: null,
+      dismissedReminderIds: [],
+      fuel: {
+        detailZh: '下一可靠油站评估中',
+        trailingZh: '稍后刷新',
+      },
     });
   }
 
@@ -500,28 +526,48 @@ export class MobileInTripHomeService {
       DateTime.now().setZone(timezone).toISODate() ??
       new Date().toISOString().slice(0, 10);
 
-    const [alerts, road, overview, liveRoute, itinerary, fuelHit] =
-      await Promise.all([
-        this.mobileRead.getExecutionAlerts(tripId, userId).catch(() => null),
-        this.mobileRead.getRoadConditions(tripId, userId).catch(() => null),
-        this.mobileRead.getExecutionOverview(tripId, userId).catch(() => null),
-        this.mobileRead.getLiveRoute(tripId, userId).catch(() => null),
-        this.mobileRead.getTodayItinerary(tripId, userId).catch(() => null),
+    const settle = <T>(promise: Promise<T>, ms: number): Promise<T | null> =>
+      new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(null), ms);
+        promise
+          .then((v) => {
+            clearTimeout(timer);
+            resolve(v);
+          })
+          .catch(() => {
+            clearTimeout(timer);
+            resolve(null);
+          });
+      });
+
+    // 拍摄/高负载：禁止 fan-out overview（会再拉 assemble/alerts/adj），否则 settle 定时器也点不着
+    const [alerts, liveRoute, itinerary, fuelHit] = await Promise.all([
+      settle(this.mobileRead.getExecutionAlerts(tripId, userId), 2_500),
+      settle(this.mobileRead.getLiveRoute(tripId, userId), 2_500),
+      settle(this.mobileRead.getTodayItinerary(tripId, userId), 2_500),
+      settle(
         resolveNextFuelAlongCorridor(this.prisma, {
           tripId,
           startDate: trip.startDate,
           endDate: trip.endDate,
           timezone,
           localDate,
-        }).catch(() => undefined),
-      ]);
+        }),
+        800,
+      ),
+    ]);
+    const road = null;
+    const overview = null;
 
     const origin = this.resolveOriginLatLng(liveRoute, itinerary);
-    const parkingHit = await resolveNextSafeParking(this.prisma, {
-      lat: origin?.lat,
-      lng: origin?.lng,
-      roadId: road?.plowRoadSegmentId,
-    }).catch(() => undefined);
+    const parkingHit = await settle(
+      resolveNextSafeParking(this.prisma, {
+        lat: origin?.lat,
+        lng: origin?.lng,
+        roadId: undefined,
+      }),
+      800,
+    );
 
     const sourceAlert = pickRunbookSourceAlert(alerts);
     let activeRunbook = null as ReturnType<typeof buildActiveRunbookSummary>;
@@ -989,11 +1035,15 @@ export class MobileInTripHomeService {
         ? { updatedAt: tripUpdatedAt }
         : await this.prisma.trip.findUnique({ where: { id: tripId }, select: { updatedAt: true } });
     if (!trip) throw new NotFoundException(`行程 ${tripId} 不存在`);
-    const snapshot = await this.snapshotAssembler.assemble(tripId).catch(() => null);
+    // 禁止 assemble：in-trip-home 首屏会因此卡死
+    const snapRef = await Promise.race([
+      this.snapshotAssembler.resolveSnapshotRef(tripId).catch(() => null),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 600)),
+    ]);
     return computeMobileContextVersion({
-      constraintsVersion: snapshot?.bindings?.constraintsVersion ?? 0,
+      constraintsVersion: snapRef?.constraintsVersion ?? 0,
       tripUpdatedAt: trip.updatedAt,
-      effectivePlanVersionId: snapshot?.effectivePlan?.versionId,
+      effectivePlanVersionId: snapRef?.effectivePlanVersionId,
     });
   }
 

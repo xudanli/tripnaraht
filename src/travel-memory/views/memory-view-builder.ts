@@ -8,6 +8,7 @@ import type {
   TripMemoryView,
   UserProfileMemoryView,
 } from '../types/memory-context-package.types';
+import { listTravelerMemoryObjects } from '../traveler-memory/write-traveler-memory.util';
 
 function toFieldView(event: MemoryEventV1): MemoryFieldView {
   return {
@@ -63,6 +64,16 @@ export function buildUserProfileView(
   ledger: MemoryLedgerStore,
   userId: string,
 ): UserProfileMemoryView {
+  const travelerMemories = listTravelerMemoryObjects(ledger, userId, {
+    includeCandidates: false,
+    includeLegacy: true,
+  }).filter(
+    (m) =>
+      m.status === 'STABLE' ||
+      m.status === 'CONFIRMED' ||
+      (m.source.includes('EXPLICIT') && m.status !== 'REVOKED'),
+  );
+
   return {
     pace: pick<string>(ledger, userId, 'travel.pace'),
     riskTolerance: pick<string>(ledger, userId, 'decision.riskTolerance'),
@@ -77,6 +88,7 @@ export function buildUserProfileView(
       'travel.experiencePreference',
     ),
     planningStyle: pick<string>(ledger, userId, 'decision.planningStyle'),
+    ...(travelerMemories.length > 0 ? { travelerMemories } : {}),
   };
 }
 
@@ -84,6 +96,16 @@ export function buildTripMemoryView(
   ledger: MemoryLedgerStore,
   tripId: string,
 ): TripMemoryView {
+  const travelerOverrides = listTravelerMemoryObjects(ledger, tripId, {
+    includeCandidates: false,
+    includeLegacy: false,
+  }).filter(
+    (m) =>
+      m.status === 'STABLE' ||
+      m.status === 'CONFIRMED' ||
+      (m.source.includes('EXPLICIT') && m.status !== 'REVOKED'),
+  );
+
   return {
     tripId,
     tripGoal: pick<string>(ledger, tripId, 'trip.primaryGoal'),
@@ -104,5 +126,6 @@ export function buildTripMemoryView(
       tripId,
       'trip.participants',
     ),
+    ...(travelerOverrides.length > 0 ? { travelerOverrides } : {}),
   };
 }

@@ -31,4 +31,13 @@ export interface AgentExecutionContext {
    * advisoryOnly，不替代旧 Memory OS。
    */
   travelMemoryDecisionHints?: import('../../travel-memory/context-assembly/selective-consume.util').TravelMemoryDecisionHintV1[];
+  /**
+   * EffectiveTravelerContext（M1/M2）。
+   * SHADOW：禁止决策消费；ACTIVE（env CONSUME=active）：Injector 可据此映射 DecisionParams。
+   */
+  effectiveTravelerContext?: import('../../travel-memory/effective-context/effective-traveler-context.types').EffectiveTravelerContextV1;
+  /**
+   * M2：ETC → DecisionParams 审计（shadow diff / active apply）。
+   */
+  etcDecisionParamsAudit?: import('../../travel-memory/effective-context/etc-decision-params-audit.types').EffectiveTravelerContextDecisionParamsAuditV1;
 }

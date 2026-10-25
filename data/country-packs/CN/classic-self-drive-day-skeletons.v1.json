@@ -190,12 +190,129 @@
       ]
     },
     "cn.route.g318": {
-      "defaultVariantId": "14d",
+      "defaultVariantId": "8d_detailed",
       "variants": [
+        {
+          "id": "8d_detailed",
+          "days": 8,
+          "labelCN": "每日详细 POI 版（住低不住高）",
+          "labelEN": "8-day detailed POI · sleep-low",
+          "stops": [
+            {
+              "day": 1,
+              "from": "成都",
+              "to": "雅江",
+              "driveKmHint": 400,
+              "overnight": "雅江",
+              "overnightAltitudeM": 2530,
+              "highlights": [
+                "天全服务区",
+                "二郎山隧道",
+                "泸定桥",
+                "折多山垭口",
+                "新都桥"
+              ],
+              "notesCN": "初入高原，折多山垭口停留不宜超过20分钟。新都桥约3460m易高反，切勿过夜，坚持赶到雅江（2530m）休整。"
+            },
+            {
+              "day": 2,
+              "from": "雅江",
+              "to": "巴塘",
+              "driveKmHint": 300,
+              "overnight": "巴塘",
+              "overnightAltitudeM": 2580,
+              "highlights": [
+                "天路十八弯观景台",
+                "理塘东城门",
+                "长青春科尔寺",
+                "毛垭大草原",
+                "海子山垭口",
+                "姊妹湖"
+              ],
+              "notesCN": "绝对不要在理塘（4014m）过夜。巴塘（2580m）是入藏前最后一个四川低海拔县城，可温泉解乏。"
+            },
+            {
+              "day": 3,
+              "from": "巴塘",
+              "to": "如美镇",
+              "driveKmHint": 260,
+              "overnight": "如美镇",
+              "overnightAltitudeM": 2600,
+              "highlights": [
+                "金沙江大桥",
+                "宗拉山垭口",
+                "拉乌山垭口",
+                "觉巴山",
+                "东达山垭口"
+              ],
+              "notesCN": "东达山垭口（5130m，川藏南线最高点）风大缺氧，车外勿久留。优先住如美镇（2600m）；左贡3750m仅作体力不支备选。"
+            },
+            {
+              "day": 4,
+              "from": "如美镇",
+              "to": "八宿",
+              "driveKmHint": 290,
+              "overnight": "八宿",
+              "overnightAltitudeM": 3280,
+              "highlights": [
+                "邦达草原",
+                "业拉山垭口",
+                "怒江七十二拐观景台",
+                "怒江大桥"
+              ],
+              "notesCN": "怒江72拐长下坡严禁频繁踩刹车，应低档降速；弯道多不超车。"
+            },
+            {
+              "day": 5,
+              "from": "八宿",
+              "to": "波密",
+              "driveKmHint": 290,
+              "overnight": "波密",
+              "overnightAltitudeM": 2720,
+              "highlights": ["安久拉山垭口", "然乌湖", "米堆冰川", "来古冰川"],
+              "notesCN": "早起观然乌湖晨景；来古/米堆冰川可二选一，提前查开放情况。波密海拔低，适合休整。"
+            },
+            {
+              "day": 6,
+              "from": "波密",
+              "to": "林芝",
+              "driveKmHint": 360,
+              "overnight": "林芝",
+              "overnightAltitudeM": 2900,
+              "highlights": [
+                "通麦大桥",
+                "鲁朗小镇",
+                "鲁朗林海观景台",
+                "色季拉山垭口"
+              ],
+              "notesCN": "鲁朗石锅鸡值得一试；色季拉远眺南迦巴瓦需看天气运气。"
+            },
+            {
+              "day": 7,
+              "from": "林芝",
+              "to": "拉萨",
+              "driveKmHint": 400,
+              "overnight": "拉萨",
+              "overnightAltitudeM": 3650,
+              "highlights": ["尼洋河", "林拉高速", "巴松措", "布达拉宫"],
+              "notesCN": "林拉高速不收费，注意限速；布达拉宫需提前1天预约。巴松措可选。"
+            },
+            {
+              "day": 8,
+              "from": "拉萨",
+              "to": "拉萨",
+              "driveKmHint": 0,
+              "overnight": "拉萨",
+              "overnightAltitudeM": 3650,
+              "highlights": ["布达拉宫", "大昭寺", "八廓街", "羊卓雍措"],
+              "notesCN": "市区人文或羊湖一日往返。寺庙禁止拍照，转经顺时针，尊重当地信仰。"
+            }
+          ]
+        },
         {
           "id": "14d",
           "days": 14,
-          "labelCN": "经典 14 日南线",
+          "labelCN": "经典 14 日南线（含适应日）",
           "labelEN": "Classic 14-day southern route",
           "stops": [
             {
@@ -214,7 +331,7 @@
               "driveKmHint": 80,
               "overnight": "新都桥",
               "highlights": ["适应日"],
-              "notesCN": "短距适应"
+              "notesCN": "短距适应；高反敏感者可改住更低海拔"
             },
             {
               "day": 3,
@@ -223,7 +340,7 @@
               "driveKmHint": 280,
               "overnight": "理塘",
               "highlights": ["高原县城"],
-              "notesCN": "高反观察"
+              "notesCN": "高反观察；亦可改走住低不住高的 8d_detailed"
             },
             {
               "day": 4,

@@ -186,7 +186,7 @@
 - **RagFreshnessService**: 数据新鲜度验证
 
 **参考文件**：
-- `README_RAG_ARCHITECTURE.md` - RAG架构文档
+- `internal-docs/architecture/README_RAG_ARCHITECTURE.md` - RAG架构文档
 - `src/rag/README.md` - RAG模块文档
 - `prisma/schema.prisma` - 数据库Schema
 
@@ -353,7 +353,7 @@
 
 **参考**：
 - `.claude/roles/architect.md` - 架构师角色
-- `README_RAG_ARCHITECTURE.md` - RAG架构文档
+- `internal-docs/architecture/README_RAG_ARCHITECTURE.md` - RAG架构文档
 
 ### 与产品经理协作
 
@@ -416,12 +416,12 @@
 - 数据治理策略
 
 **参考文件**：
-- `README_RAG_ARCHITECTURE.md` - RAG架构文档
+- `internal-docs/architecture/README_RAG_ARCHITECTURE.md` - RAG架构文档
 
 ## 参考文档
 
 ### 核心文档
-- `README_RAG_ARCHITECTURE.md` - RAG架构总览
+- `internal-docs/architecture/README_RAG_ARCHITECTURE.md` - RAG架构总览
 - `src/rag/README.md` - RAG模块文档
 - `docs/RAG_API_MIGRATION_GUIDE.md` - RAG API迁移指南
 - `docs/RAG_DATABASE_DATA_CHECK_REPORT.md` - 数据库数据检查报告

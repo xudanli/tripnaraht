@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { DecisionGatewayModule } from '../../decision-runtime/gateway/decision-gateway.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { GuardianDecisionCoreModule } from '../guardian-decision-core/guardian-decision-core.module';
+import { WorldConsistencyModule } from '../decision/world-consistency/world-consistency.module';
 import { LookDecisionProblemStore } from './assessment/look-decision-problem.store';
 import { LOOK_RFC001_WRITER } from './assessment/look-decision-problem.port';
 import { LookRfc001ProjectionService } from './assessment/look-rfc001-projection.service';
@@ -25,6 +26,7 @@ import { RentalEvidencePackageStore } from './rental/rental-evidence.store';
     PrismaModule,
     forwardRef(() => GuardianDecisionCoreModule),
     forwardRef(() => DecisionGatewayModule),
+    WorldConsistencyModule,
   ],
   controllers: [ObservationController, LookMediaController],
   providers: [
@@ -60,6 +62,7 @@ import { RentalEvidencePackageStore } from './rental/rental-evidence.store';
     RentalEvidencePackageStore,
     LookFeedbackStore,
     LookMediaStore,
+    WorldConsistencyModule,
   ],
 })
 export class TravelObservationModule {}

@@ -351,7 +351,8 @@ export class RouteAndRunResponseAssemblerService {
     | 'car_rental_cards'
     | 'accommodation_cards'
     | 'flight_cards'
-    | 'activity_booking_cards' {
+    | 'activity_booking_cards'
+    | 'xhs_note_cards' {
     if (this.isItineraryItemCrudIntakeShortCircuit(orchestrationResult)) return 'planning';
     const r = orchestrationResult.result as
       | {
@@ -367,8 +368,15 @@ export class RouteAndRunResponseAssemblerService {
           activity_booking_cards?: unknown[];
           activities?: unknown[];
           activityCardFastPath?: boolean;
+          xhs_note_cards?: unknown[];
+          xhsNoteCardFastPath?: boolean;
         }
       | undefined;
+    const hasXhsCards =
+      (Array.isArray(r?.xhs_note_cards) && r!.xhs_note_cards!.length > 0) ||
+      r?.ui_surface === 'xhs_note_cards' ||
+      r?.xhsNoteCardFastPath === true;
+    if (hasXhsCards) return 'xhs_note_cards';
     const hasFlightCards =
       (Array.isArray(r?.flight_cards) && r!.flight_cards!.length > 0) ||
       r?.ui_surface === 'flight_cards' ||
@@ -734,6 +742,26 @@ export class RouteAndRunResponseAssemblerService {
     if (routingTaskType === 'TRIP_PLANNING') return true;
     const tid = typeof tripId === 'string' ? tripId.trim() : '';
     return tid.length > 0;
+  }
+
+  /** 小红书笔记快路径 → payload.xhs_note_cards（供 Chat/iOS 信封透出） */
+  private resolveXhsNotePayloadBlocks(
+    orchestrationResult: OrchestrationResult,
+  ): Record<string, unknown> {
+    const r = orchestrationResult.result as Record<string, unknown> | undefined;
+    const cards = r?.['xhs_note_cards'];
+    if (!Array.isArray(cards) || cards.length === 0) {
+      return {};
+    }
+    return {
+      schema_id:
+        (typeof r?.['schema_id'] === 'string' && r['schema_id']) ||
+        'tripnara/chat_xhs_note_cards@v1',
+      xhs_note_cards: cards,
+      ...(r?.['xhs_search_meta'] != null && typeof r['xhs_search_meta'] === 'object'
+        ? { xhs_search_meta: r['xhs_search_meta'] }
+        : {}),
+    };
   }
 
   /** 住宿 MCP enrich 写入 orchestrationResult.result 的卡片块，供 payload 透出 */
@@ -2792,6 +2820,7 @@ export class RouteAndRunResponseAssemblerService {
               }
             : {}),
           ...this.resolveHotelAccommodationPayloadBlocks(orchestrationResult),
+          ...this.resolveXhsNotePayloadBlocks(orchestrationResult),
           ...(consultationDashboard ? { consultation_dashboard: consultationDashboard } : {}),
           ...(flawedDraftV1 ? { flawed_draft_v1: flawedDraftV1 } : {}),
           trusted_delivery_v1: trustedDeliveryV1,
@@ -3860,6 +3889,7 @@ export class RouteAndRunResponseAssemblerService {
                     : {}),
                 }
               : {}),
+          ...this.resolveXhsNotePayloadBlocks(orchestrationResult),
           ...((orchestrationResult.result as any)?.inventory_snapshots_meta
             ? {
                 inventory_snapshots_meta: (orchestrationResult.result as any).inventory_snapshots_meta,

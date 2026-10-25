@@ -4,6 +4,8 @@
 
 TripNARA 是一个基于 NestJS 的智能旅行规划系统，从"系统已完成"跃迁为"世界级路线认知 Agent"。它不是一个简单的行程生成器，而是一个会替用户承担"判断责任"的决策系统。
 
+**新人接手：** 先读 [`ONBOARDING.md`](./ONBOARDING.md)（仓库地图、主链路、按职责找代码）。
+
 ## 核心定位
 
 TripNARA 不是：
@@ -62,7 +64,7 @@ npm install
 
 创建 `.env` 文件，配置数据库连接和其他服务密钥。
 
-Decision OS 生产/预发门禁变量见 [docs/decision-os-env-gates.md](docs/decision-os-env-gates.md)，可将 `.env.decision-os.example` 追加到 `.env`。
+Decision OS 生产/预发门禁变量见 [docs/decision-os-env-gates.md](docs/decision-os-env-gates.md)，可将 `config/env/.env.decision-os.example` 追加到 `.env`。
 
 ```bash
 DATABASE_URL="postgresql://user:password@localhost:5432/tripnara"

@@ -116,6 +116,11 @@ export function resolveShortQueueTitle(input: {
     return SEMANTIC_SHORT_TITLES[semanticBase];
   }
   if (input.issueKind && ISSUE_KIND_SHORT_TITLES[input.issueKind]) {
+    if (input.issueKind === 'same_day_travel') {
+      const blob = `${input.rawTitle ?? ''} ${input.rawSummary ?? ''}`;
+      if (/赶不上|迟到|开始时间偏早|时间不够/.test(blob)) return '赶不上下一站';
+      if (/缓冲偏紧|抵达后/.test(blob)) return '两站之间缓冲偏紧';
+    }
     return ISSUE_KIND_SHORT_TITLES[input.issueKind];
   }
   if (input.ruleId && RULE_ID_SHORT_TITLES[input.ruleId]) {

@@ -27,6 +27,7 @@
     "src/match-square/**",
     "src/match-learning/**",
     "src/reputation-os/**",
-    "src/odyssey-intake/engine/companion-matching.engine.ts"
+    "src/odyssey-intake/engine/companion-matching.engine.ts",
+    "src/cron/**"
   ]
 }

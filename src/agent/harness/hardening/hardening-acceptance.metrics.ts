@@ -14,6 +14,7 @@ import {
   assertRuntimeTransition,
   type HarnessRuntimeId,
 } from './runtime-transition.contract';
+import type { ClaimGroundingEvalV1 } from './claim-grounding-eval.util';
 
 export type HardeningTurnSample = {
   contract: AgentTaskContractV1;
@@ -26,6 +27,8 @@ export type HardeningTurnSample = {
   /** 强结论样本 */
   strongVerdict?: 'YES' | 'NO' | 'CONDITIONAL';
   evidence?: EvidenceFactV1[];
+  /** System1 Claim Grounding Eval（优先于裸 verdict 判定无证据强结论） */
+  claimGroundingEval?: ClaimGroundingEvalV1;
   /** 是否尝试写行程 */
   writeAttempt?: boolean;
   writeAuthorized?: boolean;
@@ -70,7 +73,15 @@ export function evaluateHardeningTurn(sample: HardeningTurnSample): {
   }
 
   let strongWithoutEvidence = false;
-  if (sample.strongVerdict === 'YES' || sample.strongVerdict === 'NO') {
+  if (sample.claimGroundingEval) {
+    strongWithoutEvidence =
+      sample.claimGroundingEval.strongWithoutVerified ||
+      sample.claimGroundingEval.violations.some(
+        (v) =>
+          v.code === 'STRONG_CLAIM_WITHOUT_VERIFIED' ||
+          v.code === 'STRONG_ANSWER_WITH_WEAK_SUFFICIENCY',
+      );
+  } else if (sample.strongVerdict === 'YES' || sample.strongVerdict === 'NO') {
     const check = assertEvidenceSufficiencyForConclusion({
       desiredStrength: liveVerdictToStrength(sample.strongVerdict),
       evidence: sample.evidence ?? [],

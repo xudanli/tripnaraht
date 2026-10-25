@@ -326,7 +326,10 @@ export class DecisionController {
   @Get('admin/logs')
   @ApiOperation({
     summary: '获取决策日志列表（管理接口）',
-    description: '获取决策日志列表，支持分页、筛选、排序。用于后台管理系统。',
+    description:
+      '获取决策日志列表，支持分页、筛选、排序。' +
+      ' 看决策引擎类内容（路封/人格裁决等）请传 contentKind=engine；' +
+      ' 默认 all 会被 route_and_run 编排步骤（PLAN_GEN/NARRATE…）淹没。',
   })
   @ApiResponse({
     status: 200,
@@ -341,6 +344,10 @@ export class DecisionController {
         persona: query.persona,
         decisionSource: query.decisionSource,
         action: query.action,
+        contentKind: query.contentKind,
+        source: query.source,
+        excludeSource: query.excludeSource,
+        reasonCode: query.reasonCode,
         startDate: query.startDate ? new Date(query.startDate) : undefined,
         endDate: query.endDate ? new Date(query.endDate) : undefined,
         page: query.page,

@@ -133,6 +133,17 @@ export const DECISION_TRIGGER_WIRING_CATALOG: TriggerEntryPointWiring[] = [
     moduleHint: 'readiness.controller.ts applyRepair',
     notes: 'P4: dispatchManualRepairFromModule; ReadinessRepairService remains authority',
   },
+  {
+    id: 'proactive-decision.world-signal',
+    label: 'Proactive Decision V1 world signal (weather/road)',
+    triggerKind: 'CANONICAL_PROBLEM_EVALUATE',
+    mode: 'lineage_only',
+    source: 'WORLD_EVENT_BUS',
+    moduleHint:
+      'trips/proactive-decision/orchestration/proactive-decision-orchestrator.service.ts',
+    notes:
+      'RFC-PD-001: opens RFC001 problem then returns evaluate trigger; dispatch when PROACTIVE_DECISION_V1_ENABLED=1 + gateway on. Product kind=PROACTIVE_WORLD_SIGNAL in metadata.',
+  },
 ];
 
 export interface TriggerWiringSummary {

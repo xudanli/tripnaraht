@@ -10,6 +10,7 @@ import { hydrateAgentMemoryContextFromPersistence } from '../utils/agent-memory-
 
 const KEY_PREFIX = 'agent:mem_snapshot:v1:';
 const TRIP_HEAD_PREFIX = 'agent:mem_snapshot_trip_head:v1:';
+const REQUEST_HEAD_PREFIX = 'agent:mem_snapshot_by_req:v1:';
 const DEFAULT_TTL_SEC = 7 * 24 * 60 * 60;
 
 export type PersistedMemorySnapshotEnvelope = {
@@ -54,6 +55,10 @@ export class MemorySnapshotPersistenceService {
       if (memory.tripId && String(memory.tripId).trim() !== '') {
         const tripKey = `${TRIP_HEAD_PREFIX}${String(memory.tripId).trim()}`;
         await this.redis.set(tripKey, { snapshot_id: memory.snapshotId }, DEFAULT_TTL_SEC);
+      }
+      if (memory.requestId && String(memory.requestId).trim() !== '') {
+        const reqKey = `${REQUEST_HEAD_PREFIX}${String(memory.requestId).trim()}`;
+        await this.redis.set(reqKey, { snapshot_id: memory.snapshotId }, DEFAULT_TTL_SEC);
       }
       this.logger.debug(`MemorySnapshotPersistence: stored ${key}`);
     } catch (e: any) {
@@ -130,6 +135,27 @@ export class MemorySnapshotPersistenceService {
       return this.loadBySnapshotId(head.snapshot_id);
     } catch (e: any) {
       this.logger.warn(`MemorySnapshotPersistence: loadLatestContextForTrip failed: ${e?.message ?? e}`);
+      return null;
+    }
+  }
+
+  /** 按 request_id 取回当时记忆快照（Admin / replay；TTL 内有效） */
+  async loadByRequestId(requestId: string): Promise<AgentMemoryContext | null> {
+    if (!this.redis) {
+      return null;
+    }
+    const rid = String(requestId).trim();
+    if (!rid) {
+      return null;
+    }
+    try {
+      const head = await this.redis.get<{ snapshot_id: string }>(`${REQUEST_HEAD_PREFIX}${rid}`);
+      if (!head?.snapshot_id) {
+        return null;
+      }
+      return this.loadBySnapshotId(head.snapshot_id);
+    } catch (e: any) {
+      this.logger.warn(`MemorySnapshotPersistence: loadByRequestId failed: ${e?.message ?? e}`);
       return null;
     }
   }

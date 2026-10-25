@@ -21,6 +21,29 @@ describe('daily-drive threshold + conflicts', () => {
     ).toBe(5);
   });
 
+  it('heals conflicting canonical vs legacy hours by taking the stricter limit', () => {
+    expect(
+      readUserMaxDailyDrivingHours({
+        constraints: {
+          maxDailyDrivingHours: 6,
+          maxDailyDriveHours: 4,
+          maxDailyDriveMinutes: 360,
+        },
+      }),
+    ).toBe(4);
+  });
+
+  it('reads dailyDrivingLimitHours from selfDrive settings', () => {
+    expect(
+      readUserMaxDailyDrivingHours({
+        constraints: { maxDailyDrivingHours: 6 },
+        selfDrive: {
+          drivingSettings: { drivers: { dailyDrivingLimitHours: 4 } },
+        },
+      }),
+    ).toBe(4);
+  });
+
   it('applyMaxDailyDrivingHoursConstraintPatch accepts minutes-only payload', () => {
     const constraints: Record<string, unknown> = {};
     expect(

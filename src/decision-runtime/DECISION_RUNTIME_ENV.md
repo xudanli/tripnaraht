@@ -145,7 +145,7 @@ GUIDE_CONSTRAINT_GATEWAY_ENABLED=1
 ### Production Transition — 30d 观察窗（当前阶段）
 
 ```bash
-# 模板：.env.production-transition.example
+# 模板：config/env/.env.production-transition.example
 # 本地一键：npm run production-transition:dev-3000
 
 DECISION_TRIGGER_GATEWAY_ENABLED=1

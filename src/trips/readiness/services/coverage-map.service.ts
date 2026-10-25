@@ -1895,30 +1895,12 @@ export class CoverageMapService {
     tripId: string,
     blockerId: string,
     metadata: unknown,
-    options: RepairOption[],
+    _options: RepairOption[],
   ): Promise<ReadinessGuardianNegotiationSummary | undefined> {
+    // 读路径只吃已落盘缓存。现场 negotiate 会拖垮 mobile 同屏请求（timeout 后 Promise 仍跑）。
+    // 需要预协商时走显式 repair / readiness 写路径，不要从 getRepairOptions enrich 触发。
     const persisted = extractGuardianNegotiationSnapshot(metadata);
-    const cached = pickGuardianSummaryForBlocker(persisted, blockerId);
-    if (cached) return cached;
-
-    if (!this.guardianNegotiationService?.isEnabled()) {
-      return undefined;
-    }
-
-    const primaryAction =
-      options.find((option) => option.impact === 'high')?.actionType ?? options[0]?.actionType;
-
-    try {
-      return await this.guardianNegotiationService.negotiateForTrip(tripId, 'pre_repair', {
-        blockerId,
-        repairActionType: primaryAction,
-      });
-    } catch (error) {
-      this.logger.warn(
-        `repair-options 三人格预协商失败 trip=${tripId} blocker=${blockerId}: ${(error as Error).message}`,
-      );
-      return undefined;
-    }
+    return pickGuardianSummaryForBlocker(persisted, blockerId);
   }
 
   /**

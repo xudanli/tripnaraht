@@ -9,6 +9,7 @@ import {
 } from '../../../trips/iceland-self-drive/dictionaries/iceland-self-drive-vehicle-catalog';
 import type { IcelandSelfDriveVehicleClass } from '../../../trips/iceland-self-drive/dto/iceland-self-drive-enums';
 import { deriveVehicleLifecycleStatus } from '../../../trips/iceland-self-drive/services/iceland-self-drive-vehicle.util';
+import { applyMaxDailyDrivingHoursConstraintPatch } from '../../../trips/trip-constraint-solver/utils/daily-drive-threshold.util';
 
 /** Decision writeback vehicleType → driving-settings vehicleClass */
 export function mapDecisionVehicleTypeToClass(
@@ -261,12 +262,25 @@ export function mirrorDrivingSettingsIntoConstraints(input: {
       constraints.fRoadAllowed = true;
       if (constraints.excludeFRoad === true) delete constraints.excludeFRoad;
     }
-    if (
-      typeof route.dailyDrivingLimitHours === 'number' &&
-      Number.isFinite(route.dailyDrivingLimitHours)
-    ) {
-      constraints.maxDailyDriveHours = route.dailyDrivingLimitHours;
-    }
+  }
+
+  const drivers =
+    ds.drivers && typeof ds.drivers === 'object' && !Array.isArray(ds.drivers)
+      ? (ds.drivers as Record<string, unknown>)
+      : null;
+  const dailyLimitHours =
+    (typeof route?.dailyDrivingLimitHours === 'number' &&
+    Number.isFinite(route.dailyDrivingLimitHours)
+      ? route.dailyDrivingLimitHours
+      : undefined) ??
+    (typeof drivers?.dailyDrivingLimitHours === 'number' &&
+    Number.isFinite(drivers.dailyDrivingLimitHours)
+      ? drivers.dailyDrivingLimitHours
+      : undefined);
+  // 必须写 canonical maxDailyDrivingHours；只写 legacy maxDailyDriveHours 时
+  // readUserMaxDailyDrivingHours 仍会优先读到旧的 6h，导致合同里改成 4h 不生效。
+  if (dailyLimitHours != null) {
+    applyMaxDailyDrivingHoursConstraintPatch(constraints, dailyLimitHours);
   }
 
   return constraints;
