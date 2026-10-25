@@ -129,7 +129,11 @@ export function buildDeliveryArtifactsUi(input: {
     links.push({
       kind: 'pdf',
       label_zh: '导出行程 PDF',
-      href: `/dashboard/trips/${tripId}?action=export_pdf`,
+      href: `/api/trips/${tripId}/export/pdf`,
+      api_action: {
+        method: 'GET',
+        path: `/trips/${tripId}/export/pdf`,
+      },
     });
   }
 

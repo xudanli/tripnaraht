@@ -138,6 +138,10 @@ describe('delivery-artifacts-ui.util', () => {
     expect(artifacts?.links.some((l) => l.kind === 'map')).toBe(true);
     expect(artifacts?.links.some((l) => l.kind === 'calendar')).toBe(true);
     expect(artifacts?.links.some((l) => l.kind === 'share')).toBe(true);
+    expect(artifacts?.links.find((l) => l.kind === 'pdf')?.api_action).toEqual({
+      method: 'GET',
+      path: '/trips/trip-abc/export/pdf',
+    });
     expect(artifacts?.map_polyline_url).toBeDefined();
   });
 });
